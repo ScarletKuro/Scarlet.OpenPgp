@@ -26,8 +26,14 @@
     <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
-  <!-- Deliberately no PackageReference items at all: zero external NuGet dependencies is the
-       entire point of this library, not just "keep it minimal". -->
+  <!-- No third-party PackageReference items. The one exception is System.Memory below: it's a
+       Microsoft-shipped BCL compatibility shim (not a third-party dependency in the sense the
+       zero-dependency non-negotiable is guarding against) that brings Span<T>/ReadOnlySpan<T> to
+       netstandard2.0. net10.0 already has these types natively and needs no such reference. -->
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <PackageReference Include="System.Memory" Version="4.6.3" />
+  </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Scarlet.OpenPgp.Tests" />

@@ -216,11 +216,44 @@ may end up depending on:
 
 ## Non-negotiables (carry these forward regardless of who implements this)
 
-- **Zero external NuGet dependencies** in `Scarlet.OpenPgp` itself (the core library). This is the entire
-  point of the project. Test project dependencies (test framework, and optionally BouncyCastle *only* for
-  generating cross-validation fixtures in tests) are fine.
+- **Zero *third-party* NuGet dependencies** in `Scarlet.OpenPgp` itself (the core library). This is the
+  entire point of the project. The one exception is **`System.Memory`**, referenced only on the
+  `netstandard2.0` target build (`net10.0` has `Span<T>`/`ReadOnlySpan<T>` natively and needs no such
+  reference) — it's a Microsoft-shipped BCL compatibility shim, not a third-party dependency in the sense
+  this rule is guarding against, and it's what makes `OpenPgpVerifier.VerifyDetached` take
+  `ReadOnlySpan<byte>` (matching this doc's own original API sketch) instead of a plain `byte[]` on every
+  target. Test project dependencies (test framework, and optionally BouncyCastle *only* for generating
+  cross-validation fixtures in tests) are fine too.
 - **Verify-only.** Do not scope-creep into signing or key management.
 - **Fail closed.** Any parsing ambiguity, unknown-but-critical data, or malformed input must result in a
   verification failure, never a silent pass.
 - **Correctness over performance**, but still write clean, readable code — this will be read and audited by
-  people deciding whether to trust it.
+  people deciding whether to trust it. `Span<T>`/`ReadOnlySpan<T>` are fair game where they reduce
+  allocations without hurting readability (see "Performance follow-up" below), but don't chase performance
+  work that isn't backed by a measurement.
+
+## Performance follow-up (not done in v1, noted for whoever picks this up next)
+
+v1 prioritized correctness and used plain `byte[]` throughout the packet/MPI framing layer (one array per
+packet body, one per MPI, etc.) — reasonable for verifying a handful of signatures in a build script, but
+there are real allocation hot spots if this ever needs to verify many signatures quickly:
+
+- `Packets/PacketReader.cs` — allocates a `MemoryStream` + `byte[]` per packet. Could instead return
+  `ReadOnlyMemory<byte>` slices into the original input buffer for non-partial-length packets (the common
+  case), only falling back to a copy when partial-body chunks actually need concatenating.
+- `Packets/Mpi.cs` — `ReadFrom`/`ToUnsignedBigInteger`/`ToFixedLengthUnsignedBytes` each allocate a fresh
+  array to reverse byte order for `BigInteger`. Could take `ReadOnlySpan<byte>` instead of `byte[]` to at
+  least avoid one intermediate copy at each call site, though the byte-reversal allocation itself is
+  probably unavoidable without dropping to `stackalloc` for small (≤64-byte) MPIs.
+- `Crypto/Ed25519/Ed25519Verifier.cs`'s `Concat`/`LittleEndianToBigInteger` helpers, and the equivalent
+  spots in `Crypto/Rsa/RsaPkcs1Verifier.cs` — same story, small allocations that `stackalloc` + `Span<byte>`
+  could avoid for the fixed-size (32/64-byte) Ed25519 values.
+- None of this will matter next to the cost of the actual `BigInteger` modular exponentiation/field
+  arithmetic in `RsaPkcs1Verifier`/`Ed25519Verifier` (the RFC8032 field/curve math is the real hot path, and
+  `Span<T>` doesn't help there — that would need fixed-width arithmetic instead of `BigInteger`, a much
+  bigger change explicitly deferred per the performance non-goal above).
+
+**Before doing any of this: add a benchmark project (`BenchmarkDotNet`, test-only dependency, not referenced
+by the shipped library) and measure first.** Guessing at allocation hot spots without a baseline is exactly
+the kind of premature optimization this doc's non-goals warn against — do the measurement, then decide
+which of the above (if any) is worth the added complexity.

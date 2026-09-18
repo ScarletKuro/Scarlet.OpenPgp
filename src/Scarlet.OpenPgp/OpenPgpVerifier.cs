@@ -47,15 +47,9 @@ namespace Scarlet.OpenPgp
         }
 
         /// <summary>Verifies a detached signature (ASCII-armored) over arbitrary bytes.</summary>
-        /// <remarks>
-        /// Takes <c>byte[]</c> rather than <see cref="ReadOnlySpan{T}"/> despite SPEC.md's initial
-        /// sketch suggesting the latter: <c>ReadOnlySpan&lt;byte&gt;</c> is not part of netstandard2.0's
-        /// own reference surface and requires the System.Memory package to use there, which would
-        /// violate the zero-external-dependency non-negotiable for this library's primary target.
-        /// </remarks>
-        public static bool VerifyDetached(byte[] data, string signatureArmor, string publicKeyArmor)
+        public static bool VerifyDetached(ReadOnlySpan<byte> data, string signatureArmor, string publicKeyArmor)
         {
-            byte[] content = data;
+            byte[] content = data.ToArray();
             try
             {
                 AsciiArmorBlock signatureBlock = AsciiArmorReader.Read(signatureArmor);
