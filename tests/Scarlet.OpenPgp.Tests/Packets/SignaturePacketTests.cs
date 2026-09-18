@@ -208,6 +208,56 @@ namespace Scarlet.OpenPgp.Tests.Packets
         }
 
         [Fact]
+        public void Parse_WithEdDsaRValueEncodedAs31BytesDueToALeadingZeroByte_ShouldReconstructA32ByteValue()
+        {
+            // Arrange: a compliant encoder is free to minimize R/S's MPI when the true 32-byte value
+            // has a leading 0x00 byte, producing a 31-byte wire encoding. Reconstructing r32/s32
+            // using the *wire* byte count instead of a fixed 32 would spuriously reject this
+            // otherwise-valid signature (this is exactly what an intermittent BouncyCastle
+            // cross-validation test failure caught - random keys occasionally hit this case).
+            var body = new List<byte> { 0x04, 0x00, 0x16, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+
+            // R: bit length 248 (31 bytes), value = 31 bytes of 0xAA - the true 32-byte R is
+            // 0x00 followed by those 31 bytes.
+            body.Add(0x00);
+            body.Add(0xF8);
+            for (int i = 0; i < 31; i++)
+            {
+                body.Add(0xAA);
+            }
+
+            // S: a full, unambiguous 32-byte value.
+            body.Add(0x01);
+            body.Add(0x00);
+            for (int i = 0; i < 32; i++)
+            {
+                body.Add(0xBB);
+            }
+
+            // Act
+            SignaturePacket signature = SignaturePacket.Parse(body.ToArray());
+
+            // Assert
+            Assert.NotNull(signature.EdDsaSignatureValue);
+            var expectedR = new byte[32];
+            for (int i = 1; i < 32; i++)
+            {
+                expectedR[i] = 0xAA;
+            }
+
+            var expectedS = new byte[32];
+            for (int i = 0; i < 32; i++)
+            {
+                expectedS[i] = 0xBB;
+            }
+
+            var expected = new byte[64];
+            System.Array.Copy(expectedR, 0, expected, 0, 32);
+            System.Array.Copy(expectedS, 0, expected, 32, 32);
+            Assert.Equal(expected, signature.EdDsaSignatureValue);
+        }
+
+        [Fact]
         public void Parse_WithNonV4Version_ShouldFailClosed()
         {
             // Arrange

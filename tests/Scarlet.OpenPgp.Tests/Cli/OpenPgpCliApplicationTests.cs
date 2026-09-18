@@ -143,6 +143,24 @@ namespace Scarlet.OpenPgp.Tests.Cli
         }
 
         [Fact]
+        public void Run_WithAKeyPathThrowingAnUnexpectedExceptionType_ShouldReturnUnexpectedErrorNotCrash()
+        {
+            // Arrange: an embedded NUL character makes File.ReadAllText throw ArgumentException,
+            // which is neither IOException nor UnauthorizedAccessException - this must still be
+            // caught by the top-level safety net rather than escaping as a raw crash.
+            string sigPath = WriteFile("sig.asc", Armor("SIGNATURE", Ed25519SignaturePacketBytes));
+            string dataPath = WriteFile("data.txt", Encoding.ASCII.GetBytes("OpenPGP"));
+            string invalidKeyPath = Path.Combine(_workDir, "key\0withnul.asc");
+
+            // Act
+            int exitCode = CreateApplication().Run(new[] { "verify", "--key", invalidKeyPath, "--signature", sigPath, "--data", dataPath });
+
+            // Assert
+            Assert.Equal(ExitCodes.UnexpectedError, exitCode);
+            Assert.Contains("Scarlet.OpenPgp:", _stderr.ToString());
+        }
+
+        [Fact]
         public void Run_WithHelpFlag_ShouldPrintUsageAndReturnSuccess()
         {
             // Act
