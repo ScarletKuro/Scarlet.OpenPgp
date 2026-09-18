@@ -20,6 +20,8 @@ namespace Scarlet.OpenPgp.Packets
         /// Reads one MPI starting at <paramref name="offset"/>. Returns the value and the number of
         /// bytes consumed (including the 2-byte length prefix).
         /// </summary>
+        /// <param name="data">The buffer to read from.</param>
+        /// <param name="offset">The offset within <paramref name="data"/> at which the MPI's 2-byte bit-length prefix begins.</param>
         /// <param name="requireCanonical">
         /// When <c>true</c>, rejects a non-canonical encoding (a declared bit-length that doesn't
         /// exactly match the value's true minimal bit-length - e.g. leading zero bytes/bits) as
