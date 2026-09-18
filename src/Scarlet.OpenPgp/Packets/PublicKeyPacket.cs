@@ -99,7 +99,9 @@ namespace Scarlet.OpenPgp.Packets
             int oidLength = body[offset];
             offset += 1;
 
-            if (offset + oidLength > body.Length)
+            // oidLength is a single byte (at most 255), so overflow here is even less practical
+            // than elsewhere - widened to long anyway for the same reason as the other checks.
+            if ((long)offset + oidLength > body.Length)
             {
                 throw new FailClosedException("Unexpected end of input while reading the EdDSA curve OID.");
             }

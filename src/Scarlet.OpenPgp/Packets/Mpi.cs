@@ -34,7 +34,7 @@ namespace Scarlet.OpenPgp.Packets
         /// </param>
         public static (BigInteger Value, int BytesConsumed) ReadFrom(byte[] data, int offset, bool requireCanonical = false)
         {
-            if (offset < 0 || offset + 2 > data.Length)
+            if (offset < 0 || (long)offset + 2 > data.Length)
             {
                 throw new FailClosedException("Unexpected end of input while reading an MPI length prefix.");
             }
@@ -42,7 +42,11 @@ namespace Scarlet.OpenPgp.Packets
             int bitLength = (data[offset] << 8) | data[offset + 1];
             int byteLength = (bitLength + 7) / 8;
 
-            if (offset + 2 + byteLength > data.Length)
+            // bitLength is at most 0xFFFF (a 2-byte field), so byteLength is at most 8192 - this can
+            // only overflow int if offset is already within ~8KB of int.MaxValue. Widened to long
+            // anyway, to keep every bounds check in this codebase overflow-safe regardless of how
+            // large the attacker-controlled length field happens to be.
+            if ((long)offset + 2 + byteLength > data.Length)
             {
                 throw new FailClosedException("Unexpected end of input while reading an MPI body (truncated).");
             }

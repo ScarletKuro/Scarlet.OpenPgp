@@ -155,7 +155,12 @@ namespace Scarlet.OpenPgp.Packets
             int length = (body[offset] << 8) | body[offset + 1];
             offset += 2;
 
-            if (offset + length > body.Length)
+            // length is at most 0xFFFF here (a 2-byte field), so this can only overflow int if
+            // offset is already within 64K of int.MaxValue - i.e. body is itself close to 2GB.
+            // Widened to long anyway for the same reason as the other length checks in this
+            // codebase: the overflow-safety pattern should not depend on how wide the length field
+            // happens to be.
+            if ((long)offset + length > body.Length)
             {
                 throw new FailClosedException("Unexpected end of input while reading the " + which + " subpacket data (truncated).");
             }
