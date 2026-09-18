@@ -108,6 +108,19 @@ namespace Scarlet.OpenPgp.Tests.Packets
         }
 
         [Fact]
+        public void ReadAll_WithOversizedFourByteLengthCausingIntOverflow_ShouldFailClosedNotThrowUnhandled()
+        {
+            // Arrange: old-format tag 6, 4-byte length = 0x7FFFFFFF. Naively checking
+            // "position + length > data.Length" in 32-bit int arithmetic overflows (position=5
+            // plus 0x7FFFFFFF wraps negative), which would previously bypass the truncation check
+            // and crash inside MemoryStream.Write instead of failing closed.
+            byte[] data = { 0x9A, 0x7F, 0xFF, 0xFF, 0xFF };
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => PacketReader.ReadAll(data));
+        }
+
+        [Fact]
         public void ReadAll_WithTruncatedHeader_ShouldFailClosed()
         {
             // Arrange: a tag byte announcing a length octet that never arrives.

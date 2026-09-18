@@ -147,5 +147,19 @@ namespace Scarlet.OpenPgp.Tests.Packets
             // Act & Assert
             Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(body));
         }
+
+        [Fact]
+        public void Parse_WithTrailingGarbageAfterSignatureValue_ShouldFailClosed()
+        {
+            // Arrange: a real, valid signature body with one extra byte appended after S.
+            List<Packet> packets = PacketReader.ReadAll(Ed25519SignaturePacketBytes);
+            byte[] body = packets[0].Body;
+            var withGarbage = new byte[body.Length + 1];
+            System.Array.Copy(body, withGarbage, body.Length);
+            withGarbage[body.Length] = 0xAA;
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(withGarbage));
+        }
     }
 }

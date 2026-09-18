@@ -75,20 +75,31 @@ namespace Scarlet.OpenPgp
 
         private static SignaturePacket ParseSignaturePacket(byte[] armorBody)
         {
+            // A signature armor block (a detached .sig/.asc, or a clearsigned message's trailing
+            // block) is exactly one Signature packet by construction - RFC 4880 has no notion of
+            // "extra" packets belonging there. Anything other than exactly one Signature-tagged
+            // packet is treated as malformed rather than silently picking the first match, since
+            // silently ignoring extra/duplicate packets is exactly the kind of parsing ambiguity
+            // SPEC.md's fail-closed rule is meant to catch. Contrast with ParsePublicKeyPacket
+            // below, which is deliberately permissive because a real public key block legitimately
+            // contains several other packet types by design (User ID, self-signatures, subkeys).
             List<Packet> packets = PacketReader.ReadAll(armorBody);
-            foreach (Packet packet in packets)
+            if (packets.Count != 1 || packets[0].Header.Tag != PacketTag.Signature)
             {
-                if (packet.Header.Tag == PacketTag.Signature)
-                {
-                    return SignaturePacket.Parse(packet.Body);
-                }
+                throw new FailClosedException("Expected exactly one Signature packet in the signature armor block.");
             }
 
-            throw new FailClosedException("No Signature packet found in the signature armor block.");
+            return SignaturePacket.Parse(packets[0].Body);
         }
 
         private static PublicKeyPacket ParsePublicKeyPacket(string publicKeyArmor)
         {
+            // Permissive by design: a real public key block routinely contains a User ID packet,
+            // one or more self-signatures, and subkeys with their own binding signatures alongside
+            // the primary Public-Key packet we actually need (see the real-world Bun key fixture
+            // under TestAssets/bun-release/). We take the first Public-Key packet and ignore the
+            // rest, matching how every other OpenPGP implementation reads a "bag of packets" key
+            // block for the one primary key packet it cares about.
             AsciiArmorBlock block = AsciiArmorReader.Read(publicKeyArmor);
             List<Packet> packets = PacketReader.ReadAll(block.Body);
             foreach (Packet packet in packets)
@@ -111,6 +122,15 @@ namespace Scarlet.OpenPgp
 
             byte[] dataToHash = SignatureHashBuilder.BuildDataToHash(content, signature);
             byte[] digest = OpenPgpHash.ComputeHash(signature.HashAlgorithm, dataToHash);
+
+            // The packet's own 2-byte quick-check (RFC 4880 §5.2.3) isn't itself signed material,
+            // so it can't be used as a substitute for the real asymmetric check below - but a
+            // mismatch here means the packet is inconsistent with the content it claims to cover,
+            // which fails closed the same as any other malformed-input case.
+            if (signature.LeftHashBytes16[0] != digest[0] || signature.LeftHashBytes16[1] != digest[1])
+            {
+                return false;
+            }
 
             switch (publicKey.Algorithm)
             {

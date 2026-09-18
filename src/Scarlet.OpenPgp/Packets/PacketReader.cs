@@ -136,7 +136,10 @@ namespace Scarlet.OpenPgp.Packets
 
         private static void AppendBytes(byte[] data, ref int position, int length, MemoryStream body)
         {
-            if (length < 0 || position + length > data.Length)
+            // Widen to long before adding: a maliciously large 4/5-byte length (e.g. 0x7FFFFFFF)
+            // plus a nonzero position can overflow int, wrapping the sum negative and slipping
+            // past a plain "position + length > data.Length" check.
+            if (length < 0 || (long)position + length > data.Length)
             {
                 throw new FailClosedException("Packet body length extends past the end of the input (truncated packet).");
             }

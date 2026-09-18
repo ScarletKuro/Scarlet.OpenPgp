@@ -96,6 +96,20 @@ namespace Scarlet.OpenPgp.Tests.Packets
         }
 
         [Fact]
+        public void Parse_WithTrailingGarbageAfterKeyMaterial_ShouldFailClosed()
+        {
+            // Arrange: a real, valid key body with one extra byte appended after the point MPI.
+            System.Collections.Generic.List<Packet> packets = PacketReader.ReadAll(Ed25519PublicKeyPacketBytes);
+            byte[] body = packets[0].Body;
+            var withGarbage = new byte[body.Length + 1];
+            System.Array.Copy(body, withGarbage, body.Length);
+            withGarbage[body.Length] = 0xAA;
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => PublicKeyPacket.Parse(withGarbage));
+        }
+
+        [Fact]
         public void Parse_WithNonV4Version_ShouldFailClosed()
         {
             // Arrange

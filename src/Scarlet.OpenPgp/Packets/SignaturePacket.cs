@@ -127,6 +127,11 @@ namespace Scarlet.OpenPgp.Packets
                     throw new FailClosedException("Unsupported signature public-key algorithm: " + (byte)publicKeyAlgorithm + ".");
             }
 
+            if (offset != body.Length)
+            {
+                throw new FailClosedException("Signature packet body has unexpected trailing data after its signature value.");
+            }
+
             return new SignaturePacket(
                 version,
                 signatureTypeRaw,

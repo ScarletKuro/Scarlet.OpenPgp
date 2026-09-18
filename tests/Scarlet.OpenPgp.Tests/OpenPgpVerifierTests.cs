@@ -95,6 +95,43 @@ namespace Scarlet.OpenPgp.Tests
         }
 
         [Fact]
+        public void VerifyDetached_WithTamperedLeftHashBytes_ShouldReturnFalse()
+        {
+            // Arrange: the two-byte quick-check field (index 26-27 in the raw packet: f6 22) isn't
+            // itself signed material, but a mismatch against the real digest must still fail closed
+            // rather than being silently ignored in favor of the (otherwise-valid) asymmetric check.
+            byte[] tamperedSignaturePacket = (byte[])Ed25519SignaturePacketBytes.Clone();
+            tamperedSignaturePacket[26] ^= 0xFF;
+            string tamperedSignatureArmor = Armor("SIGNATURE", tamperedSignaturePacket);
+            byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
+
+            // Act
+            bool result = OpenPgpVerifier.VerifyDetached(data, tamperedSignatureArmor, PublicKeyArmor);
+
+            // Assert
+            Assert.False(result);
+        }
+
+        [Fact]
+        public void VerifyDetached_WithTwoSignaturePacketsInTheArmorBlock_ShouldReturnFalse()
+        {
+            // Arrange: a signature armor block is expected to contain exactly one packet. Smuggling
+            // in a second (even an otherwise-valid, duplicate) Signature packet must not be silently
+            // resolved by picking the first one.
+            byte[] doubled = new byte[Ed25519SignaturePacketBytes.Length * 2];
+            Array.Copy(Ed25519SignaturePacketBytes, 0, doubled, 0, Ed25519SignaturePacketBytes.Length);
+            Array.Copy(Ed25519SignaturePacketBytes, 0, doubled, Ed25519SignaturePacketBytes.Length, Ed25519SignaturePacketBytes.Length);
+            string doubledSignatureArmor = Armor("SIGNATURE", doubled);
+            byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
+
+            // Act
+            bool result = OpenPgpVerifier.VerifyDetached(data, doubledSignatureArmor, PublicKeyArmor);
+
+            // Assert
+            Assert.False(result);
+        }
+
+        [Fact]
         public void VerifyDetached_WithWrongPublicKey_ShouldReturnFalse()
         {
             // Arrange: flip a byte in the public key's point material.

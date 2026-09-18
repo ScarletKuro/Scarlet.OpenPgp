@@ -80,6 +80,11 @@ namespace Scarlet.OpenPgp.Packets
                     throw new FailClosedException("Unsupported public-key algorithm: " + algorithmByte + ".");
             }
 
+            if (offset != body.Length)
+            {
+                throw new FailClosedException("Public-key packet body has unexpected trailing data after its key material.");
+            }
+
             var fingerprint = KeyFingerprint.ComputeV4(body);
             return new PublicKeyPacket(createdAt, algorithm, rsa, edDsa, fingerprint);
         }
