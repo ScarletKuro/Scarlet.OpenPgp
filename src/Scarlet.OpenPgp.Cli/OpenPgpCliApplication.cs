@@ -34,11 +34,28 @@ namespace Scarlet.OpenPgp.Cli
                 return ExitCodes.UsageError;
             }
 
+            try
+            {
+                return RunVerify(options!);
+            }
+            catch (Exception ex)
+            {
+                // Last-resort safety net: anything that isn't one of the specific, expected
+                // failure modes handled inside RunVerify (a bad input file, a failed/successful
+                // verification) still gets a clean exit code and message instead of crashing the
+                // process with a raw stack trace.
+                _stderr.WriteLine("Scarlet.OpenPgp: unexpected error: " + ex.Message);
+                return ExitCodes.UnexpectedError;
+            }
+        }
+
+        private int RunVerify(OpenPgpCliOptions options)
+        {
             string publicKeyArmor;
             string signatureArmorOrClearsignedMessage;
             try
             {
-                publicKeyArmor = File.ReadAllText(options!.KeyPath);
+                publicKeyArmor = File.ReadAllText(options.KeyPath);
                 signatureArmorOrClearsignedMessage = File.ReadAllText(options.SignaturePath);
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)

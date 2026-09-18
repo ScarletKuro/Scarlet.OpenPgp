@@ -231,16 +231,18 @@ namespace Scarlet.OpenPgp.Packets
             (BigInteger s, int sConsumed) = Mpi.ReadFrom(body, offset);
             offset += sConsumed;
 
-            // Each MPI wraps its raw 32-byte native EdDSA value verbatim (draft-koch-eddsa-for-openpgp
-            // §3) - the same round-trip-preserves-original-bytes property used for the public key
-            // point in PublicKeyPacket applies here, so no separate endianness handling is needed.
-            byte[] r32 = Mpi.ToFixedLengthUnsignedBytes(r, rConsumed - 2);
-            byte[] s32 = Mpi.ToFixedLengthUnsignedBytes(s, sConsumed - 2);
-
-            if (r32.Length != 32 || s32.Length != 32)
-            {
-                throw new FailClosedException("Malformed EdDSA signature (expected two 32-byte native values).");
-            }
+            // Reconstruct each value as a fixed 32 bytes rather than trusting the wire's own MPI
+            // byte count (rConsumed/sConsumed - 2): a compliant encoder is free to write a
+            // non-canonical *or* a fully minimal MPI for these opaque-bytestring fields (see
+            // Mpi.ReadFrom's requireCanonical doc comment), so whenever the true R or S value has a
+            // leading 0x00 byte, a minimal encoding is only 31 bytes on the wire. Using that wire
+            // length here would spuriously reject an otherwise valid signature roughly 1 time in
+            // 128 (confirmed by an intermittent BouncyCastle-cross-validation test failure - random
+            // keys occasionally produce exactly this case). Mpi.ToFixedLengthUnsignedBytes(value, 32)
+            // always yields exactly 32 bytes for any value that actually fits in 256 bits, and
+            // throws FailClosedException for one that doesn't - which is the correct check here.
+            byte[] r32 = Mpi.ToFixedLengthUnsignedBytes(r, 32);
+            byte[] s32 = Mpi.ToFixedLengthUnsignedBytes(s, 32);
 
             var signature = new byte[64];
             System.Array.Copy(r32, 0, signature, 0, 32);

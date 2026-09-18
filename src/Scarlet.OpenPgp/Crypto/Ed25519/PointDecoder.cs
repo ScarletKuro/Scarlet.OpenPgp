@@ -83,10 +83,11 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
 
         private static FieldElement SqrtMinusOne() => new FieldElement(2).Pow(SqrtMinusOneExponent);
 
-        private static BigInteger LittleEndianToBigInteger(byte[] littleEndianWithGuard)
+        /// <summary>Interprets a little-endian byte sequence (Ed25519's native encoding for y-coordinates, scalars, and hash outputs) as an unsigned integer. Shared with <see cref="Ed25519Verifier"/> rather than duplicated.</summary>
+        public static BigInteger LittleEndianToBigInteger(byte[] littleEndian)
         {
-            var buffer = new byte[littleEndianWithGuard.Length + 1];
-            System.Array.Copy(littleEndianWithGuard, buffer, littleEndianWithGuard.Length);
+            var buffer = new byte[littleEndian.Length + 1];
+            System.Array.Copy(littleEndian, buffer, littleEndian.Length);
             buffer[buffer.Length - 1] = 0; // guard byte forces a non-negative BigInteger
             return new BigInteger(buffer);
         }

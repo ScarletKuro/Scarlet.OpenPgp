@@ -37,14 +37,14 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
                 return false;
             }
 
-            BigInteger s = LittleEndianToBigInteger(sBytes);
+            BigInteger s = PointDecoder.LittleEndianToBigInteger(sBytes);
             if (s >= GroupOrderL)
             {
                 return false;
             }
 
             byte[] hash = ComputeSha512(Concat(rBytes, publicKey.CompressedPoint, message));
-            BigInteger k = LittleEndianToBigInteger(hash) % GroupOrderL;
+            BigInteger k = PointDecoder.LittleEndianToBigInteger(hash) % GroupOrderL;
 
             EdwardsPoint sB = EdwardsPoint.B.ScalarMultiply(s);
             EdwardsPoint kA = a.ScalarMultiply(k);
@@ -68,14 +68,6 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
             Array.Copy(b, 0, result, a.Length, b.Length);
             Array.Copy(c, 0, result, a.Length + b.Length, c.Length);
             return result;
-        }
-
-        private static BigInteger LittleEndianToBigInteger(byte[] littleEndian)
-        {
-            var buffer = new byte[littleEndian.Length + 1];
-            Array.Copy(littleEndian, buffer, littleEndian.Length);
-            buffer[buffer.Length - 1] = 0; // guard byte forces a non-negative BigInteger
-            return new BigInteger(buffer);
         }
     }
 }
