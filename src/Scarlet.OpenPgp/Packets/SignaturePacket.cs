@@ -166,6 +166,14 @@ namespace Scarlet.OpenPgp.Packets
             return region;
         }
 
+        /// <summary>
+        /// Fails closed on a critical subpacket of a type we don't recognize (per RFC 4880), and
+        /// also on a critical subpacket of a type we *do* recognize but whose payload doesn't match
+        /// that type's fixed structure - "critical" means the verifier must understand the
+        /// subpacket, and a malformed payload for a known type is exactly as unusable as an
+        /// unknown type would be. Malformed *non-critical* instances of these same types are left
+        /// alone: RFC 4880 makes them safe to ignore regardless of validity.
+        /// </summary>
         private static void RejectUnknownCritical(List<SignatureSubpacket> subpackets)
         {
             foreach (SignatureSubpacket subpacket in subpackets)
@@ -175,14 +183,38 @@ namespace Scarlet.OpenPgp.Packets
                     continue;
                 }
 
-                bool known = subpacket.RawType == (byte)SignatureSubpacketType.SignatureCreationTime
-                             || subpacket.RawType == (byte)SignatureSubpacketType.IssuerKeyId
-                             || subpacket.RawType == (byte)SignatureSubpacketType.IssuerFingerprint;
-
-                if (!known)
+                switch (subpacket.RawType)
                 {
-                    throw new FailClosedException(
-                        "Signature contains an unrecognized critical subpacket (type " + subpacket.RawType + "); failing closed per RFC 4880.");
+                    case (byte)SignatureSubpacketType.SignatureCreationTime:
+                        if (subpacket.Data.Length != 4)
+                        {
+                            throw new FailClosedException("Critical SignatureCreationTime subpacket must be exactly 4 bytes.");
+                        }
+
+                        break;
+
+                    case (byte)SignatureSubpacketType.IssuerKeyId:
+                        if (subpacket.Data.Length != 8)
+                        {
+                            throw new FailClosedException("Critical IssuerKeyId subpacket must be exactly 8 bytes.");
+                        }
+
+                        break;
+
+                    case (byte)SignatureSubpacketType.IssuerFingerprint:
+                        // version(1) + a v4 SHA-1 fingerprint (20 bytes) = 21 bytes. This library
+                        // only supports v4 signatures/keys (SignaturePacket.Parse/PublicKeyPacket.Parse
+                        // both reject any other version), so the fingerprint version must be 4 too.
+                        if (subpacket.Data.Length != 21 || subpacket.Data[0] != 4)
+                        {
+                            throw new FailClosedException("Critical IssuerFingerprint subpacket must be a 21-byte v4 fingerprint.");
+                        }
+
+                        break;
+
+                    default:
+                        throw new FailClosedException(
+                            "Signature contains an unrecognized critical subpacket (type " + subpacket.RawType + "); failing closed per RFC 4880.");
                 }
             }
         }

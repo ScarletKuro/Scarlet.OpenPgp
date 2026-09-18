@@ -127,6 +127,87 @@ namespace Scarlet.OpenPgp.Tests.Packets
         }
 
         [Fact]
+        public void Parse_WithCriticalSignatureCreationTimeOfWrongLength_ShouldFailClosed()
+        {
+            // Arrange: critical SignatureCreationTime (type 2) with 3 data bytes instead of the
+            // required 4 - "critical" means understood, and a malformed payload for a recognized
+            // type is exactly as unusable as an unknown type would be.
+            byte[] body =
+            {
+                0x04, 0x00, 0x01, 0x08, 0x00, 0x05, 0x04, 0x82, 0xAA, 0xBB, 0xCC,
+            };
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(body));
+        }
+
+        [Fact]
+        public void Parse_WithCriticalIssuerKeyIdOfWrongLength_ShouldFailClosed()
+        {
+            // Arrange: critical IssuerKeyId (type 16) with 7 data bytes instead of the required 8.
+            byte[] body =
+            {
+                0x04, 0x00, 0x01, 0x08, 0x00, 0x09, 0x08, 0x90, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+            };
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(body));
+        }
+
+        [Fact]
+        public void Parse_WithCriticalIssuerFingerprintOfWrongVersion_ShouldFailClosed()
+        {
+            // Arrange: critical IssuerFingerprint (type 33), 21 bytes total, but version byte 5
+            // instead of 4 (this library only supports v4 signatures/keys).
+            byte[] body =
+            {
+                0x04, 0x00, 0x01, 0x08, 0x00, 0x17, 0x16, 0xA1, 0x05,
+                0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
+                0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
+            };
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(body));
+        }
+
+        [Fact]
+        public void Parse_WithCriticalIssuerFingerprintOfWrongLength_ShouldFailClosed()
+        {
+            // Arrange: critical IssuerFingerprint (type 33) with 20 data bytes (missing the version
+            // octet) instead of the required 21.
+            byte[] body =
+            {
+                0x04, 0x00, 0x01, 0x08, 0x00, 0x16, 0x15, 0xA1,
+                0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
+                0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
+            };
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(body));
+        }
+
+        [Fact]
+        public void Parse_WithNonCriticalSignatureCreationTimeOfWrongLength_ShouldStillSucceed()
+        {
+            // Arrange: same malformed 3-byte SignatureCreationTime payload as above, but with the
+            // critical bit clear (type byte 0x02, not 0x82) - non-critical malformed data in a
+            // known type must still be tolerated, matching RFC 4880's "safe to ignore" rule.
+            byte[] body =
+            {
+                0x04, 0x00, 0x01, 0x08, 0x00, 0x05, 0x04, 0x02, 0xAA, 0xBB, 0xCC,
+                0x00, 0x00,
+                0x00, 0x00,
+                0x00, 0x08, 0x80,
+            };
+
+            // Act
+            SignaturePacket signature = SignaturePacket.Parse(body);
+
+            // Assert
+            Assert.Equal(PublicKeyAlgorithm.RsaEncryptOrSign, signature.PublicKeyAlgorithm);
+        }
+
+        [Fact]
         public void Parse_WithNonV4Version_ShouldFailClosed()
         {
             // Arrange

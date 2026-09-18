@@ -101,6 +101,11 @@ namespace Scarlet.OpenPgp
             // rest, matching how every other OpenPGP implementation reads a "bag of packets" key
             // block for the one primary key packet it cares about.
             AsciiArmorBlock block = AsciiArmorReader.Read(publicKeyArmor);
+            if (!string.Equals(block.Label, "PUBLIC KEY BLOCK", StringComparison.Ordinal))
+            {
+                throw new FailClosedException("Expected a PUBLIC KEY BLOCK armor block, found \"" + block.Label + "\".");
+            }
+
             List<Packet> packets = PacketReader.ReadAll(block.Body);
             foreach (Packet packet in packets)
             {

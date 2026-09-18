@@ -148,6 +148,22 @@ namespace Scarlet.OpenPgp.Tests
         }
 
         [Fact]
+        public void VerifyDetached_WithPublicKeyArmorUnderTheWrongLabel_ShouldReturnFalse()
+        {
+            // Arrange: a real, otherwise-valid public key packet, but wrapped under a "SIGNATURE"
+            // armor label instead of "PUBLIC KEY BLOCK" - the label must be checked, not just
+            // whatever packet type happens to be found inside.
+            string mislabeledKeyArmor = Armor("SIGNATURE", Ed25519PublicKeyPacketBytes);
+            byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
+
+            // Act
+            bool result = OpenPgpVerifier.VerifyDetached(data, SignatureArmor, mislabeledKeyArmor);
+
+            // Assert
+            Assert.False(result);
+        }
+
+        [Fact]
         public void VerifyDetached_WithGarbageSignatureArmor_ShouldReturnFalseNotThrow()
         {
             // Arrange
