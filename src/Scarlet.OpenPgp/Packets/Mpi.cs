@@ -16,8 +16,23 @@ namespace Scarlet.OpenPgp.Packets
     /// </remarks>
     internal static class Mpi
     {
-        /// <summary>Reads one MPI starting at <paramref name="offset"/>. Returns the value and the number of bytes consumed (including the 2-byte length prefix).</summary>
-        public static (BigInteger Value, int BytesConsumed) ReadFrom(byte[] data, int offset)
+        /// <summary>
+        /// Reads one MPI starting at <paramref name="offset"/>. Returns the value and the number of
+        /// bytes consumed (including the 2-byte length prefix).
+        /// </summary>
+        /// <param name="requireCanonical">
+        /// When <c>true</c>, rejects a non-canonical encoding (a declared bit-length that doesn't
+        /// exactly match the value's true minimal bit-length - e.g. leading zero bytes/bits) as
+        /// malformed. Real arbitrary-precision integers (RSA's n/e/signature value) are always
+        /// written canonically, so accepting a non-canonical re-encoding of the same value is a
+        /// parsing ambiguity SPEC.md's fail-closed rule is meant to catch - an attacker could
+        /// otherwise re-encode a signature value in more than one way. This must stay <c>false</c>
+        /// (the default) for EdDSA's r/s and point fields: draft-koch-eddsa-for-openpgp's convention
+        /// is to wrap a fixed-size *opaque byte string* in MPI framing with the bit-length always set
+        /// to 8×(byte length), regardless of leading zero bits - confirmed against a real
+        /// GnuPG-produced signature, whose R value's top byte (0x56) has its high bit clear.
+        /// </param>
+        public static (BigInteger Value, int BytesConsumed) ReadFrom(byte[] data, int offset, bool requireCanonical = false)
         {
             if (offset < 0 || offset + 2 > data.Length)
             {
@@ -35,7 +50,38 @@ namespace Scarlet.OpenPgp.Packets
             var magnitude = new byte[byteLength];
             System.Array.Copy(data, offset + 2, magnitude, 0, byteLength);
 
+            if (requireCanonical && bitLength != ComputeMinimalBitLength(magnitude))
+            {
+                throw new FailClosedException("MPI bit-length field is not canonical (does not match the value's true minimal bit-length).");
+            }
+
             return (ToUnsignedBigInteger(magnitude), 2 + byteLength);
+        }
+
+        /// <summary>The true minimal bit-length of a big-endian magnitude: 0 for an all-zero value, otherwise the position of its highest set bit, counting from 1.</summary>
+        private static int ComputeMinimalBitLength(byte[] bigEndianMagnitude)
+        {
+            int firstNonZero = 0;
+            while (firstNonZero < bigEndianMagnitude.Length && bigEndianMagnitude[firstNonZero] == 0)
+            {
+                firstNonZero++;
+            }
+
+            if (firstNonZero == bigEndianMagnitude.Length)
+            {
+                return 0;
+            }
+
+            byte topByte = bigEndianMagnitude[firstNonZero];
+            int bitsInTopByte = 8;
+            while ((topByte & 0x80) == 0)
+            {
+                topByte <<= 1;
+                bitsInTopByte--;
+            }
+
+            int remainingBytes = bigEndianMagnitude.Length - firstNonZero - 1;
+            return bitsInTopByte + (remainingBytes * 8);
         }
 
         /// <summary>Interprets a big-endian byte sequence as an unsigned magnitude.</summary>

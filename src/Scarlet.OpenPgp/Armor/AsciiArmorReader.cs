@@ -111,6 +111,19 @@ namespace Scarlet.OpenPgp.Armor
                 throw new FailClosedException("ASCII armor CRC24 checksum does not match the decoded body.");
             }
 
+            // The caller is expected to supply exactly one armor block (SPEC.md: "the caller
+            // supplies exactly the public key/signature they already trust" - singular). Anything
+            // beyond trailing blank/whitespace-only lines after END - stray garbage, or a second
+            // concatenated block - is a parsing ambiguity: which block did the caller actually
+            // mean? Fail closed rather than silently using only the first one.
+            for (int j = i + 1; j < lines.Length; j++)
+            {
+                if (lines[j].Trim().Length > 0)
+                {
+                    throw new FailClosedException("Unexpected data after the ASCII armor END line.");
+                }
+            }
+
             return new AsciiArmorBlock(label, headers, body);
         }
 

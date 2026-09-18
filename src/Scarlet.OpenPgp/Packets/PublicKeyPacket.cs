@@ -65,9 +65,9 @@ namespace Scarlet.OpenPgp.Packets
             {
                 case PublicKeyAlgorithm.RsaEncryptOrSign:
                 case PublicKeyAlgorithm.RsaSignOnly:
-                    (System.Numerics.BigInteger n, int nConsumed) = Mpi.ReadFrom(body, offset);
+                    (System.Numerics.BigInteger n, int nConsumed) = Mpi.ReadFrom(body, offset, requireCanonical: true);
                     offset += nConsumed;
-                    (System.Numerics.BigInteger e, int eConsumed) = Mpi.ReadFrom(body, offset);
+                    (System.Numerics.BigInteger e, int eConsumed) = Mpi.ReadFrom(body, offset, requireCanonical: true);
                     offset += eConsumed;
                     rsa = new RsaPublicKey(n, e);
                     break;

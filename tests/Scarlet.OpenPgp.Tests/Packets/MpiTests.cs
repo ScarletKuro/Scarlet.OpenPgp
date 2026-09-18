@@ -9,7 +9,10 @@ namespace Scarlet.OpenPgp.Tests.Packets
         [Fact]
         public void ReadFrom_WithSimpleSingleByteValue_ShouldDecodeCorrectly()
         {
-            // Arrange: bit length 8, value byte 0x05.
+            // Arrange: bit length 8, value byte 0x05. This is a deliberately *non-canonical*
+            // encoding (5's true minimal bit length is 3, not 8) - exercising the permissive,
+            // default `requireCanonical: false` path used for EdDSA's opaque-bytestring MPIs.
+            // See the requireCanonical tests below for the RSA-style strict path.
             byte[] data = { 0x00, 0x08, 0x05 };
 
             // Act
@@ -18,6 +21,55 @@ namespace Scarlet.OpenPgp.Tests.Packets
             // Assert
             Assert.Equal(new BigInteger(5), value);
             Assert.Equal(3, consumed);
+        }
+
+        [Fact]
+        public void ReadFrom_WithRequireCanonicalAndNonCanonicalBitLength_ShouldFailClosed()
+        {
+            // Arrange: same non-canonical encoding as above (declared 8 bits, true minimal is 3).
+            byte[] data = { 0x00, 0x08, 0x05 };
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => Mpi.ReadFrom(data, 0, requireCanonical: true));
+        }
+
+        [Fact]
+        public void ReadFrom_WithRequireCanonicalAndCanonicalBitLength_ShouldSucceed()
+        {
+            // Arrange: 5's true minimal bit length is 3.
+            byte[] data = { 0x00, 0x03, 0x05 };
+
+            // Act
+            (BigInteger value, int consumed) = Mpi.ReadFrom(data, 0, requireCanonical: true);
+
+            // Assert
+            Assert.Equal(new BigInteger(5), value);
+            Assert.Equal(3, consumed);
+        }
+
+        [Fact]
+        public void ReadFrom_WithRequireCanonicalAndLeadingZeroByte_ShouldFailClosed()
+        {
+            // Arrange: value 5 re-encoded with a redundant leading 0x00 byte (bit length 16 instead
+            // of the canonical 3) - the same value, but an ambiguous/non-unique wire encoding.
+            byte[] data = { 0x00, 0x10, 0x00, 0x05 };
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => Mpi.ReadFrom(data, 0, requireCanonical: true));
+        }
+
+        [Fact]
+        public void ReadFrom_WithRequireCanonicalAndZeroValue_ShouldSucceed()
+        {
+            // Arrange: zero's canonical encoding is bit length 0, zero body bytes.
+            byte[] data = { 0x00, 0x00 };
+
+            // Act
+            (BigInteger value, int consumed) = Mpi.ReadFrom(data, 0, requireCanonical: true);
+
+            // Assert
+            Assert.Equal(BigInteger.Zero, value);
+            Assert.Equal(2, consumed);
         }
 
         [Fact]

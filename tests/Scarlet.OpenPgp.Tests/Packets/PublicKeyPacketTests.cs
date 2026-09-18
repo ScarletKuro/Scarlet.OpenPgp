@@ -110,6 +110,21 @@ namespace Scarlet.OpenPgp.Tests.Packets
         }
 
         [Fact]
+        public void Parse_WithNonCanonicalRsaExponentMpi_ShouldFailClosed()
+        {
+            // Arrange: minimal v4 RSA key body; n is canonical (bit length 8, value 0x80), but e
+            // re-encodes the value 5 with a redundant leading zero byte (declared bit length 16
+            // instead of the canonical 3).
+            byte[] body =
+            {
+                0x04, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x08, 0x80, 0x00, 0x10, 0x00, 0x05,
+            };
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => PublicKeyPacket.Parse(body));
+        }
+
+        [Fact]
         public void Parse_WithNonV4Version_ShouldFailClosed()
         {
             // Arrange

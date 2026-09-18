@@ -161,5 +161,21 @@ namespace Scarlet.OpenPgp.Tests.Packets
             // Act & Assert
             Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(withGarbage));
         }
+
+        [Fact]
+        public void Parse_WithNonCanonicalRsaSignatureValueMpi_ShouldFailClosed()
+        {
+            // Arrange: a minimal v4 RSA signature body whose signature-value MPI re-encodes the
+            // value 5 with a redundant leading zero byte (declared bit length 16 instead of the
+            // canonical 3) - an attacker could otherwise re-encode any real RSA signature value in
+            // more than one way and have it still verify.
+            byte[] body =
+            {
+                0x04, 0x00, 0x01, 0x08, 0x00, 0x00, 0x00, 0x00, 0xAA, 0xBB, 0x00, 0x10, 0x00, 0x05,
+            };
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(body));
+        }
     }
 }

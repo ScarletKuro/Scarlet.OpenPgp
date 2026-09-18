@@ -115,5 +115,43 @@ namespace Scarlet.OpenPgp.Tests.Armor
             // Act & Assert
             Assert.Throws<FailClosedException>(() => AsciiArmorReader.Read(armor));
         }
+
+        [Fact]
+        public void Read_WithTrailingGarbageAfterEndLine_ShouldFailClosed()
+        {
+            // Arrange
+            byte[] body = Encoding.ASCII.GetBytes("abc");
+            string armor = BuildArmor("SIGNATURE", "", body) + "unexpected trailing content\n";
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => AsciiArmorReader.Read(armor));
+        }
+
+        [Fact]
+        public void Read_WithASecondConcatenatedArmorBlockAfterEndLine_ShouldFailClosed()
+        {
+            // Arrange: the caller is expected to supply exactly one armor block - a second,
+            // otherwise-valid block appended after the first must not be silently ignored.
+            byte[] body = Encoding.ASCII.GetBytes("abc");
+            string armor = BuildArmor("SIGNATURE", "", body) + BuildArmor("SIGNATURE", "", body);
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => AsciiArmorReader.Read(armor));
+        }
+
+        [Fact]
+        public void Read_WithTrailingBlankAndWhitespaceOnlyLinesAfterEndLine_ShouldStillSucceed()
+        {
+            // Arrange: ordinary trailing newline(s)/whitespace after the END line - a completely
+            // normal way for a real file to end - must still be tolerated.
+            byte[] body = Encoding.ASCII.GetBytes("abc");
+            string armor = BuildArmor("SIGNATURE", "", body) + "\n   \n";
+
+            // Act
+            AsciiArmorBlock block = AsciiArmorReader.Read(armor);
+
+            // Assert
+            Assert.Equal(body, block.Body);
+        }
     }
 }

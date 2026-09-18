@@ -114,7 +114,7 @@ namespace Scarlet.OpenPgp.Packets
             {
                 case PublicKeyAlgorithm.RsaEncryptOrSign:
                 case PublicKeyAlgorithm.RsaSignOnly:
-                    (BigInteger s, int consumed) = Mpi.ReadFrom(body, offset);
+                    (BigInteger s, int consumed) = Mpi.ReadFrom(body, offset, requireCanonical: true);
                     offset += consumed;
                     rsaSignatureValue = s;
                     break;
