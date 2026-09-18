@@ -117,35 +117,48 @@ namespace Scarlet.OpenPgp.Tests.Armor
         }
 
         [Fact]
-        public void Read_WithTrailingGarbageAfterEndLine_ShouldFailClosed()
+        public void Read_WithTrailingGarbageAfterEndLine_ShouldStillSucceed()
         {
-            // Arrange
+            // Arrange: confirmed against real GnuPG 2.4.9, which tolerates arbitrary trailing text
+            // after a detached signature's armor block (`gpg --verify` still reports "Good
+            // signature"). See AsciiArmorReader.Read's doc comment.
             byte[] body = Encoding.ASCII.GetBytes("abc");
             string armor = BuildArmor("SIGNATURE", "", body) + "unexpected trailing content\n";
 
-            // Act & Assert
-            Assert.Throws<FailClosedException>(() => AsciiArmorReader.Read(armor));
+            // Act
+            AsciiArmorBlock block = AsciiArmorReader.Read(armor);
+
+            // Assert
+            Assert.Equal(body, block.Body);
         }
 
         [Fact]
-        public void Read_WithASecondConcatenatedArmorBlockAfterEndLine_ShouldFailClosed()
+        public void Read_WithASecondConcatenatedArmorBlockAfterEndLine_ShouldStillSucceedAndUseTheFirstBlock()
         {
-            // Arrange: the caller is expected to supply exactly one armor block - a second,
-            // otherwise-valid block appended after the first must not be silently ignored.
-            byte[] body = Encoding.ASCII.GetBytes("abc");
-            string armor = BuildArmor("SIGNATURE", "", body) + BuildArmor("SIGNATURE", "", body);
+            // Arrange: confirmed against real GnuPG 2.4.9, which - for a detached signature -
+            // happily checks every Signature packet it finds rather than rejecting the file. This
+            // library's single-bool API only reports on the first block found; the second is
+            // ignored rather than causing a failure, matching gpg's tolerance rather than gpg's
+            // fuller multi-signature reporting.
+            byte[] firstBody = Encoding.ASCII.GetBytes("first");
+            byte[] secondBody = Encoding.ASCII.GetBytes("second");
+            string armor = BuildArmor("SIGNATURE", "", firstBody) + BuildArmor("SIGNATURE", "", secondBody);
 
-            // Act & Assert
-            Assert.Throws<FailClosedException>(() => AsciiArmorReader.Read(armor));
+            // Act
+            AsciiArmorBlock block = AsciiArmorReader.Read(armor);
+
+            // Assert
+            Assert.Equal(firstBody, block.Body);
         }
 
         [Fact]
-        public void Read_WithTrailingBlankAndWhitespaceOnlyLinesAfterEndLine_ShouldStillSucceed()
+        public void Read_WithLeadingGarbageBeforeBeginLine_ShouldStillSucceed()
         {
-            // Arrange: ordinary trailing newline(s)/whitespace after the END line - a completely
-            // normal way for a real file to end - must still be tolerated.
+            // Arrange: confirmed against real GnuPG 2.4.9, which tolerates an arbitrary preamble
+            // before the armor block (e.g. mail/commentary text) for both detached and clearsigned
+            // verification.
             byte[] body = Encoding.ASCII.GetBytes("abc");
-            string armor = BuildArmor("SIGNATURE", "", body) + "\n   \n";
+            string armor = "some leading preamble text that is not part of the armor\n\n" + BuildArmor("SIGNATURE", "", body);
 
             // Act
             AsciiArmorBlock block = AsciiArmorReader.Read(armor);

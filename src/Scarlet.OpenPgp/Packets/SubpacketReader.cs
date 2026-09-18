@@ -31,7 +31,11 @@ namespace Scarlet.OpenPgp.Packets
                 throw new FailClosedException("Signature subpacket length must include at least the type octet.");
             }
 
-            if (position + length > data.Length)
+            // Widen to long before adding: a maliciously large 5-octet length (e.g. 0x7FFFFFFF)
+            // plus a nonzero position can overflow int, wrapping the sum negative and slipping
+            // past a plain "position + length > data.Length" check (mirrors the same fix in
+            // PacketReader.AppendBytes).
+            if ((long)position + length > data.Length)
             {
                 throw new FailClosedException("Signature subpacket extends past the end of its subpacket array (truncated).");
             }

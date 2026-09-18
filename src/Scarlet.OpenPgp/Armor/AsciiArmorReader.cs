@@ -18,8 +18,15 @@ namespace Scarlet.OpenPgp.Armor
 
         /// <summary>
         /// Reads the first armor block found in <paramref name="armorText"/>. Any framing problem
-        /// (missing BEGIN/END, malformed base64, missing or mismatched CRC24) fails closed via
-        /// <see cref="FailClosedException"/> rather than returning a partial result.
+        /// within that block (missing BEGIN/END, malformed base64, missing or mismatched CRC24)
+        /// fails closed via <see cref="FailClosedException"/> rather than returning a partial
+        /// result. Content before the BEGIN line or after the matching END line - a mail/commentary
+        /// preamble, unrelated trailing text, even a second concatenated block - is intentionally
+        /// ignored: confirmed against real GnuPG 2.4.9, which tolerates exactly this (leading text
+        /// before the armor, trailing text after it, and even multiple detached-signature packets
+        /// concatenated in the same file) for both detached and clearsigned verification. This
+        /// library's single-bool API only ever reports on the *first* block found, matching "take
+        /// the first match" rather than gpg's fuller multi-signature handling - see SPEC.md.
         /// </summary>
         public static AsciiArmorBlock Read(string armorText)
         {
@@ -111,19 +118,8 @@ namespace Scarlet.OpenPgp.Armor
                 throw new FailClosedException("ASCII armor CRC24 checksum does not match the decoded body.");
             }
 
-            // The caller is expected to supply exactly one armor block (SPEC.md: "the caller
-            // supplies exactly the public key/signature they already trust" - singular). Anything
-            // beyond trailing blank/whitespace-only lines after END - stray garbage, or a second
-            // concatenated block - is a parsing ambiguity: which block did the caller actually
-            // mean? Fail closed rather than silently using only the first one.
-            for (int j = i + 1; j < lines.Length; j++)
-            {
-                if (lines[j].Trim().Length > 0)
-                {
-                    throw new FailClosedException("Unexpected data after the ASCII armor END line.");
-                }
-            }
-
+            // Anything after this point (more text, a second armor block) is deliberately not
+            // inspected - see this method's doc comment.
             return new AsciiArmorBlock(label, headers, body);
         }
 

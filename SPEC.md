@@ -227,6 +227,15 @@ may end up depending on:
 - **Verify-only.** Do not scope-creep into signing or key management.
 - **Fail closed.** Any parsing ambiguity, unknown-but-critical data, or malformed input must result in a
   verification failure, never a silent pass.
+- **Text surrounding an armor block is intentionally not fail-closed.** `AsciiArmorReader.Read` ignores
+  content before the BEGIN line and after the matching END line (a mail/commentary preamble, unrelated
+  trailing text, even a second concatenated block) and reports on the first well-formed block it finds. This
+  was checked against real GnuPG 2.4.9 (`gpg --verify`), which tolerates exactly this for both detached and
+  clearsigned verification, and even checks every detached-signature packet it finds rather than rejecting
+  extras — this library's single-`bool` API only reports on the first, which is a deliberate, narrower
+  non-goal, not an oversight. Malformed *content inside* the matched block (bad base64, wrong CRC24, a
+  packet body with unexpected trailing bytes, more than one Signature packet inside that block) still fails
+  closed as usual.
 - **Correctness over performance**, but still write clean, readable code — this will be read and audited by
   people deciding whether to trust it. `Span<T>`/`ReadOnlySpan<T>` are fair game where they reduce
   allocations without hurting readability (see "Performance follow-up" below), but don't chase performance
