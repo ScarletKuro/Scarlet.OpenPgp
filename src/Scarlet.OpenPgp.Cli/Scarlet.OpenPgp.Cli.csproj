@@ -10,7 +10,6 @@
     <AssemblyName>scarlet-openpgp</AssemblyName>
 
     <PublishAot>true</PublishAot>
-    <IsAotCompatible>true</IsAotCompatible>
     <VerifyReferenceAotCompatibility>true</VerifyReferenceAotCompatibility>
     <InvariantGlobalization>true</InvariantGlobalization>
     <SelfContained>true</SelfContained>

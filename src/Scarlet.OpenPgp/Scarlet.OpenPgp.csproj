@@ -9,6 +9,7 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <RootNamespace>Scarlet.OpenPgp</RootNamespace>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
 
     <IsAotCompatible Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net8.0'))">true</IsAotCompatible>
 
