@@ -1,0 +1,21 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+
+## Visual Studio
+.vs/
+
+## Rider / ReSharper
+.idea/
+*.DotSettings.user
+
+## Build output
+artifacts/
+*.nupkg
+*.snupkg
+
+## OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup>
+    <!-- Shared across the library and CLI. Bump together; the CLI has no independent versioning
+         story since it isn't published to NuGet per RID like Scarlet.Bun.Cli's runtime packages -
+         it's a single native binary release built straight from this version. -->
+    <ScarletOpenPgpVersion>0.1.0</ScarletOpenPgpVersion>
+  </PropertyGroup>
+</Project>

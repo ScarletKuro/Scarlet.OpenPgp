@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- netstandard2.0 remains the primary target for the widest possible consumer compatibility.
+         net10.0 is added so the library can actually be AOT/trim-analyzed at all (netstandard2.0
+         builds cannot be: https://learn.microsoft.com/dotnet/core/compatibility/sdk/8.0/trimming-unsupported-targetframework)
+         and so Scarlet.OpenPgp.Cli's PublishAot build consumes a properly-annotated assembly. -->
+    <TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Scarlet.OpenPgp</RootNamespace>
+
+    <IsAotCompatible Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net8.0'))">true</IsAotCompatible>
+
+    <IsPackable>true</IsPackable>
+    <PackageId>Scarlet.OpenPgp</PackageId>
+    <Version>$(ScarletOpenPgpVersion)</Version>
+    <Authors>ScarletKuro</Authors>
+    <Description>Pure C#, zero-dependency, verify-only OpenPGP (RFC 4880) implementation.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/ScarletKuro/Scarlet.OpenPgp</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <!-- Deliberately no PackageReference items at all: zero external NuGet dependencies is the
+       entire point of this library, not just "keep it minimal". -->
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Scarlet.OpenPgp.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" Condition="Exists('README.md')" />
+  </ItemGroup>
+
+</Project>
