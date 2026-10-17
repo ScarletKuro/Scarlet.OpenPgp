@@ -191,6 +191,28 @@ namespace Scarlet.OpenPgp.Tests
         }
 
         [Fact]
+        public async Task PublicApi_WithNullArguments_ShouldThrowArgumentNullException()
+        {
+            // Arrange: null is a caller bug, not bad input, so it throws instead of becoming a
+            // failed VerificationResult - and the internals can rely on never seeing it.
+            OpenPgpKeyRing keyRing = OpenPgpKeyRing.Parse(PublicKeyArmor);
+            byte[] data = "OpenPGP"u8.ToArray();
+            using var stream = new MemoryStream(data);
+
+            // Act & Assert
+            Assert.Throws<ArgumentNullException>(() => OpenPgpVerifier.VerifyClearsign(null!, PublicKeyArmor));
+            Assert.Throws<ArgumentNullException>(() => OpenPgpVerifier.VerifyClearsign("text", (string)null!));
+            Assert.Throws<ArgumentNullException>(() => OpenPgpVerifier.VerifyClearsign("text", (OpenPgpKeyRing)null!));
+            Assert.Throws<ArgumentNullException>(() => OpenPgpVerifier.VerifyDetached(data, (string)null!, PublicKeyArmor));
+            Assert.Throws<ArgumentNullException>(() => OpenPgpVerifier.VerifyDetached(data, SignatureArmor, (string)null!));
+            Assert.Throws<ArgumentNullException>(() => OpenPgpVerifier.VerifyDetached(data, SignatureArmor, (OpenPgpKeyRing)null!));
+            Assert.Throws<ArgumentNullException>(() => OpenPgpVerifier.VerifyDetached((Stream)null!, SignatureArmor, keyRing));
+            await Assert.ThrowsAsync<ArgumentNullException>(() => OpenPgpVerifier.VerifyDetachedAsync(null!, SignatureArmor, keyRing, cancellationToken: TestContext.Current.CancellationToken));
+            await Assert.ThrowsAsync<ArgumentNullException>(() => OpenPgpVerifier.VerifyDetachedAsync(stream, (string)null!, keyRing, cancellationToken: TestContext.Current.CancellationToken));
+            Assert.Throws<ArgumentNullException>(() => OpenPgpKeyRing.Parse((string)null!));
+        }
+
+        [Fact]
         public void VerifyDetached_WithTamperedData_ShouldReturnFalse()
         {
             // Arrange

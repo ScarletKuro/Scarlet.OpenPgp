@@ -32,7 +32,7 @@ namespace Scarlet.OpenPgp.Crypto.Ecdsa
         /// <param name="s">The signature's s value.</param>
         public static bool Verify(EcCurve curve, byte[] publicPoint, byte[] digest, BigInteger r, BigInteger s)
         {
-            if (curve == null || publicPoint == null || digest == null || digest.Length == 0)
+            if (digest.Length == 0)
             {
                 return false;
             }

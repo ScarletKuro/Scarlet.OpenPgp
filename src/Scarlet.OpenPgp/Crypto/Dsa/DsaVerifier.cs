@@ -24,7 +24,7 @@ namespace Scarlet.OpenPgp.Crypto.Dsa
         /// <param name="s">The signature's s value.</param>
         public static bool Verify(DsaPublicKey key, byte[] digest, BigInteger r, BigInteger s)
         {
-            if (key == null || digest == null || (long)digest.Length * 8 < key.QBitLength)
+            if ((long)digest.Length * 8 < key.QBitLength)
             {
                 return false;
             }

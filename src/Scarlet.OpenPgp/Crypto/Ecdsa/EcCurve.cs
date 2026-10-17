@@ -152,11 +152,6 @@ namespace Scarlet.OpenPgp.Crypto.Ecdsa
         /// <summary>Finds a curve by its OID content octets (see <see cref="Oid"/>), or <c>null</c> if the curve is unknown or unsupported.</summary>
         public static EcCurve? FindByOid(byte[] oid)
         {
-            if (oid == null)
-            {
-                return null;
-            }
-
             foreach (EcCurve curve in AllCurves)
             {
                 if (BytesEqual(curve._oid, oid))

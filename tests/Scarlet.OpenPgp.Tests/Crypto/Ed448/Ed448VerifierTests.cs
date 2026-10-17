@@ -402,20 +402,6 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Ed448
         }
 
         [Fact]
-        public void Verify_WithNullArguments_ShouldReturnFalse()
-        {
-            // Arrange
-            byte[] publicKey = System.Convert.FromHexString(OneOctetPublicKeyHex);
-            byte[] message = System.Convert.FromHexString(OneOctetMessageHex);
-            byte[] signature = System.Convert.FromHexString(OneOctetSignatureHex);
-
-            // Act & Assert
-            Assert.False(Ed448Verifier.Verify(null!, message, signature));
-            Assert.False(Ed448Verifier.Verify(publicKey, null!, signature));
-            Assert.False(Ed448Verifier.Verify(publicKey, message, null!));
-        }
-
-        [Fact]
         public void Verify_WithValidSignature_ShouldCompleteWellUnderOneSecond()
         {
             // Arrange: a generous bound - this guards against an accidental return to affine

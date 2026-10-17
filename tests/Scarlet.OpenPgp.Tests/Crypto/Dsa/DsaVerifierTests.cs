@@ -286,20 +286,16 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Dsa
         }
 
         [Fact]
-        public void Verify_WithEmptyOrNullInputs_ShouldReturnFalse()
+        public void Verify_WithEmptyDigest_ShouldReturnFalse()
         {
             // Arrange
             ReferenceSignature reference = SignWithBouncyCastle(2048, 256, Hash("SHA-256", Message));
 
             // Act
             bool emptyDigest = DsaVerifier.Verify(reference.Key, [], reference.R, reference.S);
-            bool nullDigest = DsaVerifier.Verify(reference.Key, null!, reference.R, reference.S);
-            bool nullKey = DsaVerifier.Verify(null!, reference.Digest, reference.R, reference.S);
 
             // Assert
             Assert.False(emptyDigest);
-            Assert.False(nullDigest);
-            Assert.False(nullKey);
         }
 
         [Theory]

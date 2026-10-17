@@ -464,22 +464,16 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Ecdsa
         }
 
         [Fact]
-        public void Verify_WithEmptyOrNullInputs_ShouldReturnFalse()
+        public void Verify_WithEmptyDigest_ShouldReturnFalse()
         {
             // Arrange
             ReferenceSignature reference = SignWithBouncyCastle("P-256", Hash("SHA-256", Message));
 
             // Act
             bool emptyDigest = EcdsaVerifier.Verify(reference.Curve, reference.PublicPoint, [], reference.R, reference.S);
-            bool nullDigest = EcdsaVerifier.Verify(reference.Curve, reference.PublicPoint, null!, reference.R, reference.S);
-            bool nullPoint = EcdsaVerifier.Verify(reference.Curve, null!, reference.Digest, reference.R, reference.S);
-            bool nullCurve = EcdsaVerifier.Verify(null!, reference.PublicPoint, reference.Digest, reference.R, reference.S);
 
             // Assert
             Assert.False(emptyDigest);
-            Assert.False(nullDigest);
-            Assert.False(nullPoint);
-            Assert.False(nullCurve);
         }
 
         [Fact]

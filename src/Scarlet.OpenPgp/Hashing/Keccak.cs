@@ -73,11 +73,6 @@ namespace Scarlet.OpenPgp.Hashing
         /// <summary>Absorbs <paramref name="count"/> bytes of <paramref name="data"/> starting at <paramref name="offset"/>. May be called any number of times before <see cref="Finish"/>.</summary>
         public void Update(byte[] data, int offset, int count)
         {
-            if (data == null)
-            {
-                throw new ArgumentNullException(nameof(data));
-            }
-
             if (offset < 0 || count < 0 || offset > data.Length - count)
             {
                 throw new ArgumentOutOfRangeException(nameof(count), "Offset and count must describe a range within the data array.");
@@ -150,11 +145,6 @@ namespace Scarlet.OpenPgp.Hashing
 
         private static byte[] OneShot(KeccakHash hash, byte[] data)
         {
-            if (data == null)
-            {
-                throw new ArgumentNullException(nameof(data));
-            }
-
             hash.Update(data, 0, data.Length);
             return hash.Finish();
         }

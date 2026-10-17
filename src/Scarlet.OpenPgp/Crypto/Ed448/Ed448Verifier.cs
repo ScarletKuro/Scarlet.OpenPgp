@@ -34,11 +34,6 @@ namespace Scarlet.OpenPgp.Crypto.Ed448
 
         public static bool Verify(byte[] publicKey, byte[] message, byte[] signature)
         {
-            if (publicKey == null || message == null || signature == null)
-            {
-                return false;
-            }
-
             if (publicKey.Length != PublicKeyLength || signature.Length != SignatureLength)
             {
                 return false;

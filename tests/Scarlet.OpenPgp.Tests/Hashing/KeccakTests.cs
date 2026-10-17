@@ -220,16 +220,6 @@ namespace Scarlet.OpenPgp.Tests.Hashing
         }
 
         [Fact]
-        public void Update_WithNullData_ShouldThrowArgumentNullException()
-        {
-            // Arrange
-            KeccakHash hash = KeccakHash.CreateSha3_256();
-
-            // Act & Assert
-            Assert.Throws<System.ArgumentNullException>(() => hash.Update(null!, 0, 0));
-        }
-
-        [Fact]
         public void CreateShake256_WithNegativeOutputLength_ShouldThrowArgumentOutOfRangeException()
         {
             // Act & Assert
