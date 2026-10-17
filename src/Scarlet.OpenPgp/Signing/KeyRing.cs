@@ -18,10 +18,13 @@ namespace Scarlet.OpenPgp.Signing
         public IReadOnlyList<Certificate> Certificates { get; }
 
         /// <summary>
-        /// Splits <paramref name="packetBytes"/> into certificates. A certificate whose primary key
-        /// is malformed or of an unknown version is skipped (the others stay usable); input with no
-        /// usable certificate, or with packets that don't belong in a public key block (such as
-        /// secret keys or messages), fails closed.
+        /// Splits <paramref name="packetBytes"/> into certificates, merging copies of the same
+        /// certificate. A well-formed certificate this library doesn't support (a LibrePGP v5 key, a
+        /// 1024-bit RSA key) is skipped, since it can't make a verifiable signature. Anything
+        /// malformed - including packets that don't belong in a public key block, such as secret
+        /// keys or messages - fails the whole input: silently dropping one certificate could drop
+        /// the copy that carries a revocation and leave a stale copy in charge. Input with no usable
+        /// certificate fails too.
         /// </summary>
         public static KeyRing Parse(byte[] packetBytes)
         {
@@ -64,7 +67,7 @@ namespace Scarlet.OpenPgp.Signing
                         existing.MergeFrom(certificate);
                     }
                 }
-                catch (FailClosedException ex)
+                catch (FailClosedException ex) when (ex.IsUnsupported)
                 {
                     lastError = ex.Message;
                 }

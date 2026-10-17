@@ -42,15 +42,22 @@ namespace Scarlet.OpenPgp.Crypto.Dsa
             Y = y;
 
             int pBits = BigIntegerMath.BitLength(p);
-            if (pBits < MinimumPBitLength || pBits > MaximumPBitLength || p.IsEven)
+            // Sizes outside the policy are "unsupported" (e.g. legacy DSA-1024 keys); impossible
+            // values are malformed. A key ring skips the former and rejects the latter.
+            if (p.IsEven)
             {
-                throw new FailClosedException("DSA prime p must be odd and between " + MinimumPBitLength + " and " + MaximumPBitLength + " bits.");
+                throw new FailClosedException("DSA prime p must be odd.");
+            }
+
+            if (pBits < MinimumPBitLength || pBits > MaximumPBitLength)
+            {
+                throw FailClosedException.Unsupported("DSA prime p must be between " + MinimumPBitLength + " and " + MaximumPBitLength + " bits.");
             }
 
             QBitLength = BigIntegerMath.BitLength(q);
             if (QBitLength != 224 && QBitLength != 256)
             {
-                throw new FailClosedException("DSA subgroup order q must be 224 or 256 bits (FIPS 186-4 §4.2); got " + QBitLength + " bits.");
+                throw FailClosedException.Unsupported("DSA subgroup order q must be 224 or 256 bits (FIPS 186-4 §4.2); got " + QBitLength + " bits.");
             }
 
             if (!BigInteger.Remainder(p - 1, q).IsZero)

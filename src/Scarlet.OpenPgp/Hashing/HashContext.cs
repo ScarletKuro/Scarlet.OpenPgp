@@ -51,7 +51,10 @@ namespace Scarlet.OpenPgp.Hashing
         /// signatures). Many real v4 certificates still carry SHA-1 self-signatures. SHA-1's practical
         /// break is collisions, which need the victim to sign attacker-chosen data; a self-signature is
         /// made by the key owner over their own key, so only second-preimage resistance matters there,
-        /// and SHA-1 still has that. Document signatures never accept SHA-1.
+        /// and SHA-1 still has that. Document signatures never accept SHA-1. Each algorithm's own
+        /// minimum hash size still applies (see SignatureVerifier.GetIncompatibility), so in practice
+        /// this means RSA self-signatures; a SHA-1 EdDSA/ECDSA/DSA self-signature can't be checked,
+        /// which makes the key unusable rather than unrestricted.
         /// </param>
         public static HashContext Create(HashAlgorithmId algorithm, bool allowSha1 = false)
         {

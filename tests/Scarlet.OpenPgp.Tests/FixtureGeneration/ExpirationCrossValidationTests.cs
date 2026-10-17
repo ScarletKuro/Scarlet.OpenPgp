@@ -117,20 +117,25 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
         }
 
         [Fact]
-        public void VerifyDetached_WithSignatureMadeAfterTheKeyExpired_ShouldReturnFalse()
+        public void VerifyDetached_WithSignatureMadeAfterTheKeyExpired_ShouldReportKeyExpired()
         {
-            // Arrange: the key lived for one hour; the signature claims to be from a day later.
+            // Arrange: the key expires one hour after creation; the signature is dated one minute
+            // after that, and the clock reads one minute before it. Both times lie within the
+            // clock-skew allowance, so neither "dated in the future" nor "key expired now" applies -
+            // only "made after the key expired" can reject it.
             DateTime keyCreated = TruncateToSeconds(DateTime.UtcNow);
+            DateTime keyExpires = keyCreated.AddHours(1);
             PgpKeyPair key = GenerateKeyPair(keyCreated);
             PgpPublicKey certified = Certify(key.PublicKey, key.PrivateKey, keyCreated, keyLifetimeSeconds: 3600);
-            string signatureArmor = SignDetached(key.PrivateKey, keyCreated.AddDays(1));
+            string signatureArmor = SignDetached(key.PrivateKey, keyExpires.AddMinutes(1));
             string publicKeyArmor = ArmorPublicKey(certified);
 
-            // Act: even with a clock still inside the key's lifetime.
-            bool result = OpenPgpVerifier.VerifyDetached(Data, signatureArmor, publicKeyArmor, keyCreated.AddMinutes(1)).IsValid;
+            // Act
+            VerificationResult result = OpenPgpVerifier.VerifyDetached(Data, signatureArmor, publicKeyArmor, keyExpires.AddMinutes(-1));
 
             // Assert
-            Assert.False(result);
+            Assert.Equal(VerificationStatus.KeyExpired, result.Status);
+            Assert.Contains("made after", result.Message, StringComparison.Ordinal);
         }
 
         [Fact]

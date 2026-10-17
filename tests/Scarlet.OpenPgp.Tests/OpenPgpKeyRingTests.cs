@@ -197,5 +197,67 @@ namespace Scarlet.OpenPgp.Tests
             Assert.Single(keyRing.Certificates);
             Assert.Equal(VerificationStatus.KeyRevoked, result.Status);
         }
+
+        private static byte[] Frame(Scarlet.OpenPgp.Packets.Packet packet)
+        {
+            byte[] body = packet.Body;
+            return [(byte)(0xC0 | (byte)packet.Header.Tag), 0xFF, (byte)(body.Length >> 24), (byte)(body.Length >> 16), (byte)(body.Length >> 8), (byte)body.Length, .. body];
+        }
+
+        [Fact]
+        public void Parse_WithTheRevokedSubkeyRepeatedWithItsOldBinding_ShouldStillHonorTheRevocation()
+        {
+            // Arrange: regression - appending the subkey again (from the unrevoked export, with its
+            // binding but no revocation) inside the same certificate used to create a second,
+            // unrevoked entry for the same subkey.
+            const string folder = "gnupg-generated/v4-revoked-subkey-hard/";
+            byte[] revoked = Bytes(folder + "public-key.gpg");
+            var stale = Scarlet.OpenPgp.Packets.PacketReader.ReadAll(Bytes(folder + "public-key-unrevoked.gpg"));
+            byte[] repeatedSubkey = [.. stale.SkipWhile(p => p.Header.Tag != Scarlet.OpenPgp.Packets.PacketTag.PublicSubkey).SelectMany(Frame)];
+
+            // Act
+            OpenPgpKeyRing keyRing = OpenPgpKeyRing.Parse([.. revoked, .. repeatedSubkey]);
+            VerificationResult result = OpenPgpVerifier.VerifyDetached(Bytes(folder + "data.txt"), Bytes(folder + "data.txt.after-revocation.sig"), keyRing, AssembledOn);
+
+            // Assert
+            Assert.Single(Assert.Single(keyRing.Certificates).Subkeys);
+            Assert.Equal(VerificationStatus.KeyRevoked, result.Status);
+        }
+
+        [Fact]
+        public void Parse_WithAMalformedCertificateCopy_ShouldRejectTheWholeInput()
+        {
+            // Arrange: regression - a stale copy, then the revoked copy followed by a packet that
+            // doesn't belong in a key file. The malformed revoked copy used to be dropped silently,
+            // leaving the stale copy to verify.
+            const string folder = "gnupg-generated/v4-revoked-key-hard/";
+            byte[] literalData = [0xCB, 0x01, 0x00];
+            byte[] keys = [.. Bytes(folder + "public-key-unrevoked.gpg"), .. Bytes(folder + "public-key.gpg"), .. literalData];
+
+            // Act
+            bool parsed = OpenPgpKeyRing.TryParse(keys, out _, out string? error);
+            VerificationResult result = OpenPgpVerifier.VerifyDetached(Bytes(folder + "data.txt"), Bytes(folder + "data.txt.after-revocation.sig"), keys, AssembledOn);
+
+            // Assert
+            Assert.False(parsed);
+            Assert.Contains("Unexpected packet", error, StringComparison.Ordinal);
+            Assert.Equal(VerificationStatus.InvalidPublicKey, result.Status);
+        }
+
+        [Fact]
+        public void Parse_WithAnUnsupportedCertificateNextToAGoodOne_ShouldSkipOnlyTheUnsupportedOne()
+        {
+            // Arrange: a LibrePGP v5 key (well-formed, just not a version this library supports)
+            // followed by a normal certificate.
+            byte[] keys = [.. Bytes("gnupg-generated/librepgp-v5-ed448-unsupported/public-key.gpg"), .. Bytes("gnupg-generated/v4-ecdsa-nistp256/public-key.gpg")];
+
+            // Act
+            OpenPgpKeyRing keyRing = OpenPgpKeyRing.Parse(keys);
+            VerificationResult result = OpenPgpVerifier.VerifyDetached(Bytes("gnupg-generated/v4-ecdsa-nistp256/data.txt"), Bytes("gnupg-generated/v4-ecdsa-nistp256/data.txt.sig"), keyRing, AssembledOn);
+
+            // Assert
+            Assert.Single(keyRing.Certificates);
+            Assert.True(result.IsValid, result.ToString());
+        }
     }
 }

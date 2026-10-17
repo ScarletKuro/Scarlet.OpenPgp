@@ -221,10 +221,12 @@ namespace Scarlet.OpenPgp.Tests.Signing
         }
 
         [Fact]
-        public void SigningSubkey_WithSha1BindingAndBackSignature_ShouldStillVerify()
+        public void EdDsaSigningSubkey_WithSha1BindingAndBackSignature_ShouldNotBeTrustedToSign()
         {
-            // Arrange: SHA-1 self-signatures are common on older certificates and acceptable there
-            // (only second-preimage resistance matters for them); data signatures still need SHA-2/3.
+            // Arrange: SHA-1 is accepted for key self-signatures only where the algorithm allows a
+            // 160-bit hash (RSA). EdDSALegacy requires at least 256 bits, and RFC 9580 §5.2.3.3 says
+            // a verifier MUST reject a weaker hash - so this binding can't be checked, and the
+            // subkey isn't usable. (RSA SHA-1 self-signatures: RsaKey_WithAnExpiringSelfSignature_*.)
             PgpKeyPair primary = NewKey();
             PgpKeyPair subkey = NewKey();
             byte[] certificate = Certificate(primary, [], subkey, [Encoded(SubkeyBinding(primary, subkey, PgpKeyFlags.CanSign, withBackSignature: true, HashAlgorithmTag.Sha1))]);
@@ -233,7 +235,7 @@ namespace Scarlet.OpenPgp.Tests.Signing
             VerificationResult result = Verify(SignData(subkey), certificate);
 
             // Assert
-            Assert.True(result.IsValid, result.ToString());
+            Assert.Equal(VerificationStatus.KeyNotValidForSigning, result.Status);
         }
 
         [Fact]
@@ -384,6 +386,108 @@ namespace Scarlet.OpenPgp.Tests.Signing
 
             // Assert
             Assert.True(result.IsValid, result.ToString());
+        }
+
+        private static PgpKeyPair NewRsaKey()
+        {
+            var generator = new RsaKeyPairGenerator();
+            generator.Init(new RsaKeyGenerationParameters(Org.BouncyCastle.Math.BigInteger.ValueOf(65537), new SecureRandom(), 2048, 80));
+            return new PgpKeyPair(PublicKeyAlgorithmTag.RsaGeneral, generator.GenerateKeyPair(), CreatedAt);
+        }
+
+        private static byte[] KeySignature(PgpKeyPair key, int type, HashAlgorithmTag hash, Action<PgpSignatureSubpacketGenerator> configure)
+        {
+            var generator = new PgpSignatureGenerator(key.PublicKey.Algorithm, hash);
+            generator.InitSign(type, key.PrivateKey);
+            generator.SetHashedSubpackets(Subpackets(configure));
+            return Encoded(generator.GenerateCertification(key.PublicKey));
+        }
+
+        private static byte[] SignDataWith(PgpKeyPair signer)
+        {
+            var generator = new PgpSignatureGenerator(signer.PublicKey.Algorithm, HashAlgorithmTag.Sha256);
+            generator.InitSign(PgpSignature.BinaryDocument, signer.PrivateKey);
+            generator.SetHashedSubpackets(Subpackets(g => g.SetIssuerFingerprint(false, signer.PublicKey)));
+            generator.Update(Data);
+            return Encoded(generator.Generate());
+        }
+
+        [Theory]
+        [InlineData(HashAlgorithmTag.Sha256)]
+        [InlineData(HashAlgorithmTag.Sha1)]
+        public void RsaKey_WithAnExpiringSelfSignature_ShouldExpireWhicheverHashTheSelfSignatureUses(HashAlgorithmTag selfSignatureHash)
+        {
+            // Arrange: regression - SHA-1 RSA self-signatures used to fail verification (no SHA-1
+            // DigestInfo), be ignored, and leave an unrestricted bare key. Key lifetime 1 h.
+            PgpKeyPair key = NewRsaKey();
+            byte[] certificate = Certificate(key, [KeySignature(key, PgpSignature.DirectKey, selfSignatureHash, g => g.SetKeyExpirationTime(false, 3600))]);
+
+            // Act
+            VerificationResult result = Verify(SignDataWith(key), certificate);
+
+            // Assert
+            Assert.Equal(VerificationStatus.KeyExpired, result.Status);
+        }
+
+        [Fact]
+        public void RsaKey_WithASha1Revocation_ShouldBeRevoked()
+        {
+            // Arrange: regression - a SHA-1 key revocation was likewise ignored.
+            PgpKeyPair key = NewRsaKey();
+            byte[] certificate = Certificate(key, [KeySignature(key, PgpSignature.KeyRevocation, HashAlgorithmTag.Sha1, _ => { })]);
+
+            // Act
+            VerificationResult result = Verify(SignDataWith(key), certificate);
+
+            // Assert
+            Assert.Equal(VerificationStatus.KeyRevoked, result.Status);
+        }
+
+        [Fact]
+        public void Key_WithASelfSignatureItCannotCheck_ShouldNotBeTreatedAsBare()
+        {
+            // Arrange: an EdDSA self-signature over SHA-1 - too weak for EdDSA, so it can't be
+            // verified. It might be a genuine restriction; ignoring it must not leave an
+            // unrestricted key.
+            PgpKeyPair key = NewKey();
+            byte[] certificate = Certificate(key, [KeySignature(key, PgpSignature.DirectKey, HashAlgorithmTag.Sha1, g => g.SetKeyFlags(false, PgpKeyFlags.CanCertify))]);
+
+            // Act
+            VerificationResult result = Verify(SignData(key), certificate);
+
+            // Assert
+            Assert.Equal(VerificationStatus.KeyNotValidForSigning, result.Status);
+            Assert.Contains("can't be checked", result.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void SignatureInput_WithManyIdenticalCopies_ShouldBeDeduplicatedAndVerify()
+        {
+            // Arrange: 256 copies of one signature - previously 256 passes over the data.
+            PgpKeyPair key = NewKey();
+            byte[] one = SignData(key);
+            byte[] copies = [.. Enumerable.Repeat(one, 256).SelectMany(b => b)];
+
+            // Act
+            VerificationResult result = Verify(copies, Certificate(key, []));
+
+            // Assert
+            Assert.True(result.IsValid, result.ToString());
+        }
+
+        [Fact]
+        public void SignatureInput_WithMoreDistinctSignaturesThanTheLimit_ShouldBeRejected()
+        {
+            // Arrange: 33 distinct (differently timed) signatures, one over the limit of 32.
+            PgpKeyPair key = NewKey();
+            byte[] signatures = [.. Enumerable.Range(0, 33).SelectMany(i => SignData(key, CreatedAt.AddSeconds(i)))];
+
+            // Act
+            VerificationResult result = Verify(signatures, Certificate(key, []));
+
+            // Assert
+            Assert.Equal(VerificationStatus.MalformedInput, result.Status);
+            Assert.Contains("more than 32", result.Message, StringComparison.Ordinal);
         }
     }
 }

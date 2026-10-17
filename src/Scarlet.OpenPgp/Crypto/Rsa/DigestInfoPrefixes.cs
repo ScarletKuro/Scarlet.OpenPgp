@@ -28,6 +28,13 @@ namespace Scarlet.OpenPgp.Crypto.Rsa
             0x00, 0x04, 0x40,
         ];
 
+        // SHA-1: OID 1.3.14.3.2.26 (RFC 9580 Table 24). Reachable only for key self-signatures:
+        // document signatures reject SHA-1 before a digest is ever computed (see HashContext).
+        private static readonly byte[] Sha1 =
+        [
+            0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2B, 0x0E, 0x03, 0x02, 0x1A, 0x05, 0x00, 0x04, 0x14,
+        ];
+
         // SHA2-224: OID 2.16.840.1.101.3.4.2.4 (RFC 9580 Table 24).
         private static readonly byte[] Sha224 =
         [
@@ -53,6 +60,8 @@ namespace Scarlet.OpenPgp.Crypto.Rsa
         {
             switch (algorithm)
             {
+                case HashAlgorithmId.Sha1:
+                    return Sha1;
                 case HashAlgorithmId.Sha224:
                     return Sha224;
                 case HashAlgorithmId.Sha256:

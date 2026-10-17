@@ -28,6 +28,9 @@ namespace Scarlet.OpenPgp.Signing
         private readonly List<Subkey> _subkeys = [];
         private readonly List<string> _userIds = [];
 
+        /// <summary>Self-signatures and revocations that claim to be from the primary key but can't be checked (see <see cref="CheckKeySignature"/>).</summary>
+        private int _unverifiableSignatures;
+
         private Certificate(PublicKeyPacket primary)
         {
             Primary = primary;
@@ -53,6 +56,7 @@ namespace Scarlet.OpenPgp.Signing
         {
             _selfSignatures.AddRange(other._selfSignatures);
             _revocations.AddRange(other._revocations);
+            _unverifiableSignatures += other._unverifiableSignatures;
             foreach (string userId in other._userIds)
             {
                 if (!_userIds.Contains(userId))
@@ -63,7 +67,7 @@ namespace Scarlet.OpenPgp.Signing
 
             foreach (Subkey subkey in other._subkeys)
             {
-                Subkey? existing = _subkeys.FirstOrDefault(s => s.Key.Fingerprint.Matches(subkey.Key.Fingerprint.Bytes));
+                Subkey? existing = FindSubkey(subkey.Key.Fingerprint);
                 if (existing is null)
                 {
                     _subkeys.Add(subkey);
@@ -74,6 +78,8 @@ namespace Scarlet.OpenPgp.Signing
                 }
             }
         }
+
+        private Subkey? FindSubkey(KeyFingerprint fingerprint) => _subkeys.FirstOrDefault(s => s.Key.Fingerprint.Matches(fingerprint.Bytes));
 
         /// <summary>Whether <paramref name="key"/> (the primary or a subkey) has a valid revocation, hard or soft.</summary>
         public bool IsRevoked(PublicKeyPacket key)
@@ -144,7 +150,18 @@ namespace Scarlet.OpenPgp.Signing
                         currentSubkey = Subkey.TryCreate(certificate.Primary, packet.Body);
                         if (currentSubkey is not null)
                         {
-                            certificate._subkeys.Add(currentSubkey);
+                            // A repeated subkey continues the existing entry, so its signatures -
+                            // revocations included - all land in one place. As a separate entry, a
+                            // copy without the revocation could be picked instead.
+                            Subkey? existing = certificate.FindSubkey(currentSubkey.Key.Fingerprint);
+                            if (existing is null)
+                            {
+                                certificate._subkeys.Add(currentSubkey);
+                            }
+                            else
+                            {
+                                currentSubkey = existing;
+                            }
                         }
 
                         break;
@@ -228,6 +245,14 @@ namespace Scarlet.OpenPgp.Signing
         private (VerificationStatus Status, string Message) CheckPrimary(DateTimeOffset signatureCreatedAt, DateTimeOffset now, out SignaturePacket? latestSelfSignature)
         {
             latestSelfSignature = null;
+            // A self-signature or revocation the key appears to have made, but whose hash or
+            // algorithm can't be checked, could be genuine - a revocation, an expiration, a
+            // restriction. Ignoring it could widen what the key may do, so the key isn't usable.
+            if (_unverifiableSignatures > 0)
+            {
+                return (VerificationStatus.KeyNotValidForSigning, "The certificate has self-signatures or revocations whose hash or algorithm can't be checked, so the primary key's validity can't be determined.");
+            }
+
             var revocation = CheckRevocations(_revocations, signatureCreatedAt, "primary key");
             if (revocation.Status != VerificationStatus.Valid)
             {
@@ -279,20 +304,25 @@ namespace Scarlet.OpenPgp.Signing
             switch ((SignatureType)signature.SignatureTypeRaw)
             {
                 case SignatureType.DirectKey:
-                    if (IsValidKeySignature(Primary, signature, _primaryHashPrefix))
-                    {
-                        _selfSignatures.Add(signature);
-                    }
-
+                    Record(CheckKeySignature(Primary, signature, _primaryHashPrefix), signature, _selfSignatures);
                     break;
 
                 case SignatureType.KeyRevocation:
-                    if (IsValidKeySignature(Primary, signature, _primaryHashPrefix))
-                    {
-                        _revocations.Add(signature);
-                    }
-
+                    Record(CheckKeySignature(Primary, signature, _primaryHashPrefix), signature, _revocations);
                     break;
+            }
+        }
+
+        /// <summary>Keeps a verified signature in <paramref name="verified"/>, and counts one that claims to be the key's own but can't be checked.</summary>
+        private void Record(KeySignatureCheck check, SignaturePacket signature, List<SignaturePacket> verified)
+        {
+            if (check == KeySignatureCheck.Valid)
+            {
+                verified.Add(signature);
+            }
+            else if (check == KeySignatureCheck.Unverifiable)
+            {
+                _unverifiableSignatures++;
             }
         }
 
@@ -304,13 +334,11 @@ namespace Scarlet.OpenPgp.Signing
                 return; // certification revocations etc. don't affect whether the key can sign
             }
 
-            if (IsValidKeySignature(Primary, signature, Concat(_primaryHashPrefix, userIdPrefix)))
+            KeySignatureCheck check = CheckKeySignature(Primary, signature, Concat(_primaryHashPrefix, userIdPrefix));
+            Record(check, signature, _selfSignatures);
+            if (check == KeySignatureCheck.Valid && userId is not null && !_userIds.Contains(userId))
             {
-                _selfSignatures.Add(signature);
-                if (userId is not null && !_userIds.Contains(userId))
-                {
-                    _userIds.Add(userId);
-                }
+                _userIds.Add(userId);
             }
         }
 
@@ -321,20 +349,38 @@ namespace Scarlet.OpenPgp.Signing
         /// </summary>
         internal static bool IsValidKeySignature(PublicKeyPacket issuer, SignaturePacket signature, byte[] signedContent)
         {
+            return CheckKeySignature(issuer, signature, signedContent) == KeySignatureCheck.Valid;
+        }
+
+        /// <summary>
+        /// Classifies <paramref name="signature"/> as a signature by <paramref name="issuer"/> over
+        /// <paramref name="signedContent"/>: verified, not from this key (a third-party
+        /// certification, a forgery, a malformed packet - all ignored), or claiming to be from this
+        /// key but impossible to check (an unsupported or too-weak hash or algorithm). The last kind
+        /// must not be treated as absent: an uncheckable revocation or expiration could be genuine.
+        /// </summary>
+        internal static KeySignatureCheck CheckKeySignature(PublicKeyPacket issuer, SignaturePacket signature, byte[] signedContent)
+        {
             try
             {
-                if (!IsIssuedBy(signature, issuer) || SignatureVerifier.GetIncompatibility(issuer, signature) is not null)
+                if (!IsIssuedBy(signature, issuer) || SignatureVerifier.IsForDifferentKey(issuer, signature))
                 {
-                    return false;
+                    return KeySignatureCheck.NotFromKey;
+                }
+
+                if (SignatureVerifier.GetIncompatibility(issuer, signature) is not null)
+                {
+                    return KeySignatureCheck.Unverifiable; // e.g. a hash too weak for the algorithm
                 }
 
                 SignatureVerifier.GetCreationTime(signature); // throws if missing or malformed
                 byte[] digest = SignatureHashBuilder.ComputeDigest(signedContent, signature, isKeySignature: true);
-                return SignatureVerifier.VerifyDigest(issuer, signature, digest);
+                return SignatureVerifier.VerifyDigest(issuer, signature, digest) ? KeySignatureCheck.Valid : KeySignatureCheck.NotFromKey;
             }
-            catch (FailClosedException)
+            catch (FailClosedException ex)
             {
-                return false;
+                // An unsupported hash (MD5, RIPEMD-160) can't be checked; anything else is malformed.
+                return ex.IsUnsupported ? KeySignatureCheck.Unverifiable : KeySignatureCheck.NotFromKey;
             }
         }
 
@@ -482,6 +528,7 @@ namespace Scarlet.OpenPgp.Signing
             private readonly byte[] _bindingContent;
             private readonly List<(SignaturePacket Binding, List<SignaturePacket> BackSignatures)> _bindings = [];
             private readonly List<SignaturePacket> _revocations = [];
+            private int _unverifiableSignatures;
 
             private Subkey(PublicKeyPacket key, byte[] bindingContent)
             {
@@ -520,7 +567,8 @@ namespace Scarlet.OpenPgp.Signing
                 switch ((SignatureType)signature.SignatureTypeRaw)
                 {
                     case SignatureType.SubkeyBinding:
-                        if (IsValidKeySignature(certificate.Primary, signature, _bindingContent))
+                        KeySignatureCheck bindingCheck = CheckKeySignature(certificate.Primary, signature, _bindingContent);
+                        if (bindingCheck == KeySignatureCheck.Valid)
                         {
                             // The back-signature is made by the subkey over the same content, proving
                             // the subkey's owner agreed to be bound (RFC 9580 §5.2.1.6).
@@ -530,13 +578,22 @@ namespace Scarlet.OpenPgp.Signing
                                 .ToList();
                             _bindings.Add((signature, backSignatures));
                         }
+                        else if (bindingCheck == KeySignatureCheck.Unverifiable)
+                        {
+                            _unverifiableSignatures++;
+                        }
 
                         break;
 
                     case SignatureType.SubkeyRevocation:
-                        if (IsValidKeySignature(certificate.Primary, signature, _bindingContent))
+                        KeySignatureCheck revocationCheck = CheckKeySignature(certificate.Primary, signature, _bindingContent);
+                        if (revocationCheck == KeySignatureCheck.Valid)
                         {
                             _revocations.Add(signature);
+                        }
+                        else if (revocationCheck == KeySignatureCheck.Unverifiable)
+                        {
+                            _unverifiableSignatures++;
                         }
 
                         break;
@@ -550,6 +607,7 @@ namespace Scarlet.OpenPgp.Signing
             {
                 _bindings.AddRange(other._bindings);
                 _revocations.AddRange(other._revocations);
+                _unverifiableSignatures += other._unverifiableSignatures;
             }
 
             /// <summary>The newest binding signature that is valid at <paramref name="now"/> - the one that describes the subkey.</summary>
@@ -557,6 +615,11 @@ namespace Scarlet.OpenPgp.Signing
 
             public (VerificationStatus Status, string Message) Check(DateTimeOffset signatureCreatedAt, DateTimeOffset now)
             {
+                if (_unverifiableSignatures > 0)
+                {
+                    return (VerificationStatus.KeyNotValidForSigning, "The subkey has binding or revocation signatures whose hash or algorithm can't be checked, so its validity can't be determined.");
+                }
+
                 var revocation = CheckRevocations(_revocations, signatureCreatedAt, "signing subkey");
                 if (revocation.Status != VerificationStatus.Valid)
                 {
@@ -592,5 +655,18 @@ namespace Scarlet.OpenPgp.Signing
                 return CheckExpiration(latest, Key.CreatedAt, signatureCreatedAt, now, "signing subkey");
             }
         }
+    }
+
+    /// <summary>The outcome of checking a key signature (see <see cref="Certificate.CheckKeySignature"/>).</summary>
+    internal enum KeySignatureCheck
+    {
+        /// <summary>Verified: made by the key, over this content.</summary>
+        Valid,
+
+        /// <summary>Not a signature by this key: a third party's, a forgery, or malformed. Ignored.</summary>
+        NotFromKey,
+
+        /// <summary>Claims to be by this key, but its hash or algorithm can't be checked.</summary>
+        Unverifiable,
     }
 }

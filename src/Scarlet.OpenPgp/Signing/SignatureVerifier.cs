@@ -41,14 +41,24 @@ namespace Scarlet.OpenPgp.Signing
                 return "the signature's algorithm (" + signature.PublicKeyAlgorithm + ") does not match the key's (" + key.Algorithm + ")";
             }
 
+            // SHA-1 counts here too: it is accepted for some key self-signatures, and must still meet
+            // each algorithm's minimum (e.g. never for EdDSA or ECDSA).
             int minimumHashBits = MinimumHashBits(key);
-            if (HashContext.IsSupported(signature.HashAlgorithm) && HashContext.DigestBits(signature.HashAlgorithm) < minimumHashBits)
+            if ((HashContext.IsSupported(signature.HashAlgorithm) || signature.HashAlgorithm == HashAlgorithmId.Sha1)
+                && HashContext.DigestBits(signature.HashAlgorithm) < minimumHashBits)
             {
                 return signature.HashAlgorithm + " is too weak for " + key.Algorithm + " (at least " + minimumHashBits + " bits required)";
             }
 
             return null;
         }
+
+        /// <summary>
+        /// Whether <paramref name="signature"/> cannot have been made by <paramref name="key"/> at all
+        /// (its version or algorithm differs), as opposed to being from the key but uncheckable.
+        /// </summary>
+        public static bool IsForDifferentKey(PublicKeyPacket key, SignaturePacket signature) =>
+            key.Version != signature.Version || key.Algorithm != signature.PublicKeyAlgorithm;
 
         /// <summary>
         /// Verifies <paramref name="signature"/> given <paramref name="digest"/>, the finished hash

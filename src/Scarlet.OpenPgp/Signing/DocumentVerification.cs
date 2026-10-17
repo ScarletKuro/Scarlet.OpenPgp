@@ -19,6 +19,9 @@ namespace Scarlet.OpenPgp.Signing
     /// </remarks>
     internal sealed class DocumentVerification : IDisposable
     {
+        /// <summary>The most distinct signatures one input may carry. Real files have one to a handful (Debian's Release has three); the limit only exists to bound the hashing work.</summary>
+        public const int MaxSignatures = 32;
+
         private readonly List<Entry> _entries;
         private readonly VerificationResult? _earlyResult;
 
@@ -48,7 +51,7 @@ namespace Scarlet.OpenPgp.Signing
                 return Failed(VerificationStatus.MalformedInput, "The signature is malformed: " + ex.Message);
             }
 
-            var entries = new List<Entry>();
+            var bodies = new List<byte[]>();
             foreach (Packet packet in packets)
             {
                 if (packet.Header.Tag == PacketTag.Marker || packet.Header.Tag == PacketTag.Padding)
@@ -63,12 +66,29 @@ namespace Scarlet.OpenPgp.Signing
                     return Failed(VerificationStatus.MalformedInput, "The signature input contains a non-signature packet (tag " + packet.Header.RawTag + ").");
                 }
 
-                entries.Add(Entry.Create(packet.Body, keyRing, isClearsign));
+                // An identical copy adds nothing but another pass over the data.
+                if (!bodies.Exists(b => b.AsSpan().SequenceEqual(packet.Body)))
+                {
+                    bodies.Add(packet.Body);
+                }
             }
 
-            if (entries.Count == 0)
+            if (bodies.Count == 0)
             {
                 return Failed(VerificationStatus.MalformedInput, "The signature input contains no signature.");
+            }
+
+            // Each signature costs a full pass over the data, so the count bounds the work a
+            // hostile signature file can cause (256 copies made an 8 MiB file cost 2 GiB of hashing).
+            if (bodies.Count > MaxSignatures)
+            {
+                return Failed(VerificationStatus.MalformedInput, "The signature input contains more than " + MaxSignatures + " signatures.");
+            }
+
+            var entries = new List<Entry>(bodies.Count);
+            foreach (byte[] body in bodies)
+            {
+                entries.Add(Entry.Create(body, keyRing, isClearsign));
             }
 
             return new DocumentVerification(entries, null);

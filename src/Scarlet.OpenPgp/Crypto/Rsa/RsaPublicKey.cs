@@ -23,14 +23,26 @@ namespace Scarlet.OpenPgp.Crypto.Rsa
             // Fail closed on structurally weak or nonsensical keys rather than "verifying" against
             // them: with e = 1 the signature *is* the encoded message, so anyone can forge one, and
             // an even modulus or exponent can never be a real RSA key.
-            if (modulus.IsEven || ModulusBitLength < MinimumModulusBitLength || ModulusBitLength > MaximumModulusBitLength)
+            // Sizes outside the policy are "unsupported" (a well-formed key this library declines);
+            // impossible values are malformed. A key ring skips the former and rejects the latter.
+            if (modulus.IsEven)
             {
-                throw new FailClosedException("RSA modulus must be odd and between " + MinimumModulusBitLength + " and " + MaximumModulusBitLength + " bits.");
+                throw new FailClosedException("RSA modulus must be odd.");
             }
 
-            if (exponent.IsEven || exponent < 3 || exponent >= modulus || BigIntegerMath.BitLength(exponent) > MaximumExponentBitLength)
+            if (ModulusBitLength < MinimumModulusBitLength || ModulusBitLength > MaximumModulusBitLength)
             {
-                throw new FailClosedException("RSA public exponent must be odd, at least 3, at most " + MaximumExponentBitLength + " bits, and smaller than the modulus.");
+                throw FailClosedException.Unsupported("RSA modulus must be between " + MinimumModulusBitLength + " and " + MaximumModulusBitLength + " bits.");
+            }
+
+            if (exponent.IsEven || exponent < 3 || exponent >= modulus)
+            {
+                throw new FailClosedException("RSA public exponent must be odd, at least 3, and smaller than the modulus.");
+            }
+
+            if (BigIntegerMath.BitLength(exponent) > MaximumExponentBitLength)
+            {
+                throw FailClosedException.Unsupported("RSA public exponent must be at most " + MaximumExponentBitLength + " bits.");
             }
         }
 
