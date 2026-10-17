@@ -10,7 +10,7 @@ namespace Scarlet.OpenPgp.Crypto.Ed448
     /// scalars that pushes a single verification well past a second; projective formulas need
     /// no inversion at all until the final comparison, which is itself done by cross-multiplying.
     /// </summary>
-    internal readonly struct Ed448Point
+    internal readonly struct Ed448Point : System.IEquatable<Ed448Point>
     {
         public static readonly Ed448FieldElement D = new Ed448FieldElement(-39081);
 
@@ -22,8 +22,8 @@ namespace Scarlet.OpenPgp.Crypto.Ed448
         /// has no short closed form; <c>Ed448PointTests</c> checks it is on the curve and has order L.
         /// </summary>
         public static readonly Ed448Point B = FromAffine(
-            new Ed448FieldElement(BigInteger.Parse("224580040295924300187604334099896036246789641632564134246125461686950415467406032909029192869357953282578032075146446173674602635247710")),
-            new Ed448FieldElement(BigInteger.Parse("298819210078481492676017930443930673437544040154080242095928241372331506189835876003536878655418784733982303233503462500531545062832660")));
+            new Ed448FieldElement(BigInteger.Parse("224580040295924300187604334099896036246789641632564134246125461686950415467406032909029192869357953282578032075146446173674602635247710", System.Globalization.CultureInfo.InvariantCulture)),
+            new Ed448FieldElement(BigInteger.Parse("298819210078481492676017930443930673437544040154080242095928241372331506189835876003536878655418784733982303233503462500531545062832660", System.Globalization.CultureInfo.InvariantCulture)));
 
         public Ed448Point(Ed448FieldElement x, Ed448FieldElement y, Ed448FieldElement z)
         {

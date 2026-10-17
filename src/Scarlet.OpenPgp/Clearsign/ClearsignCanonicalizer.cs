@@ -1,3 +1,4 @@
+using System;
 using System.Text;
 using Scarlet.OpenPgp.Internal;
 
@@ -32,7 +33,7 @@ namespace Scarlet.OpenPgp.Clearsign
                 }
 
                 string line = dashEscapedLines[i];
-                string unescaped = line.StartsWith("- ") ? line.Substring(2) : line;
+                string unescaped = line.StartsWith("- ", StringComparison.Ordinal) ? line.Substring(2) : line;
                 string trimmed = unescaped.TrimEnd(' ', '\t');
                 builder.Append(trimmed);
             }

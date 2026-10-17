@@ -13,7 +13,7 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
     internal static class Ed25519Verifier
     {
         private static readonly BigInteger GroupOrderL =
-            BigInteger.Pow(2, 252) + BigInteger.Parse("27742317777372353535851937790883648493");
+            BigInteger.Pow(2, 252) + BigInteger.Parse("27742317777372353535851937790883648493", System.Globalization.CultureInfo.InvariantCulture);
 
         public static bool Verify(Ed25519PublicKey publicKey, byte[] message, byte[] signature)
         {

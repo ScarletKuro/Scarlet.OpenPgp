@@ -8,6 +8,8 @@ namespace Scarlet.OpenPgp.Internal
     /// catches it at the boundary and converts it into a failed verification result, per the
     /// "fail closed, never crash on attacker-controlled input" non-negotiable in SPEC.md.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1064:Exceptions should be public", Justification = "Never escapes the library: OpenPgpVerifier turns it into a VerificationResult.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1032:Implement standard exception constructors", Justification = "Internal; every throw site supplies a message.")]
     internal sealed class FailClosedException : Exception
     {
         public FailClosedException(string message) : base(message)

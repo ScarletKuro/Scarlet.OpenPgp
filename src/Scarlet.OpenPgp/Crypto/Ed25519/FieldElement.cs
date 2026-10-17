@@ -8,7 +8,7 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
     /// there is no secret key material anywhere in this verify-only library, so the usual
     /// side-channel concerns that motivate fixed-width/constant-time field arithmetic don't apply.
     /// </summary>
-    internal readonly struct FieldElement
+    internal readonly struct FieldElement : System.IEquatable<FieldElement>
     {
         public static readonly BigInteger P = BigInteger.Pow(2, 255) - 19;
 
@@ -43,11 +43,13 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
         /// <summary>Multiplicative inverse mod p, via Fermat's little theorem (p is prime): a^(p-2) = a^-1 mod p.</summary>
         public FieldElement Invert() => Pow(P - 2);
 
-        public override bool Equals(object? obj) => obj is FieldElement other && this == other;
+        public bool Equals(FieldElement other) => this == other;
+
+        public override bool Equals(object? obj) => obj is FieldElement other && Equals(other);
 
         public override int GetHashCode() => Value.GetHashCode();
 
-        public override string ToString() => Value.ToString();
+        public override string ToString() => Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         private static BigInteger Mod(BigInteger value)
         {

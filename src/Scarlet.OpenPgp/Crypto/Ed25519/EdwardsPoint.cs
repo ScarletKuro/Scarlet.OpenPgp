@@ -11,7 +11,7 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
     /// simplicity-over-speed choice, acceptable per SPEC.md: a verify-only library has no secret
     /// scalars to protect from timing leaks.
     /// </summary>
-    internal readonly struct EdwardsPoint
+    internal readonly struct EdwardsPoint : System.IEquatable<EdwardsPoint>
     {
         /// <summary>The curve constant d = -121665/121666 (mod p), derived from first principles rather than hardcoded so it is auditable against RFC 8032 §5.1.1.</summary>
         public static readonly FieldElement D = new FieldElement(-121665) * new FieldElement(121666).Invert();

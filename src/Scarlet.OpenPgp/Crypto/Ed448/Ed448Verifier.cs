@@ -21,7 +21,7 @@ namespace Scarlet.OpenPgp.Crypto.Ed448
 
         /// <summary>The prime order of the base point, L = 2^446 - 13818066809895115352007386748515426880336692474882178609894547503885 (RFC 8032 §5.2).</summary>
         public static readonly BigInteger GroupOrderL =
-            BigInteger.Pow(2, 446) - BigInteger.Parse("13818066809895115352007386748515426880336692474882178609894547503885");
+            BigInteger.Pow(2, 446) - BigInteger.Parse("13818066809895115352007386748515426880336692474882178609894547503885", System.Globalization.CultureInfo.InvariantCulture);
 
         /// <summary>
         /// dom4(0, "") from RFC 8032 §5.2: "SigEd448" || octet(phflag = 0) || octet(len(context) = 0).

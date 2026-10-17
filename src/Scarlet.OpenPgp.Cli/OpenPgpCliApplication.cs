@@ -39,7 +39,9 @@ internal sealed class OpenPgpCliApplication
         {
             return RunVerify(options);
         }
+#pragma warning disable CA1031 // Do not catch general exception types: this is the process's last-resort handler.
         catch (Exception ex)
+#pragma warning restore CA1031
         {
             // Last-resort safety net: anything that isn't one of the specific, expected
             // failure modes handled inside RunVerify (a bad input file, a failed/successful
