@@ -117,7 +117,7 @@ namespace Scarlet.OpenPgp.Tests.Signing
 
             SignaturePacket parsed = SignaturePacket.Parse(revocation);
             Assert.DoesNotContain(parsed.HashedSubpackets, s => s.Is(SignatureSubpacketType.IssuerFingerprint) || s.Is(SignatureSubpacketType.IssuerKeyId));
-            byte[] keyId = Assert.Single(parsed.IssuerKeyIds);
+            byte[] keyId = Assert.Single(parsed.GetIssuerKeyIds(hashedOnly: false));
 
             // Replace the unsigned key ID in place (flip every byte).
             int at = revocation.AsSpan().IndexOf(keyId);

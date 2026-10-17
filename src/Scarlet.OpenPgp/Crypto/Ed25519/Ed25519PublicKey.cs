@@ -1,15 +1,19 @@
+using Scarlet.OpenPgp.Hashing;
 using Scarlet.OpenPgp.Internal;
 
 namespace Scarlet.OpenPgp.Crypto.Ed25519
 {
     /// <summary>A compressed 32-byte Ed25519 public point, in its native RFC 8032 §5.1.2 encoding.</summary>
-    internal sealed class Ed25519PublicKey
+    internal sealed class Ed25519PublicKey : VerificationKey
     {
         public const int EncodedLength = 32;
 
+        private readonly bool _legacy;
         private DecodedPoint? _decoded;
 
-        public Ed25519PublicKey(byte[] compressedPoint)
+        /// <param name="compressedPoint">The 32-byte encoded point.</param>
+        /// <param name="legacy">The key came from an EdDSALegacy (algorithm 22) packet rather than a native Ed25519 (27) one; it only changes the description.</param>
+        public Ed25519PublicKey(byte[] compressedPoint, bool legacy = false)
         {
             if (compressedPoint.Length != EncodedLength)
             {
@@ -17,9 +21,18 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
             }
 
             CompressedPoint = compressedPoint;
+            _legacy = legacy;
         }
 
         public byte[] CompressedPoint { get; }
+
+        public override string Description => _legacy ? "EdDSA Ed25519 (legacy)" : "Ed25519";
+
+        /// <summary>RFC 9580 §5.2.3.4-5: Ed25519 signatures need at least a 256-bit digest.</summary>
+        public override int MinimumHashBits => 256;
+
+        public override bool Verify(HashAlgorithmId hashAlgorithm, byte[] digest, SignatureValue signature) =>
+            signature is EdDsaSignatureValue eddsa && Ed25519Verifier.Verify(this, digest, eddsa.Value);
 
         /// <summary>
         /// The decoded point, or <see langword="false"/> if it doesn't decode or has small order.

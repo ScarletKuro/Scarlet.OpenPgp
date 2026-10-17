@@ -198,7 +198,7 @@ namespace Scarlet.OpenPgp.Tests.Fuzzing
                 ExpectOnlyFailClosed(bytes, () =>
                 {
                     ClearsignMessage message = ClearsignParser.Parse(mutated);
-                    ClearsignCanonicalizer.Canonicalize(message.DashEscapedBodyLines);
+                    ClearsignCanonicalizer.Encode(ClearsignCanonicalizer.CanonicalizeText(message.DashEscapedBodyLines));
                 });
             }
         }
@@ -206,8 +206,8 @@ namespace Scarlet.OpenPgp.Tests.Fuzzing
         private static void ConsumeSignature(SignaturePacket signature)
         {
             // Touch every lazily-evaluated accessor - each may parse further.
-            _ = signature.IssuerFingerprints.ToList();
-            _ = signature.IssuerKeyIds.ToList();
+            _ = signature.GetIssuerFingerprints(hashedOnly: false).ToList();
+            _ = signature.GetIssuerKeyIds(hashedOnly: false).ToList();
             _ = signature.EmbeddedSignatures.ToList();
             ExpectOnlyFailClosed(signature.Body, () => _ = signature.KeyFlags);
             ExpectOnlyFailClosed(signature.Body, () => _ = signature.RevocationReason);

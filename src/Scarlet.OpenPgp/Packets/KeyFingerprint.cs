@@ -39,7 +39,7 @@ namespace Scarlet.OpenPgp.Packets
             }
         }
 
-        public static KeyFingerprint ComputeV4(byte[] publicKeyPacketBody)
+        private static KeyFingerprint ComputeV4(byte[] publicKeyPacketBody)
         {
             byte[] hashInput = KeyHashPrefix.Build(4, publicKeyPacketBody);
 
@@ -54,7 +54,7 @@ namespace Scarlet.OpenPgp.Packets
             return new KeyFingerprint(4, fingerprint, keyId);
         }
 
-        public static KeyFingerprint ComputeV6(byte[] publicKeyPacketBody)
+        private static KeyFingerprint ComputeV6(byte[] publicKeyPacketBody)
         {
             byte[] hashInput = KeyHashPrefix.Build(6, publicKeyPacketBody);
             using var sha256 = SHA256.Create();

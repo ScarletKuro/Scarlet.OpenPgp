@@ -213,7 +213,7 @@ namespace Scarlet.OpenPgp.Signing
                 {
                     foreach (PublicKeyPacket key in certificate.Keys)
                     {
-                        if (Certificate.IsIssuedBy(signature, key))
+                        if (SignatureVerifier.IsIssuedBy(signature, key))
                         {
                             entry._candidates.Add((certificate, key));
                         }
@@ -290,7 +290,7 @@ namespace Scarlet.OpenPgp.Signing
                 {
                     // A key we can't use, or a hash too weak for it, is "unsupported"; a key whose
                     // version or algorithm simply doesn't match the signature didn't make it.
-                    VerificationStatus status = !key.CanVerify || (key.Version == signature.Version && key.Algorithm == signature.PublicKeyAlgorithm)
+                    VerificationStatus status = !key.CanVerify || !SignatureVerifier.IsForDifferentKey(key, signature)
                         ? VerificationStatus.UnsupportedAlgorithm
                         : VerificationStatus.BadSignature;
                     return Failure(status, "Signature cannot be checked with this key: " + incompatibility + ".", certificate, key, createdAt);
@@ -309,7 +309,7 @@ namespace Scarlet.OpenPgp.Signing
 
                 try
                 {
-                    if (!SignatureVerifier.IsUnexpired(signature, now))
+                    if (!SignatureVerifier.IsUnexpired(signature, createdAt, now))
                     {
                         return Failure(VerificationStatus.SignatureExpired, "The signature has expired.", certificate, key, createdAt);
                     }

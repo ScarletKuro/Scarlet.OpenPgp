@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using Scarlet.OpenPgp.Hashing;
 using Scarlet.OpenPgp.Packets;
@@ -57,7 +58,7 @@ namespace Scarlet.OpenPgp.Tests.Signing
             byte[] dataToHash = SignatureHashBuilder.BuildDataToHash(content, signature);
 
             // Act
-            byte[] digest = OpenPgpHash.ComputeHash(HashAlgorithmId.Sha256, dataToHash);
+            byte[] digest = SHA256.HashData(dataToHash);
 
             // Assert
             Assert.Equal(ExpectedDigest, digest);
@@ -74,7 +75,7 @@ namespace Scarlet.OpenPgp.Tests.Signing
             byte[] dataToHash = SignatureHashBuilder.BuildDataToHash(content, signature);
 
             // Act
-            byte[] digest = OpenPgpHash.ComputeHash(HashAlgorithmId.Sha256, dataToHash);
+            byte[] digest = SHA256.HashData(dataToHash);
 
             // Assert
             Assert.Equal(signature.LeftHashBytes16, new[] { digest[0], digest[1] });

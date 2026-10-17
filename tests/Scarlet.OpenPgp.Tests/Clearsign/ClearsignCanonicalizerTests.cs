@@ -5,6 +5,8 @@ namespace Scarlet.OpenPgp.Tests.Clearsign
 {
     public class ClearsignCanonicalizerTests
     {
+        private static byte[] Canonicalize(string[] lines) => ClearsignCanonicalizer.Encode(ClearsignCanonicalizer.CanonicalizeText(lines));
+
         [Fact]
         public void Canonicalize_WithDashEscapedLine_ShouldUnescapeIt()
         {
@@ -12,7 +14,7 @@ namespace Scarlet.OpenPgp.Tests.Clearsign
             string[] lines = ["- -foo"];
 
             // Act
-            byte[] result = ClearsignCanonicalizer.Canonicalize(lines);
+            byte[] result = Canonicalize(lines);
 
             // Assert
             Assert.Equal("-foo", Encoding.UTF8.GetString(result));
@@ -25,7 +27,7 @@ namespace Scarlet.OpenPgp.Tests.Clearsign
             string[] lines = ["hello   ", "world\t\t"];
 
             // Act
-            byte[] result = ClearsignCanonicalizer.Canonicalize(lines);
+            byte[] result = Canonicalize(lines);
 
             // Assert
             Assert.Equal("hello\r\nworld", Encoding.UTF8.GetString(result));
@@ -40,7 +42,7 @@ namespace Scarlet.OpenPgp.Tests.Clearsign
             string[] lines = ["line one", "line two"];
 
             // Act
-            byte[] result = ClearsignCanonicalizer.Canonicalize(lines);
+            byte[] result = Canonicalize(lines);
 
             // Assert
             Assert.Equal("line one\r\nline two", Encoding.UTF8.GetString(result));
@@ -53,7 +55,7 @@ namespace Scarlet.OpenPgp.Tests.Clearsign
             string[] lines = ["no dash here "];
 
             // Act
-            byte[] result = ClearsignCanonicalizer.Canonicalize(lines);
+            byte[] result = Canonicalize(lines);
 
             // Assert
             Assert.Equal("no dash here", Encoding.UTF8.GetString(result));
@@ -66,7 +68,7 @@ namespace Scarlet.OpenPgp.Tests.Clearsign
             string[] lines = ["- - "];
 
             // Act
-            byte[] result = ClearsignCanonicalizer.Canonicalize(lines);
+            byte[] result = Canonicalize(lines);
 
             // Assert: unescape "- - " -> "- " (dash, space), then strip trailing whitespace -> "-".
             Assert.Equal("-", Encoding.UTF8.GetString(result));
@@ -79,7 +81,7 @@ namespace Scarlet.OpenPgp.Tests.Clearsign
             string[] lines = ["first", "", "third"];
 
             // Act
-            byte[] result = ClearsignCanonicalizer.Canonicalize(lines);
+            byte[] result = Canonicalize(lines);
 
             // Assert
             Assert.Equal("first\r\n\r\nthird", Encoding.UTF8.GetString(result));
@@ -92,7 +94,7 @@ namespace Scarlet.OpenPgp.Tests.Clearsign
             string[] lines = ["only line"];
 
             // Act
-            byte[] result = ClearsignCanonicalizer.Canonicalize(lines);
+            byte[] result = Canonicalize(lines);
 
             // Assert
             Assert.Equal("only line", Encoding.UTF8.GetString(result));
@@ -106,7 +108,7 @@ namespace Scarlet.OpenPgp.Tests.Clearsign
             string[] lines = ["bad \uD800 surrogate"];
 
             // Act & Assert
-            Assert.Throws<Scarlet.OpenPgp.Internal.FailClosedException>(() => ClearsignCanonicalizer.Canonicalize(lines));
+            Assert.Throws<Scarlet.OpenPgp.Internal.FailClosedException>(() => Canonicalize(lines));
         }
     }
 }

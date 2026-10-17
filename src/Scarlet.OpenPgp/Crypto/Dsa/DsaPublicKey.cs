@@ -1,4 +1,5 @@
 using System.Numerics;
+using Scarlet.OpenPgp.Hashing;
 using Scarlet.OpenPgp.Internal;
 
 namespace Scarlet.OpenPgp.Crypto.Dsa
@@ -26,7 +27,7 @@ namespace Scarlet.OpenPgp.Crypto.Dsa
     /// values that would let a third party forge.
     /// </para>
     /// </remarks>
-    internal sealed class DsaPublicKey
+    internal sealed class DsaPublicKey : VerificationKey
     {
         /// <summary>The smallest prime modulus accepted (L in FIPS 186-4 §4.2).</summary>
         public const int MinimumPBitLength = 2048;
@@ -41,7 +42,7 @@ namespace Scarlet.OpenPgp.Crypto.Dsa
             G = g;
             Y = y;
 
-            int pBits = BigIntegerMath.BitLength(p);
+            PBitLength = BigIntegerMath.BitLength(p);
             // Sizes outside the policy are "unsupported" (e.g. legacy DSA-1024 keys); impossible
             // values are malformed. A key ring skips the former and rejects the latter.
             if (p.IsEven)
@@ -49,7 +50,7 @@ namespace Scarlet.OpenPgp.Crypto.Dsa
                 throw new FailClosedException("DSA prime p must be odd.");
             }
 
-            if (pBits < MinimumPBitLength || pBits > MaximumPBitLength)
+            if (PBitLength < MinimumPBitLength || PBitLength > MaximumPBitLength)
             {
                 throw FailClosedException.Unsupported("DSA prime p must be between " + MinimumPBitLength + " and " + MaximumPBitLength + " bits.");
             }
@@ -88,7 +89,18 @@ namespace Scarlet.OpenPgp.Crypto.Dsa
         /// <summary>The public value y = g^x mod p.</summary>
         public BigInteger Y { get; }
 
+        /// <summary>L = bitlen(p).</summary>
+        public int PBitLength { get; }
+
         /// <summary>N = bitlen(q): 224 or 256.</summary>
         public int QBitLength { get; }
+
+        public override string Description => "DSA " + PBitLength.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        /// <summary>RFC 9580 §5.2.3.2: a digest at least as long as q.</summary>
+        public override int MinimumHashBits => QBitLength;
+
+        public override bool Verify(HashAlgorithmId hashAlgorithm, byte[] digest, SignatureValue signature) =>
+            signature is RsSignatureValue rs && DsaVerifier.Verify(this, digest, rs.R, rs.S);
     }
 }

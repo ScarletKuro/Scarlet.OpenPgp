@@ -1,3 +1,4 @@
+using Scarlet.OpenPgp.Crypto;
 using Scarlet.OpenPgp.Hashing;
 using Scarlet.OpenPgp.Internal;
 using Scarlet.OpenPgp.Packets;
@@ -57,7 +58,7 @@ namespace Scarlet.OpenPgp.Tests.Packets
             SignaturePacket signature = ParseFixture();
 
             // Assert
-            Assert.Equal(ExpectedIssuerKeyId, signature.IssuerKeyId);
+            Assert.Equal(ExpectedIssuerKeyId, Assert.Single(signature.GetIssuerKeyIds(hashedOnly: false)));
         }
 
         [Fact]
@@ -77,11 +78,10 @@ namespace Scarlet.OpenPgp.Tests.Packets
             SignaturePacket signature = ParseFixture();
 
             // Assert
-            Assert.NotNull(signature.EdDsaSignatureValue);
             var expected = new byte[64];
             System.Array.Copy(ExpectedR, 0, expected, 0, 32);
             System.Array.Copy(ExpectedS, 0, expected, 32, 32);
-            Assert.Equal(expected, signature.EdDsaSignatureValue);
+            Assert.Equal(expected, Assert.IsType<EdDsaSignatureValue>(signature.Value).Value);
         }
 
         [Fact]
@@ -117,7 +117,7 @@ namespace Scarlet.OpenPgp.Tests.Packets
         }
 
         [Fact]
-        public void Parse_WithHashedSubpacketData_ShouldPreserveItVerbatimForHashBuilding()
+        public void Parse_WithHashedSubpacketData_ShouldPreserveTheHashedPortionVerbatimForHashBuilding()
         {
             // Act
             SignaturePacket signature = ParseFixture();
@@ -125,7 +125,7 @@ namespace Scarlet.OpenPgp.Tests.Packets
             // Assert: version(04) type(00) pubalg(16) hashalg(08) hashed-subpacket-count(0006)
             // hashed-subpacket-data(05 02 55 f9 5f 95) - the exact 12-byte "hashed data" region
             // documented in the draft's own hash-input worked example.
-            Assert.Equal([0x05, 0x02, 0x55, 0xf9, 0x5f, 0x95], signature.HashedSubpacketData);
+            Assert.Equal([0x04, 0x00, 0x16, 0x08, 0x00, 0x06, 0x05, 0x02, 0x55, 0xf9, 0x5f, 0x95], signature.HashedPortion);
         }
 
         [Fact]
@@ -280,7 +280,6 @@ namespace Scarlet.OpenPgp.Tests.Packets
             SignaturePacket signature = SignaturePacket.Parse(body.ToArray());
 
             // Assert
-            Assert.NotNull(signature.EdDsaSignatureValue);
             var expectedR = new byte[32];
             for (int i = 1; i < 32; i++)
             {
@@ -296,7 +295,7 @@ namespace Scarlet.OpenPgp.Tests.Packets
             var expected = new byte[64];
             System.Array.Copy(expectedR, 0, expected, 0, 32);
             System.Array.Copy(expectedS, 0, expected, 32, 32);
-            Assert.Equal(expected, signature.EdDsaSignatureValue);
+            Assert.Equal(expected, Assert.IsType<EdDsaSignatureValue>(signature.Value).Value);
         }
 
         [Fact]
@@ -415,7 +414,7 @@ namespace Scarlet.OpenPgp.Tests.Packets
             Assert.Equal(PublicKeyAlgorithm.Ed25519, signature.PublicKeyAlgorithm);
             Assert.Equal(HashAlgorithmId.Sha512, signature.HashAlgorithm);
             Assert.Equal("76495F50218890F7F5E2EE3C1822514F70500F551D86E5C921E404E34A53FBAC", System.Convert.ToHexString(signature.Salt));
-            Assert.Equal(64, signature.EdDsaSignatureValue!.Length);
+            Assert.Equal(64, Assert.IsType<EdDsaSignatureValue>(signature.Value).Value.Length);
             Assert.Equal([0x69, 0x36], signature.LeftHashBytes16);
         }
 

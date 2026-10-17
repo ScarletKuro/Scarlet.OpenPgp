@@ -41,8 +41,6 @@ namespace Scarlet.OpenPgp.Clearsign
             return builder.ToString();
         }
 
-        public static byte[] Canonicalize(string[] dashEscapedLines) => Encode(CanonicalizeText(dashEscapedLines));
-
         public static byte[] Encode(string canonicalText)
         {
             try

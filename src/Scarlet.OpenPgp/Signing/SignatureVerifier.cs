@@ -1,10 +1,6 @@
 using System;
-using Scarlet.OpenPgp.Crypto;
-using Scarlet.OpenPgp.Crypto.Dsa;
-using Scarlet.OpenPgp.Crypto.Ecdsa;
-using Scarlet.OpenPgp.Crypto.Ed25519;
-using Scarlet.OpenPgp.Crypto.Ed448;
-using Scarlet.OpenPgp.Crypto.Rsa;
+using System.Collections.Generic;
+using System.Linq;
 using Scarlet.OpenPgp.Hashing;
 using Scarlet.OpenPgp.Internal;
 using Scarlet.OpenPgp.Packets;
@@ -12,12 +8,57 @@ using Scarlet.OpenPgp.Packets;
 namespace Scarlet.OpenPgp.Signing
 {
     /// <summary>
-    /// Checks one v4/v6 signature against one public key: the asymmetric check over an
-    /// already-computed digest, plus the signature's own validity period. Shared by document
-    /// verification and by the self-signature checks in <see cref="Certificate"/>.
+    /// Checks one v4/v6 signature against one public key: whether the key may have made it, the
+    /// asymmetric check over an already-computed digest, and the signature's own validity period.
+    /// Shared by document verification and by the self-signature checks in <see cref="Certificate"/>.
     /// </summary>
     internal static class SignatureVerifier
     {
+        /// <summary>
+        /// How far into the future a document signature's creation time may lie and still count:
+        /// tolerance for a signer's or verifier's clock being slightly off. Anything beyond it is
+        /// rejected - a signature isn't valid before it was made, and accepting future times would
+        /// let a signer push an expiration (counted from creation) arbitrarily far out.
+        /// </summary>
+        public static readonly TimeSpan MaxClockSkew = TimeSpan.FromMinutes(5);
+
+        /// <summary>
+        /// Whether the signature's issuer hints (fingerprints first, then key IDs) allow
+        /// <paramref name="key"/> to be its issuer. A signature with no hints at all could be from
+        /// any key. The hints may be unauthenticated; they only ever narrow the search.
+        /// </summary>
+        /// <param name="signature">The signature.</param>
+        /// <param name="key">The candidate issuer.</param>
+        /// <param name="hashedOnly">
+        /// Consider only signed hints. Required wherever a mismatch makes a signature be *ignored*
+        /// in a way that could help an attacker - a key's own revocations and restrictions: an
+        /// unsigned hint is editable by anyone, so replacing it must not make a revocation
+        /// "someone else's". Without a signed hint the signature is simply verified against the key.
+        /// </param>
+        public static bool IsIssuedBy(SignaturePacket signature, PublicKeyPacket key, bool hashedOnly = false)
+        {
+            List<byte[]> fingerprints = signature.GetIssuerFingerprints(hashedOnly).ToList();
+            if (fingerprints.Count > 0)
+            {
+                return fingerprints.Any(key.Fingerprint.Matches);
+            }
+
+            List<byte[]> keyIds = signature.GetIssuerKeyIds(hashedOnly).ToList();
+            if (keyIds.Count > 0)
+            {
+                return keyIds.Any(key.Fingerprint.MatchesKeyId);
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Whether <paramref name="signature"/> cannot have been made by <paramref name="key"/> at all
+        /// (its version or algorithm differs), as opposed to being from the key but uncheckable.
+        /// </summary>
+        public static bool IsForDifferentKey(PublicKeyPacket key, SignaturePacket signature) =>
+            key.Version != signature.Version || key.Algorithm != signature.PublicKeyAlgorithm;
+
         /// <summary>
         /// Why <paramref name="signature"/> can't be checked with <paramref name="key"/> at all, or
         /// <c>null</c> when the combination is acceptable: matching versions (RFC 9580 binds a
@@ -43,7 +84,7 @@ namespace Scarlet.OpenPgp.Signing
 
             // SHA-1 counts here too: it is accepted for some key self-signatures, and must still meet
             // each algorithm's minimum (e.g. never for EdDSA or ECDSA).
-            int minimumHashBits = MinimumHashBits(key);
+            int minimumHashBits = key.VerificationKey.MinimumHashBits;
             if ((HashContext.IsSupported(signature.HashAlgorithm) || signature.HashAlgorithm == HashAlgorithmId.Sha1)
                 && HashContext.DigestBits(signature.HashAlgorithm) < minimumHashBits)
             {
@@ -52,13 +93,6 @@ namespace Scarlet.OpenPgp.Signing
 
             return null;
         }
-
-        /// <summary>
-        /// Whether <paramref name="signature"/> cannot have been made by <paramref name="key"/> at all
-        /// (its version or algorithm differs), as opposed to being from the key but uncheckable.
-        /// </summary>
-        public static bool IsForDifferentKey(PublicKeyPacket key, SignaturePacket signature) =>
-            key.Version != signature.Version || key.Algorithm != signature.PublicKeyAlgorithm;
 
         /// <summary>
         /// Verifies <paramref name="signature"/> given <paramref name="digest"/>, the finished hash
@@ -82,33 +116,38 @@ namespace Scarlet.OpenPgp.Signing
                 return false;
             }
 
-            switch (key.Algorithm)
+            return key.CanVerify && key.VerificationKey.Verify(signature.HashAlgorithm, digest, signature.Value);
+        }
+
+        /// <summary>
+        /// Classifies <paramref name="signature"/> as a signature by <paramref name="issuer"/> over
+        /// <paramref name="signedContent"/>: verified, not from this key (a third-party
+        /// certification, a forgery, a malformed packet - all ignored), or claiming to be from this
+        /// key but impossible to check (an unsupported or too-weak hash or algorithm). The last kind
+        /// must not be treated as absent: an uncheckable revocation or expiration could be genuine.
+        /// </summary>
+        public static KeySignatureCheck CheckKeySignature(PublicKeyPacket issuer, SignaturePacket signature, byte[] signedContent)
+        {
+            try
             {
-                case PublicKeyAlgorithm.RsaEncryptOrSign:
-                case PublicKeyAlgorithm.RsaSignOnly:
-                    return key.Rsa is not null && signature.RsaSignatureValue is not null
-                           && RsaPkcs1Verifier.Verify(key.Rsa, signature.HashAlgorithm, digest, signature.RsaSignatureValue.Value);
+                if (!IsIssuedBy(signature, issuer, hashedOnly: true) || IsForDifferentKey(issuer, signature))
+                {
+                    return KeySignatureCheck.NotFromKey;
+                }
 
-                case PublicKeyAlgorithm.Dsa:
-                    return signature.R is not null && signature.S is not null
-                           && key.Dsa is not null && DsaVerifier.Verify(key.Dsa, digest, signature.R.Value, signature.S.Value);
+                if (GetIncompatibility(issuer, signature) is not null)
+                {
+                    return KeySignatureCheck.Unverifiable; // e.g. a hash too weak for the algorithm
+                }
 
-                case PublicKeyAlgorithm.Ecdsa:
-                    return signature.R is not null && signature.S is not null
-                           && key.EcdsaCurve is not null && key.EcdsaPoint is not null
-                           && EcdsaVerifier.Verify(key.EcdsaCurve, key.EcdsaPoint, digest, signature.R.Value, signature.S.Value);
-
-                case PublicKeyAlgorithm.EdDsaLegacy:
-                case PublicKeyAlgorithm.Ed25519:
-                    return key.Ed25519 is not null && signature.EdDsaSignatureValue is not null
-                           && Ed25519Verifier.Verify(key.Ed25519, digest, signature.EdDsaSignatureValue);
-
-                case PublicKeyAlgorithm.Ed448:
-                    return key.Ed448 is not null && signature.Ed448SignatureValue is not null
-                           && Ed448Verifier.Verify(key.Ed448, digest, signature.Ed448SignatureValue);
-
-                default:
-                    return false;
+                GetCreationTime(signature); // throws if missing or malformed
+                byte[] digest = SignatureHashBuilder.ComputeDigest(signedContent, signature, isKeySignature: true);
+                return VerifyDigest(issuer, signature, digest) ? KeySignatureCheck.Valid : KeySignatureCheck.NotFromKey;
+            }
+            catch (FailClosedException ex)
+            {
+                // An unsupported hash (MD5, RIPEMD-160) can't be checked; anything else is malformed.
+                return ex.IsUnsupported ? KeySignatureCheck.Unverifiable : KeySignatureCheck.NotFromKey;
             }
         }
 
@@ -126,53 +165,30 @@ namespace Scarlet.OpenPgp.Signing
             return DateTimeOffset.FromUnixTimeSeconds(seconds);
         }
 
-        /// <summary>
-        /// How far into the future a document signature's creation time may lie and still count:
-        /// tolerance for a signer's or verifier's clock being slightly off. Anything beyond it is
-        /// rejected - a signature isn't valid before it was made, and accepting future times would
-        /// let a signer push an expiration (counted from creation) arbitrarily far out.
-        /// </summary>
-        public static readonly TimeSpan MaxClockSkew = TimeSpan.FromMinutes(5);
-
         /// <summary>Whether <paramref name="createdAt"/> lies further in the future than <see cref="MaxClockSkew"/> allows.</summary>
         public static bool IsFromTheFuture(DateTimeOffset createdAt, DateTimeOffset now) => createdAt > now + MaxClockSkew;
 
         /// <summary>
-        /// Whether the signature is within its own validity period at <paramref name="now"/>: not
-        /// past its hashed signature-expiration time (RFC 9580 §5.2.3.18; zero means it never
-        /// expires).
+        /// Whether the signature, created at <paramref name="createdAt"/>, is within its own validity
+        /// period at <paramref name="now"/>: not past its hashed signature-expiration time (RFC 9580
+        /// §5.2.3.18; zero means it never expires).
         /// </summary>
-        public static bool IsUnexpired(SignaturePacket signature, DateTimeOffset now)
-        {
-            DateTimeOffset createdAt = GetCreationTime(signature);
-            if (signature.TryGetHashedTime(SignatureSubpacketType.SignatureExpirationTime, out uint lifetimeSeconds)
-                && lifetimeSeconds != 0
-                && now >= createdAt.AddSeconds(lifetimeSeconds))
-            {
-                return false;
-            }
+        public static bool IsUnexpired(SignaturePacket signature, DateTimeOffset createdAt, DateTimeOffset now) =>
+            !signature.TryGetHashedTime(SignatureSubpacketType.SignatureExpirationTime, out uint lifetimeSeconds)
+            || lifetimeSeconds == 0
+            || now < createdAt.AddSeconds(lifetimeSeconds);
+    }
 
-            return true;
-        }
+    /// <summary>The outcome of checking a key signature (see <see cref="SignatureVerifier.CheckKeySignature"/>).</summary>
+    internal enum KeySignatureCheck
+    {
+        /// <summary>Verified: made by the key, over this content.</summary>
+        Valid,
 
-        /// <summary>RFC 9580's minimum digest size for signatures by <paramref name="key"/>.</summary>
-        private static int MinimumHashBits(PublicKeyPacket key)
-        {
-            switch (key.Algorithm)
-            {
-                case PublicKeyAlgorithm.EdDsaLegacy:
-                case PublicKeyAlgorithm.Ed25519:
-                    return 256;
-                case PublicKeyAlgorithm.Ed448:
-                    return 512;
-                case PublicKeyAlgorithm.Ecdsa:
-                    // The curve's "fsize", except NIST P-521, which needs at least a 512-bit hash.
-                    return key.EcdsaCurve is null ? int.MaxValue : Math.Min(BigIntegerMath.BitLength(key.EcdsaCurve.P), 512);
-                case PublicKeyAlgorithm.Dsa:
-                    return key.Dsa?.QBitLength ?? int.MaxValue;
-                default:
-                    return 0;
-            }
-        }
+        /// <summary>Not a signature by this key: a third party's, a forgery, or malformed. Ignored.</summary>
+        NotFromKey,
+
+        /// <summary>Claims to be by this key, but its hash or algorithm can't be checked.</summary>
+        Unverifiable,
     }
 }

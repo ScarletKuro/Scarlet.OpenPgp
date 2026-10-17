@@ -1,3 +1,4 @@
+using Scarlet.OpenPgp.Crypto.Ed25519;
 using Scarlet.OpenPgp.Internal;
 using Scarlet.OpenPgp.Packets;
 
@@ -42,8 +43,8 @@ namespace Scarlet.OpenPgp.Tests.Packets
 
             // Assert
             Assert.Equal(PublicKeyAlgorithm.EdDsaLegacy, key.Algorithm);
-            Assert.NotNull(key.Ed25519);
-            Assert.Equal(Ed25519ExpectedPoint, key.Ed25519.CompressedPoint);
+            Assert.Equal(Ed25519ExpectedPoint, Assert.IsType<Ed25519PublicKey>(key.VerificationKey).CompressedPoint);
+            Assert.Equal("EdDSA Ed25519 (legacy)", key.AlgorithmDescription);
         }
 
         [Fact]

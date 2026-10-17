@@ -1,10 +1,11 @@
 using System.Numerics;
+using Scarlet.OpenPgp.Hashing;
 using Scarlet.OpenPgp.Internal;
 
 namespace Scarlet.OpenPgp.Crypto.Rsa
 {
     /// <summary>An RSA public key's modulus and public exponent, as parsed from a v4 public-key packet.</summary>
-    internal sealed class RsaPublicKey
+    internal sealed class RsaPublicKey : VerificationKey
     {
         /// <summary>The smallest modulus accepted. 1024-bit RSA is within reach of well-funded attackers, and NIST has disallowed anything below 2048 bits for signatures since 2013.</summary>
         public const int MinimumModulusBitLength = 2048;
@@ -32,9 +33,9 @@ namespace Scarlet.OpenPgp.Crypto.Rsa
 
             // Computed once: verification needs the byte length on every call, and finding it by
             // shifting the modulus a bit at a time allocated a fresh BigInteger per bit.
-            int modulusBitLength = BigIntegerMath.BitLength(modulus);
-            ModulusByteLength = (modulusBitLength + 7) / 8;
-            if (modulusBitLength < MinimumModulusBitLength || modulusBitLength > MaximumModulusBitLength)
+            ModulusBitLength = BigIntegerMath.BitLength(modulus);
+            ModulusByteLength = (ModulusBitLength + 7) / 8;
+            if (ModulusBitLength < MinimumModulusBitLength || ModulusBitLength > MaximumModulusBitLength)
             {
                 throw FailClosedException.Unsupported("RSA modulus must be between " + MinimumModulusBitLength + " and " + MaximumModulusBitLength + " bits.");
             }
@@ -54,7 +55,17 @@ namespace Scarlet.OpenPgp.Crypto.Rsa
 
         public BigInteger Exponent { get; }
 
+        public int ModulusBitLength { get; }
+
         /// <summary>The modulus size in octets, i.e. the fixed width used to render the recovered EMSA-PKCS1-v1_5 block.</summary>
         public int ModulusByteLength { get; }
+
+        public override string Description => "RSA " + ModulusBitLength.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        /// <summary>RFC 9580 sets no minimum for RSA; the hash policy itself rejects MD5, RIPEMD-160 and (for documents) SHA-1.</summary>
+        public override int MinimumHashBits => 0;
+
+        public override bool Verify(HashAlgorithmId hashAlgorithm, byte[] digest, SignatureValue signature) =>
+            signature is RsaSignatureValue rsa && RsaPkcs1Verifier.Verify(this, hashAlgorithm, digest, rsa.Value);
     }
 }
