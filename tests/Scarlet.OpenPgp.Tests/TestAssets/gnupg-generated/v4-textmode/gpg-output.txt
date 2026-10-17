@@ -1,0 +1,61 @@
+$ gpgv --keyring ./public-key.gpg data-lf.txt.textmode.sig data-lf.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using EDDSA key 3AB36259BA08956C0472DFEB9409386295E89F80
+gpgv: Good signature from "Scarlet Textmode <textmode@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data-lf.txt.textmode.asc data-lf.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using EDDSA key 3AB36259BA08956C0472DFEB9409386295E89F80
+gpgv: Good signature from "Scarlet Textmode <textmode@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data-crlf.txt.textmode.sig data-crlf.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using EDDSA key 3AB36259BA08956C0472DFEB9409386295E89F80
+gpgv: Good signature from "Scarlet Textmode <textmode@example.org>"
+[exit code: 0]
+
+### cross checks
+$ gpgv --keyring ./public-key.gpg data-lf.txt.textmode.sig data-crlf.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using EDDSA key 3AB36259BA08956C0472DFEB9409386295E89F80
+gpgv: Good signature from "Scarlet Textmode <textmode@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data-crlf.txt.textmode.sig data-lf.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using EDDSA key 3AB36259BA08956C0472DFEB9409386295E89F80
+gpgv: Good signature from "Scarlet Textmode <textmode@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data-lf.txt.textmode.sig data-lf-trailing-ws-stripped.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using EDDSA key 3AB36259BA08956C0472DFEB9409386295E89F80
+gpgv: BAD signature from "Scarlet Textmode <textmode@example.org>"
+[exit code: 1]
+
+$ gpgv --keyring ./public-key.gpg data-lf.txt.binary.sig data-lf.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using EDDSA key 3AB36259BA08956C0472DFEB9409386295E89F80
+gpgv: Good signature from "Scarlet Textmode <textmode@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data-crlf.txt.binary.sig data-crlf.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using EDDSA key 3AB36259BA08956C0472DFEB9409386295E89F80
+gpgv: Good signature from "Scarlet Textmode <textmode@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data-lf.txt.binary.sig data-crlf.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using EDDSA key 3AB36259BA08956C0472DFEB9409386295E89F80
+gpgv: BAD signature from "Scarlet Textmode <textmode@example.org>"
+[exit code: 1]
+
+$ gpgv --keyring ./public-key.gpg data-crlf.txt.binary.sig data-lf.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using EDDSA key 3AB36259BA08956C0472DFEB9409386295E89F80
+gpgv: BAD signature from "Scarlet Textmode <textmode@example.org>"
+[exit code: 1]
+

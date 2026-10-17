@@ -1,0 +1,82 @@
+$ gpg --show-keys --with-subkey-fingerprints --list-options show-unusable-subkeys debian-keyring.gpg
+pub   rsa4096 2023-01-21 [SC] [expires: 2031-01-19]
+      B8B80B5B623EAB6AD8775C45B7C5D7D6350947F8
+      Revocable by: 80E976F14A508A48E9CA3FE9BC372252CA1CF964
+      Revocable by: FBFABDB541B5DC955BD9BA6EDB16CF5BB12525C4
+      Revocable by: 8C823DED10AA8041639E12105ACE8D6E0C14A470
+      Revocable by: 309911BEA966D0613053045711B4E5FF15B0FD82
+      Revocable by: C74F6AC9E933B3067F52F33FA459EC6715B0705F
+uid                      Debian Archive Automatic Signing Key (12/bookworm) <ftpmaster@debian.org>
+sub   rsa4096 2023-01-21 [S] [expires: 2031-01-19]
+      4CB50190207B4758A3F73A796ED0E7B82643E131
+
+pub   rsa4096 2025-03-30 [SC] [expires: 2035-03-28]
+      04B54C3CDCA79751B16BC6B5225629DF75B188BD
+      Revocable by: 80E976F14A508A48E9CA3FE9BC372252CA1CF964
+      Revocable by: FBFABDB541B5DC955BD9BA6EDB16CF5BB12525C4
+      Revocable by: 8C823DED10AA8041639E12105ACE8D6E0C14A470
+      Revocable by: 309911BEA966D0613053045711B4E5FF15B0FD82
+      Revocable by: C74F6AC9E933B3067F52F33FA459EC6715B0705F
+uid                      Debian Archive Automatic Signing Key (13/trixie) <ftpmaster@debian.org>
+sub   rsa4096 2025-03-30 [S] [expires: 2035-03-28]
+      B8E5F13176D2A7A75220028078DBA3BC47EF2265
+
+pub   ed25519 2025-03-24 [SC] [expires: 2033-03-22]
+      41587F7DB8C774BCCF131416762F67A0B2C39DE4
+uid                      Debian Stable Release Key (13/trixie) <debian-release@lists.debian.org>
+
+
+$ gpg --list-packets Release.gpg
+# off=0 ctb=89 tag=2 hlen=3 plen=563
+:signature packet: algo 1, keyid 6ED0E7B82643E131
+	version 4, created 1789199777, md5len 0, sigclass 0x00
+	digest algo 8, begin of digest 39 a7
+	hashed subpkt 33 len 21 (issuer fpr v4 4CB50190207B4758A3F73A796ED0E7B82643E131)
+	hashed subpkt 2 len 4 (sig created 2026-09-12)
+	subpkt 16 len 8 (issuer key ID 6ED0E7B82643E131)
+	data: [4095 bits]
+# off=566 ctb=89 tag=2 hlen=3 plen=563
+:signature packet: algo 1, keyid 78DBA3BC47EF2265
+	version 4, created 1789199777, md5len 0, sigclass 0x00
+	digest algo 8, begin of digest 74 71
+	hashed subpkt 33 len 21 (issuer fpr v4 B8E5F13176D2A7A75220028078DBA3BC47EF2265)
+	hashed subpkt 2 len 4 (sig created 2026-09-12)
+	subpkt 16 len 8 (issuer key ID 78DBA3BC47EF2265)
+	data: [4095 bits]
+# off=1132 ctb=88 tag=2 hlen=2 plen=117
+:signature packet: algo 22, keyid 762F67A0B2C39DE4
+	version 4, created 1789199867, md5len 0, sigclass 0x00
+	digest algo 8, begin of digest 99 ec
+	hashed subpkt 33 len 21 (issuer fpr v4 41587F7DB8C774BCCF131416762F67A0B2C39DE4)
+	hashed subpkt 2 len 4 (sig created 2026-09-12)
+	subpkt 16 len 8 (issuer key ID 762F67A0B2C39DE4)
+	data: [256 bits]
+	data: [251 bits]
+
+$ gpg --list-packets InRelease (signature block of clearsigned file)
+# off=0 ctb=89 tag=2 hlen=3 plen=563
+:signature packet: algo 1, keyid 6ED0E7B82643E131
+	version 4, created 1789199778, md5len 0, sigclass 0x01
+	digest algo 8, begin of digest b5 15
+	hashed subpkt 33 len 21 (issuer fpr v4 4CB50190207B4758A3F73A796ED0E7B82643E131)
+	hashed subpkt 2 len 4 (sig created 2026-09-12)
+	subpkt 16 len 8 (issuer key ID 6ED0E7B82643E131)
+	data: [4095 bits]
+# off=566 ctb=89 tag=2 hlen=3 plen=563
+:signature packet: algo 1, keyid 78DBA3BC47EF2265
+	version 4, created 1789199779, md5len 0, sigclass 0x01
+	digest algo 8, begin of digest c1 e4
+	hashed subpkt 33 len 21 (issuer fpr v4 B8E5F13176D2A7A75220028078DBA3BC47EF2265)
+	hashed subpkt 2 len 4 (sig created 2026-09-12)
+	subpkt 16 len 8 (issuer key ID 78DBA3BC47EF2265)
+	data: [4096 bits]
+# off=1132 ctb=88 tag=2 hlen=2 plen=117
+:signature packet: algo 22, keyid 762F67A0B2C39DE4
+	version 4, created 1789199867, md5len 0, sigclass 0x01
+	digest algo 8, begin of digest 67 ce
+	hashed subpkt 33 len 21 (issuer fpr v4 41587F7DB8C774BCCF131416762F67A0B2C39DE4)
+	hashed subpkt 2 len 4 (sig created 2026-09-12)
+	subpkt 16 len 8 (issuer key ID 762F67A0B2C39DE4)
+	data: [252 bits]
+	data: [256 bits]
+

@@ -1,0 +1,35 @@
+$ gpgv --keyring ./public-key.gpg data.txt.while-valid.sig data.txt
+gpgv: Signature made Mon Jun  1 12:00:00 2020 GMT
+gpgv:                using EDDSA key 545CBD1CAAA8DAEC91870466B2A3A82232517473
+gpgv: Good signature from "Scarlet Expired Key <expired-key@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data.txt.while-valid.asc data.txt
+gpgv: Signature made Mon Jun  1 12:00:00 2020 GMT
+gpgv:                using EDDSA key 545CBD1CAAA8DAEC91870466B2A3A82232517473
+gpgv: Good signature from "Scarlet Expired Key <expired-key@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data.txt.while-valid.clearsign.asc 
+gpgv: Signature made Mon Jun  1 12:00:00 2020 GMT
+gpgv:                using EDDSA key 545CBD1CAAA8DAEC91870466B2A3A82232517473
+gpgv: Good signature from "Scarlet Expired Key <expired-key@example.org>"
+[exit code: 0]
+
+### gpg --verify (full gpg, fresh home, key imported)
+$ gpg --verify data.txt.while-valid.sig data.txt    (fresh GNUPGHOME, only public-key.asc imported)
+gpg: Signature made Mon Jun  1 12:00:00 2020 GMT
+gpg:                using EDDSA key 545CBD1CAAA8DAEC91870466B2A3A82232517473
+gpg: Good signature from "Scarlet Expired Key <expired-key@example.org>" [expired]
+gpg: Note: This key has expired!
+Primary key fingerprint: 545C BD1C AAA8 DAEC 9187  0466 B2A3 A822 3251 7473
+[exit code: 0]
+
+$ gpg --verify data.txt.while-valid.clearsign.asc     (fresh GNUPGHOME, only public-key.asc imported)
+gpg: Signature made Mon Jun  1 12:00:00 2020 GMT
+gpg:                using EDDSA key 545CBD1CAAA8DAEC91870466B2A3A82232517473
+gpg: Good signature from "Scarlet Expired Key <expired-key@example.org>" [expired]
+gpg: Note: This key has expired!
+Primary key fingerprint: 545C BD1C AAA8 DAEC 9187  0466 B2A3 A822 3251 7473
+[exit code: 0]
+

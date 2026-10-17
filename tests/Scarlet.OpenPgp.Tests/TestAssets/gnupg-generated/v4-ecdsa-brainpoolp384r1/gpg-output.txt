@@ -1,0 +1,18 @@
+$ gpgv --keyring ./public-key.gpg data.txt.asc data.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using ECDSA key 199F9E7E04F340CE7E4CE152A3C9142A7E15E0F0
+gpgv: Good signature from "Scarlet brainpoolP384r1 <brainpoolP384r1@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data.txt.sig data.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using ECDSA key 199F9E7E04F340CE7E4CE152A3C9142A7E15E0F0
+gpgv: Good signature from "Scarlet brainpoolP384r1 <brainpoolP384r1@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data.txt.clearsign.asc 
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using ECDSA key 199F9E7E04F340CE7E4CE152A3C9142A7E15E0F0
+gpgv: Good signature from "Scarlet brainpoolP384r1 <brainpoolP384r1@example.org>"
+[exit code: 0]
+

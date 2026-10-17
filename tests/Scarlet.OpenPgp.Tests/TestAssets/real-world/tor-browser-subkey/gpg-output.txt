@@ -1,0 +1,16 @@
+$ gpgv --keyring ./tor-browser-developers.gpg sha256sums-signed-build.txt.asc sha256sums-signed-build.txt
+gpgv: Signature made Mon Oct 12 23:14:34 2026 GMT
+gpgv:                using RSA key 022DA248432D2A0E0F54E65E316C1FACD62D07D9
+gpgv: Good signature from "Tor Browser Developers (signing key) <torbrowser@torproject.org>"
+[exit code: 0]
+
+$ gpg --verify sha256sums-signed-build.txt.asc sha256sums-signed-build.txt    (fresh GNUPGHOME, only tor-browser-developers.asc imported)
+gpg: Signature made Mon Oct 12 23:14:34 2026 GMT
+gpg:                using RSA key 022DA248432D2A0E0F54E65E316C1FACD62D07D9
+gpg: Good signature from "Tor Browser Developers (signing key) <torbrowser@torproject.org>" [unknown]
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: EF6E 286D DA85 EA2A 4BA7  DE68 4E2C 6E87 9329 8290
+     Subkey fingerprint: 022D A248 432D 2A0E 0F54  E65E 316C 1FAC D62D 07D9
+[exit code: 0]
+

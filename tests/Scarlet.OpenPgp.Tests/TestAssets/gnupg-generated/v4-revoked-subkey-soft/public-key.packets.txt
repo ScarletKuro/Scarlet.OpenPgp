@@ -1,0 +1,50 @@
+# off=0 ctb=98 tag=6 hlen=2 plen=51
+:public key packet:
+	version 4, algo 22, created 1577836800, expires 0
+	pkey[0]: [80 bits] ed25519 (1.3.6.1.4.1.11591.15.1)
+	pkey[1]: [263 bits]
+	keyid: 55F6342C0C7B4C27
+# off=53 ctb=b4 tag=13 hlen=2 plen=61
+:user ID packet: "Scarlet Revoked Subkey soft <revoked-subkey-soft@example.org>"
+# off=116 ctb=88 tag=2 hlen=2 plen=143
+:signature packet: algo 22, keyid 55F6342C0C7B4C27
+	version 4, created 1577836800, md5len 0, sigclass 0x13
+	digest algo 10, begin of digest a5 fd
+	hashed subpkt 33 len 21 (issuer fpr v4 E2C042C4C5362753CE168B1855F6342C0C7B4C27)
+	hashed subpkt 2 len 4 (sig created 2020-01-01)
+	hashed subpkt 27 len 1 (key flags: 01)
+	hashed subpkt 11 len 4 (pref-sym-algos: 9 8 7 2)
+	hashed subpkt 21 len 5 (pref-hash-algos: 10 9 8 11 2)
+	hashed subpkt 22 len 3 (pref-zip-algos: 2 3 1)
+	hashed subpkt 30 len 1 (features: 01)
+	hashed subpkt 23 len 1 (keyserver preferences: 80)
+	subpkt 16 len 8 (issuer key ID 55F6342C0C7B4C27)
+	data: [248 bits]
+	data: [255 bits]
+# off=261 ctb=b8 tag=14 hlen=2 plen=51
+:public sub key packet:
+	version 4, algo 22, created 1577836860, expires 0
+	pkey[0]: [80 bits] ed25519 (1.3.6.1.4.1.11591.15.1)
+	pkey[1]: [263 bits]
+	keyid: 11106F925C161A3B
+# off=314 ctb=88 tag=2 hlen=2 plen=147
+:signature packet: algo 22, keyid 55F6342C0C7B4C27
+	version 4, created 1583064000, md5len 0, sigclass 0x28
+	digest algo 10, begin of digest 15 2f
+	hashed subpkt 33 len 21 (issuer fpr v4 E2C042C4C5362753CE168B1855F6342C0C7B4C27)
+	hashed subpkt 2 len 4 (sig created 2020-03-01)
+	hashed subpkt 29 len 28 (revocation reason 0x01 (Subkey superseded (fixture\x29))
+	subpkt 16 len 8 (issuer key ID 55F6342C0C7B4C27)
+	data: [255 bits]
+	data: [254 bits]
+# off=463 ctb=88 tag=2 hlen=2 plen=239
+:signature packet: algo 22, keyid 55F6342C0C7B4C27
+	version 4, created 1577836860, md5len 0, sigclass 0x18
+	digest algo 10, begin of digest 7c 8a
+	hashed subpkt 33 len 21 (issuer fpr v4 E2C042C4C5362753CE168B1855F6342C0C7B4C27)
+	hashed subpkt 2 len 4 (sig created 2020-01-01)
+	hashed subpkt 27 len 1 (key flags: 02)
+	subpkt 16 len 8 (issuer key ID 55F6342C0C7B4C27)
+	subpkt 32 len 117 (signature: v4, class 0x19, algo 22, digest algo 10)
+	data: [256 bits]
+	data: [255 bits]

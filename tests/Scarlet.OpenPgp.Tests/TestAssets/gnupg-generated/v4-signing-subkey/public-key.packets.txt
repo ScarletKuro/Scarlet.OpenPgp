@@ -1,0 +1,54 @@
+# off=0 ctb=99 tag=6 hlen=3 plen=397
+:public key packet:
+	version 4, algo 1, created 1735689600, expires 0
+	pkey[0]: [3072 bits]
+	pkey[1]: [17 bits]
+	keyid: 2DEEF822DFBFB6CB
+# off=400 ctb=b4 tag=13 hlen=2 plen=35
+:user ID packet: "Scarlet Subkey <subkey@example.org>"
+# off=437 ctb=89 tag=2 hlen=3 plen=462
+:signature packet: algo 1, keyid 2DEEF822DFBFB6CB
+	version 4, created 1735689600, md5len 0, sigclass 0x13
+	digest algo 10, begin of digest 84 13
+	hashed subpkt 33 len 21 (issuer fpr v4 9DB4A83ABF3FF7BAE1E205862DEEF822DFBFB6CB)
+	hashed subpkt 2 len 4 (sig created 2025-01-01)
+	hashed subpkt 27 len 1 (key flags: 01)
+	hashed subpkt 11 len 4 (pref-sym-algos: 9 8 7 2)
+	hashed subpkt 21 len 5 (pref-hash-algos: 10 9 8 11 2)
+	hashed subpkt 22 len 3 (pref-zip-algos: 2 3 1)
+	hashed subpkt 30 len 1 (features: 01)
+	hashed subpkt 23 len 1 (keyserver preferences: 80)
+	subpkt 16 len 8 (issuer key ID 2DEEF822DFBFB6CB)
+	data: [3071 bits]
+# off=902 ctb=b8 tag=14 hlen=2 plen=82
+:public sub key packet:
+	version 4, algo 19, created 1735689660, expires 0
+	pkey[0]: [72 bits] nistp256 (1.2.840.10045.3.1.7)
+	pkey[1]: [515 bits]
+	keyid: 7B8B6791D30CB959
+# off=986 ctb=89 tag=2 hlen=3 plen=557
+:signature packet: algo 1, keyid 2DEEF822DFBFB6CB
+	version 4, created 1735689660, md5len 0, sigclass 0x18
+	digest algo 10, begin of digest 8c 63
+	hashed subpkt 33 len 21 (issuer fpr v4 9DB4A83ABF3FF7BAE1E205862DEEF822DFBFB6CB)
+	hashed subpkt 2 len 4 (sig created 2025-01-01)
+	hashed subpkt 27 len 1 (key flags: 02)
+	subpkt 16 len 8 (issuer key ID 2DEEF822DFBFB6CB)
+	subpkt 32 len 117 (signature: v4, class 0x19, algo 19, digest algo 8)
+	data: [3072 bits]
+# off=1546 ctb=b8 tag=14 hlen=2 plen=56
+:public sub key packet:
+	version 4, algo 18, created 1735689720, expires 0
+	pkey[0]: [88 bits] cv25519 (1.3.6.1.4.1.3029.1.5.1)
+	pkey[1]: [263 bits]
+	pkey[2]: [32 bits]
+	keyid: E4E7A829531EB00B
+# off=1604 ctb=89 tag=2 hlen=3 plen=438
+:signature packet: algo 1, keyid 2DEEF822DFBFB6CB
+	version 4, created 1735689720, md5len 0, sigclass 0x18
+	digest algo 10, begin of digest f3 69
+	hashed subpkt 33 len 21 (issuer fpr v4 9DB4A83ABF3FF7BAE1E205862DEEF822DFBFB6CB)
+	hashed subpkt 2 len 4 (sig created 2025-01-01)
+	hashed subpkt 27 len 1 (key flags: 0C)
+	subpkt 16 len 8 (issuer key ID 2DEEF822DFBFB6CB)
+	data: [3071 bits]

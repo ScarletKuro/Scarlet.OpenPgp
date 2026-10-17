@@ -1,0 +1,32 @@
+$ gpg --show-keys --with-subkey-fingerprints --list-options show-unusable-subkeys tor-browser-developers.gpg
+pub   rsa4096 2014-12-15 [C] [expires: 2030-11-18]
+      EF6E286DDA85EA2A4BA7DE684E2C6E8793298290
+uid                      Tor Browser Developers (signing key) <torbrowser@torproject.org>
+sub   rsa4096 2026-08-11 [S] [expires: 2028-11-28]
+      022DA248432D2A0E0F54E65E316C1FACD62D07D9
+sub   rsa4096 2016-08-24 [S] [expired: 2018-08-24]
+      A4300A6BC93C0877A4451486D1483FA6C3C07136
+sub   rsa4096 2018-05-26 [S] [expired: 2022-01-04]
+      110775B5D101FB36BC6C911BEB774491D9FF06E2
+sub   rsa4096 2024-07-15 [S] [expires: 2026-10-26]
+      CAAE408AEBE2288E96FC5D5E157432CF78A65729
+sub   rsa4096 2021-09-17 [S] [expired: 2024-09-13]
+      613188FC5BE2176E3ED54901E53D989A9E2D47BF
+sub   rsa4096 2014-12-15 [S] [expired: 2017-08-25]
+      BA1EE421BBB45263180E1FC72E1AC68ED40814E0
+sub   rsa4096 2014-12-15 [S] [expired: 2017-08-25]
+      5242013F02AFC851B1C736B87017ADCEF65C2036
+sub   rsa4096 2014-12-15 [S] [revoked: 2015-08-26]
+      05FA44253F6C19A8B7F518D42D000988589839A3
+
+
+$ gpg --list-packets sha256sums-signed-build.txt.asc
+# off=0 ctb=89 tag=2 hlen=3 plen=563
+:signature packet: algo 1, keyid 316C1FACD62D07D9
+	version 4, created 1791846874, md5len 0, sigclass 0x00
+	digest algo 10, begin of digest 80 4c
+	hashed subpkt 33 len 21 (issuer fpr v4 022DA248432D2A0E0F54E65E316C1FACD62D07D9)
+	hashed subpkt 2 len 4 (sig created 2026-10-12)
+	subpkt 16 len 8 (issuer key ID 316C1FACD62D07D9)
+	data: [4095 bits]
+

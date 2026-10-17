@@ -1,0 +1,47 @@
+$ gpg --show-keys --with-subkey-fingerprints --list-options show-unusable-subkeys gnupg-signature-keys.gpg
+pub   ed25519 2020-08-24 [SC] [expires: 2030-06-30]
+      6DAA6E64A76D2840571B4902528897B826403ADA
+uid                      Werner Koch (dist signing 2020)
+
+pub   ed25519 2021-05-19 [SC] [expires: 2027-04-04]
+      AC8E115BF73E2D8D47FA9908E98E9B2D19C6C8BD
+uid                      Niibe Yutaka (GnuPG Release Key)
+
+pub   rsa3072 2025-05-09 [SC] [expires: 2033-03-03]
+      3B761AE4E63BF3519CE7D63BECB664CBE1332EEF
+      Revocable by: 02F38DFF731FF97CB039A1DA549E695E905BA208
+uid                      Alexander Kulbartsch (GnuPG Release Key)
+
+pub   ed25519 2026-07-20 [SC] [expires: 2036-06-30]
+      D02AE49173BDAD56E4F88223707E56D3DEF4115C
+uid                      Ingo Klöcker (Release Signing Key 2026)
+
+pub   brainpoolP256r1 2021-10-15 [SC] [expires: 2029-12-31]
+      02F38DFF731FF97CB039A1DA549E695E905BA208
+uid                      GnuPG.com (Release Signing Key 2021)
+
+pub   brainpoolP384r1 2026-02-23 [SC] [expires: 2034-02-23]
+      1493269DE61F124AA69A316E3ADF34EBDBB200A4
+uid                      GnuPG.com (Release Signing Key 2026)
+
+
+$ gpg --list-packets npth-1.8.tar.bz2.sig
+# off=0 ctb=88 tag=2 hlen=2 plen=117
+:signature packet: algo 22, keyid 528897B826403ADA
+	version 4, created 1731409039, md5len 0, sigclass 0x00
+	digest algo 8, begin of digest c3 33
+	hashed subpkt 33 len 21 (issuer fpr v4 6DAA6E64A76D2840571B4902528897B826403ADA)
+	hashed subpkt 2 len 4 (sig created 2024-11-12)
+	subpkt 16 len 8 (issuer key ID 528897B826403ADA)
+	data: [256 bits]
+	data: [252 bits]
+# off=119 ctb=88 tag=2 hlen=2 plen=117
+:signature packet: algo 22, keyid E98E9B2D19C6C8BD
+	version 4, created 1731459053, md5len 0, sigclass 0x00
+	digest algo 8, begin of digest e8 f6
+	hashed subpkt 33 len 21 (issuer fpr v4 AC8E115BF73E2D8D47FA9908E98E9B2D19C6C8BD)
+	hashed subpkt 2 len 4 (sig created 2024-11-13)
+	subpkt 16 len 8 (issuer key ID E98E9B2D19C6C8BD)
+	data: [256 bits]
+	data: [256 bits]
+

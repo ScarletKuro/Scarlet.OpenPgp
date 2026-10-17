@@ -1,0 +1,83 @@
+$ gpgv --keyring ./public-key.gpg data.txt.expired-1d.sig data.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2020 GMT
+gpgv:                using EDDSA key 86157C13E679089AF133BE536D975BDE5DB498C1
+gpgv: Expired signature from "Scarlet Sig Expire <sig-expire@example.org>"
+gpgv: Signature expired Fri Jan  3 12:00:00 2020 GMT
+[exit code: 1]
+
+$ gpgv --keyring ./public-key.gpg data.txt.expired-1d.asc data.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2020 GMT
+gpgv:                using EDDSA key 86157C13E679089AF133BE536D975BDE5DB498C1
+gpgv: Expired signature from "Scarlet Sig Expire <sig-expire@example.org>"
+gpgv: Signature expired Fri Jan  3 12:00:00 2020 GMT
+[exit code: 1]
+
+$ gpgv --keyring ./public-key.gpg data.txt.expired-1d.clearsign.asc 
+gpgv: Signature made Thu Jan  2 12:00:00 2020 GMT
+gpgv:                using EDDSA key 86157C13E679089AF133BE536D975BDE5DB498C1
+gpgv: Expired signature from "Scarlet Sig Expire <sig-expire@example.org>"
+gpgv: Signature expired Fri Jan  3 12:00:00 2020 GMT
+[exit code: 1]
+
+$ gpgv --keyring ./public-key.gpg data.txt.expires-2099.sig data.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2020 GMT
+gpgv:                using EDDSA key 86157C13E679089AF133BE536D975BDE5DB498C1
+gpgv: Good signature from "Scarlet Sig Expire <sig-expire@example.org>"
+gpgv: Signature expires Thu Jan  1 12:00:00 2099 GMT
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data.txt.expires-2099.asc data.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2020 GMT
+gpgv:                using EDDSA key 86157C13E679089AF133BE536D975BDE5DB498C1
+gpgv: Good signature from "Scarlet Sig Expire <sig-expire@example.org>"
+gpgv: Signature expires Thu Jan  1 12:00:00 2099 GMT
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data.txt.expires-2099.clearsign.asc 
+gpgv: Signature made Thu Jan  2 12:00:00 2020 GMT
+gpgv:                using EDDSA key 86157C13E679089AF133BE536D975BDE5DB498C1
+gpgv: Good signature from "Scarlet Sig Expire <sig-expire@example.org>"
+gpgv: Signature expires Thu Jan  1 12:00:00 2099 GMT
+[exit code: 0]
+
+### gpg --verify (full gpg, fresh home, key imported)
+$ gpg --verify data.txt.expired-1d.sig data.txt    (fresh GNUPGHOME, only public-key.asc imported)
+gpg: Signature made Thu Jan  2 12:00:00 2020 GMT
+gpg:                using EDDSA key 86157C13E679089AF133BE536D975BDE5DB498C1
+gpg: Expired signature from "Scarlet Sig Expire <sig-expire@example.org>" [unknown]
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: 8615 7C13 E679 089A F133  BE53 6D97 5BDE 5DB4 98C1
+gpg: Signature expired Fri Jan  3 12:00:00 2020 GMT
+[exit code: 1]
+
+$ gpg --verify data.txt.expired-1d.clearsign.asc     (fresh GNUPGHOME, only public-key.asc imported)
+gpg: Signature made Thu Jan  2 12:00:00 2020 GMT
+gpg:                using EDDSA key 86157C13E679089AF133BE536D975BDE5DB498C1
+gpg: Expired signature from "Scarlet Sig Expire <sig-expire@example.org>" [unknown]
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: 8615 7C13 E679 089A F133  BE53 6D97 5BDE 5DB4 98C1
+gpg: Signature expired Fri Jan  3 12:00:00 2020 GMT
+[exit code: 1]
+
+$ gpg --verify data.txt.expires-2099.sig data.txt    (fresh GNUPGHOME, only public-key.asc imported)
+gpg: Signature made Thu Jan  2 12:00:00 2020 GMT
+gpg:                using EDDSA key 86157C13E679089AF133BE536D975BDE5DB498C1
+gpg: Good signature from "Scarlet Sig Expire <sig-expire@example.org>" [unknown]
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: 8615 7C13 E679 089A F133  BE53 6D97 5BDE 5DB4 98C1
+gpg: Signature expires Thu Jan  1 12:00:00 2099 GMT
+[exit code: 0]
+
+$ gpg --verify data.txt.expires-2099.clearsign.asc     (fresh GNUPGHOME, only public-key.asc imported)
+gpg: Signature made Thu Jan  2 12:00:00 2020 GMT
+gpg:                using EDDSA key 86157C13E679089AF133BE536D975BDE5DB498C1
+gpg: Good signature from "Scarlet Sig Expire <sig-expire@example.org>" [unknown]
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: 8615 7C13 E679 089A F133  BE53 6D97 5BDE 5DB4 98C1
+gpg: Signature expires Thu Jan  1 12:00:00 2099 GMT
+[exit code: 0]
+

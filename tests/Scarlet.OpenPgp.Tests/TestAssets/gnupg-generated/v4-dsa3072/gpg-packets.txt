@@ -1,0 +1,28 @@
+$ gpg --show-keys --with-subkey-fingerprints --list-options show-unusable-subkeys public-key.asc
+pub   dsa3072 2025-01-01 [SC]
+      99DA89BA18421DE078CB2EE4B825B73F1A8A48F4
+uid                      Scarlet dsa3072 <dsa3072@example.org>
+
+
+$ gpg --list-packets data.txt.sig
+# off=0 ctb=88 tag=2 hlen=2 plen=117
+:signature packet: algo 17, keyid B825B73F1A8A48F4
+	version 4, created 1735819200, md5len 0, sigclass 0x00
+	digest algo 8, begin of digest 62 d3
+	hashed subpkt 33 len 21 (issuer fpr v4 99DA89BA18421DE078CB2EE4B825B73F1A8A48F4)
+	hashed subpkt 2 len 4 (sig created 2025-01-02)
+	subpkt 16 len 8 (issuer key ID B825B73F1A8A48F4)
+	data: [255 bits]
+	data: [256 bits]
+
+$ gpg --list-packets data.txt.clearsign.asc (signature block of clearsigned file)
+# off=0 ctb=88 tag=2 hlen=2 plen=117
+:signature packet: algo 17, keyid B825B73F1A8A48F4
+	version 4, created 1735819200, md5len 0, sigclass 0x01
+	digest algo 8, begin of digest 4c 35
+	hashed subpkt 33 len 21 (issuer fpr v4 99DA89BA18421DE078CB2EE4B825B73F1A8A48F4)
+	hashed subpkt 2 len 4 (sig created 2025-01-02)
+	subpkt 16 len 8 (issuer key ID B825B73F1A8A48F4)
+	data: [256 bits]
+	data: [254 bits]
+

@@ -1,0 +1,19 @@
+$ gpg --show-keys --with-subkey-fingerprints --list-options show-unusable-subkeys public-key.asc
+pub   ed25519 2020-01-01 [C]
+      D59EE7B65D68E9E585A7727D6BB80F9D564622CB
+uid                      Scarlet Expired Subkey <expired-subkey@example.org>
+sub   nistp256 2020-01-01 [S] [expired: 2020-12-31]
+      DE2992042C99BF46FCEB89C2546143853CEA7B81
+
+
+$ gpg --list-packets data.txt.while-valid.sig
+# off=0 ctb=88 tag=2 hlen=2 plen=117
+:signature packet: algo 19, keyid 546143853CEA7B81
+	version 4, created 1591012800, md5len 0, sigclass 0x00
+	digest algo 8, begin of digest 66 8c
+	hashed subpkt 33 len 21 (issuer fpr v4 DE2992042C99BF46FCEB89C2546143853CEA7B81)
+	hashed subpkt 2 len 4 (sig created 2020-06-01)
+	subpkt 16 len 8 (issuer key ID 546143853CEA7B81)
+	data: [256 bits]
+	data: [254 bits]
+

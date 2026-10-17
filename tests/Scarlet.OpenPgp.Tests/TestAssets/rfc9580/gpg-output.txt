@@ -1,0 +1,29 @@
+$ gpgv --keyring ./a1-v4-ed25519legacy-key.gpg a2-v4-ed25519legacy-sig.sig a2-signed-data.txt
+gpgv: Signature made Wed Sep 16 12:24:53 2015 GMT
+gpgv:                using EDDSA key 8CFDE12197965A9A
+gpgv: Can't check signature: No public key
+[exit code: 2]
+
+$ gpgv --keyring ./a1-v4-ed25519legacy-key.gpg a2-v4-ed25519legacy-sig.asc a2-signed-data.txt
+gpgv: no valid OpenPGP data found.
+gpgv: Signature made Wed Sep 16 12:24:53 2015 GMT
+gpgv:                using EDDSA key 8CFDE12197965A9A
+gpgv: Can't check signature: No public key
+[exit code: 2]
+
+$ gpgv --keyring ./a3-v6-certificate.gpg a6-cleartext-signed.asc 
+gpgv: packet(2) with unknown version 6
+gpgv: no signature found
+gpgv: the signature could not be verified.
+Please remember that the signature file (.sig or .asc)
+should be the first file given on the command line.
+[exit code: 2]
+
+$ gpgv --keyring ./a3-v6-certificate.gpg a7-inline-signed.asc 
+gpgv: onepass_sig with unknown version 6
+gpgv: no signature found
+gpgv: the signature could not be verified.
+Please remember that the signature file (.sig or .asc)
+should be the first file given on the command line.
+[exit code: 2]
+

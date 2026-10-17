@@ -1,0 +1,17 @@
+$ gpg --show-keys --with-subkey-fingerprints --list-options show-unusable-subkeys public-key.asc
+pub   ed25519 2020-01-01 [SC] [expired: 2020-12-31]
+      545CBD1CAAA8DAEC91870466B2A3A82232517473
+uid                      Scarlet Expired Key <expired-key@example.org>
+
+
+$ gpg --list-packets data.txt.while-valid.sig
+# off=0 ctb=88 tag=2 hlen=2 plen=117
+:signature packet: algo 22, keyid B2A3A82232517473
+	version 4, created 1591012800, md5len 0, sigclass 0x00
+	digest algo 8, begin of digest c4 25
+	hashed subpkt 33 len 21 (issuer fpr v4 545CBD1CAAA8DAEC91870466B2A3A82232517473)
+	hashed subpkt 2 len 4 (sig created 2020-06-01)
+	subpkt 16 len 8 (issuer key ID B2A3A82232517473)
+	data: [255 bits]
+	data: [256 bits]
+

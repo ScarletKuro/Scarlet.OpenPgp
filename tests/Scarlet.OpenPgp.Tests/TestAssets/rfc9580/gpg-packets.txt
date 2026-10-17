@@ -1,0 +1,24 @@
+$ gpg --list-packets a2-v4-ed25519legacy-sig.sig
+# off=0 ctb=88 tag=2 hlen=2 plen=94
+:signature packet: algo 22, keyid 8CFDE12197965A9A
+	version 4, created 1442406293, md5len 0, sigclass 0x00
+	digest algo 8, begin of digest f6 22
+	hashed subpkt 2 len 4 (sig created 2015-09-16)
+	subpkt 16 len 8 (issuer key ID 8CFDE12197965A9A)
+	data: [255 bits]
+	data: [256 bits]
+
+$ gpg --list-packets a3-v6-certificate.gpg
+gpg: packet(6) with unknown version 6
+gpg: packet(2) with unknown version 6
+gpg: packet(14) with unknown version 6
+gpg: packet(2) with unknown version 6
+# off=0 ctb=c6 tag=6 hlen=2 plen=42 new-ctb
+:key packet: [unknown version]
+# off=44 ctb=c2 tag=2 hlen=2 plen=177 new-ctb
+:signature packet: [unknown version]
+# off=223 ctb=ce tag=14 hlen=2 plen=42 new-ctb
+:key packet: [unknown version]
+# off=267 ctb=c2 tag=2 hlen=2 plen=155 new-ctb
+:signature packet: [unknown version]
+

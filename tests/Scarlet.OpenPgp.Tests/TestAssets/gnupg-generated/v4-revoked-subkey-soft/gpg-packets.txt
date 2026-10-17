@@ -1,0 +1,30 @@
+$ gpg --show-keys --with-subkey-fingerprints --list-options show-unusable-subkeys public-key.asc
+pub   ed25519 2020-01-01 [C]
+      E2C042C4C5362753CE168B1855F6342C0C7B4C27
+uid                      Scarlet Revoked Subkey soft <revoked-subkey-soft@example.org>
+sub   ed25519 2020-01-01 [S] [revoked: 2020-03-01]
+      9164E55270C6EBE8E57D5A7D11106F925C161A3B
+
+
+$ gpg --list-packets data.txt.before-revocation.sig
+# off=0 ctb=88 tag=2 hlen=2 plen=117
+:signature packet: algo 22, keyid 11106F925C161A3B
+	version 4, created 1580558400, md5len 0, sigclass 0x00
+	digest algo 8, begin of digest c7 c5
+	hashed subpkt 33 len 21 (issuer fpr v4 9164E55270C6EBE8E57D5A7D11106F925C161A3B)
+	hashed subpkt 2 len 4 (sig created 2020-02-01)
+	subpkt 16 len 8 (issuer key ID 11106F925C161A3B)
+	data: [253 bits]
+	data: [255 bits]
+
+$ gpg --list-packets data.txt.after-revocation.sig
+# off=0 ctb=88 tag=2 hlen=2 plen=117
+:signature packet: algo 22, keyid 11106F925C161A3B
+	version 4, created 1585742400, md5len 0, sigclass 0x00
+	digest algo 8, begin of digest b1 b6
+	hashed subpkt 33 len 21 (issuer fpr v4 9164E55270C6EBE8E57D5A7D11106F925C161A3B)
+	hashed subpkt 2 len 4 (sig created 2020-04-01)
+	subpkt 16 len 8 (issuer key ID 11106F925C161A3B)
+	data: [256 bits]
+	data: [253 bits]
+

@@ -1,0 +1,37 @@
+$ gpgv --keyring ./public-key.gpg data.txt.while-valid.sig data.txt
+gpgv: Signature made Mon Jun  1 12:00:00 2020 GMT
+gpgv:                using ECDSA key DE2992042C99BF46FCEB89C2546143853CEA7B81
+gpgv: Good signature from "Scarlet Expired Subkey <expired-subkey@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data.txt.while-valid.asc data.txt
+gpgv: Signature made Mon Jun  1 12:00:00 2020 GMT
+gpgv:                using ECDSA key DE2992042C99BF46FCEB89C2546143853CEA7B81
+gpgv: Good signature from "Scarlet Expired Subkey <expired-subkey@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data.txt.while-valid.clearsign.asc 
+gpgv: Signature made Mon Jun  1 12:00:00 2020 GMT
+gpgv:                using ECDSA key DE2992042C99BF46FCEB89C2546143853CEA7B81
+gpgv: Good signature from "Scarlet Expired Subkey <expired-subkey@example.org>"
+[exit code: 0]
+
+### gpg --verify (full gpg, fresh home, key imported)
+$ gpg --verify data.txt.while-valid.sig data.txt    (fresh GNUPGHOME, only public-key.asc imported)
+gpg: Signature made Mon Jun  1 12:00:00 2020 GMT
+gpg:                using ECDSA key DE2992042C99BF46FCEB89C2546143853CEA7B81
+gpg: Good signature from "Scarlet Expired Subkey <expired-subkey@example.org>" [unknown]
+gpg: Note: This key has expired!
+Primary key fingerprint: D59E E7B6 5D68 E9E5 85A7  727D 6BB8 0F9D 5646 22CB
+     Subkey fingerprint: DE29 9204 2C99 BF46 FCEB  89C2 5461 4385 3CEA 7B81
+[exit code: 0]
+
+$ gpg --verify data.txt.while-valid.clearsign.asc     (fresh GNUPGHOME, only public-key.asc imported)
+gpg: Signature made Mon Jun  1 12:00:00 2020 GMT
+gpg:                using ECDSA key DE2992042C99BF46FCEB89C2546143853CEA7B81
+gpg: Good signature from "Scarlet Expired Subkey <expired-subkey@example.org>" [unknown]
+gpg: Note: This key has expired!
+Primary key fingerprint: D59E E7B6 5D68 E9E5 85A7  727D 6BB8 0F9D 5646 22CB
+     Subkey fingerprint: DE29 9204 2C99 BF46 FCEB  89C2 5461 4385 3CEA 7B81
+[exit code: 0]
+

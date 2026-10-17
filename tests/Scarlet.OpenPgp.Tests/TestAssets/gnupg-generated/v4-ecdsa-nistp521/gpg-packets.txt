@@ -1,0 +1,28 @@
+$ gpg --show-keys --with-subkey-fingerprints --list-options show-unusable-subkeys public-key.asc
+pub   nistp521 2025-01-01 [SC]
+      EFCB8696145F9024EE2BFAD888AC494F4C6A15B2
+uid                      Scarlet nistp521 <nistp521@example.org>
+
+
+$ gpg --list-packets data.txt.sig
+# off=0 ctb=88 tag=2 hlen=2 plen=185
+:signature packet: algo 19, keyid 88AC494F4C6A15B2
+	version 4, created 1735819200, md5len 0, sigclass 0x00
+	digest algo 10, begin of digest 45 15
+	hashed subpkt 33 len 21 (issuer fpr v4 EFCB8696145F9024EE2BFAD888AC494F4C6A15B2)
+	hashed subpkt 2 len 4 (sig created 2025-01-02)
+	subpkt 16 len 8 (issuer key ID 88AC494F4C6A15B2)
+	data: [521 bits]
+	data: [521 bits]
+
+$ gpg --list-packets data.txt.clearsign.asc (signature block of clearsigned file)
+# off=0 ctb=88 tag=2 hlen=2 plen=185
+:signature packet: algo 19, keyid 88AC494F4C6A15B2
+	version 4, created 1735819200, md5len 0, sigclass 0x01
+	digest algo 10, begin of digest 05 d4
+	hashed subpkt 33 len 21 (issuer fpr v4 EFCB8696145F9024EE2BFAD888AC494F4C6A15B2)
+	hashed subpkt 2 len 4 (sig created 2025-01-02)
+	subpkt 16 len 8 (issuer key ID 88AC494F4C6A15B2)
+	data: [521 bits]
+	data: [521 bits]
+

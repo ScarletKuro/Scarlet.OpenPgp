@@ -1,0 +1,16 @@
+$ gpg --show-keys --with-subkey-fingerprints --list-options show-unusable-subkeys public-key.asc
+pub   ed448 2025-01-01 [SC]
+      C87F3887595E494FE65A8FD6053DC65AEA4063420463D7CC43112B84D8BA20F8
+uid                      Scarlet Ed448 v5 <ed448@example.org>
+
+
+$ gpg --list-packets data.txt.sig
+# off=0 ctb=88 tag=2 hlen=2 plen=169
+:signature packet: algo 22, keyid C87F3887595E494F
+	version 5, created 1735819200, md5len 0, sigclass 0x00
+	digest algo 10, begin of digest 5f 68
+	hashed subpkt 33 len 33 (issuer fpr v5 C87F3887595E494FE65A8FD6053DC65AEA4063420463D7CC43112B84D8BA20F8)
+	hashed subpkt 2 len 4 (sig created 2025-01-02)
+	data: [452 bits]
+	data: [456 bits]
+

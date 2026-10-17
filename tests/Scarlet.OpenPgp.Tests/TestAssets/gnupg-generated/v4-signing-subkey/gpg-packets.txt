@@ -1,0 +1,32 @@
+$ gpg --show-keys --with-subkey-fingerprints --list-options show-unusable-subkeys public-key.asc
+pub   rsa3072 2025-01-01 [C]
+      9DB4A83ABF3FF7BAE1E205862DEEF822DFBFB6CB
+uid                      Scarlet Subkey <subkey@example.org>
+sub   nistp256 2025-01-01 [S]
+      CC4D3084176105CC24EB67687B8B6791D30CB959
+sub   cv25519 2025-01-01 [E]
+      1131267B3EB47637B93DDB0DE4E7A829531EB00B
+
+
+$ gpg --list-packets data.txt.sig
+# off=0 ctb=88 tag=2 hlen=2 plen=117
+:signature packet: algo 19, keyid 7B8B6791D30CB959
+	version 4, created 1735819200, md5len 0, sigclass 0x00
+	digest algo 8, begin of digest c8 ba
+	hashed subpkt 33 len 21 (issuer fpr v4 CC4D3084176105CC24EB67687B8B6791D30CB959)
+	hashed subpkt 2 len 4 (sig created 2025-01-02)
+	subpkt 16 len 8 (issuer key ID 7B8B6791D30CB959)
+	data: [254 bits]
+	data: [254 bits]
+
+$ gpg --list-packets data.txt.clearsign.asc (signature block of clearsigned file)
+# off=0 ctb=88 tag=2 hlen=2 plen=117
+:signature packet: algo 19, keyid 7B8B6791D30CB959
+	version 4, created 1735819200, md5len 0, sigclass 0x01
+	digest algo 8, begin of digest 00 a3
+	hashed subpkt 33 len 21 (issuer fpr v4 CC4D3084176105CC24EB67687B8B6791D30CB959)
+	hashed subpkt 2 len 4 (sig created 2025-01-02)
+	subpkt 16 len 8 (issuer key ID 7B8B6791D30CB959)
+	data: [254 bits]
+	data: [254 bits]
+

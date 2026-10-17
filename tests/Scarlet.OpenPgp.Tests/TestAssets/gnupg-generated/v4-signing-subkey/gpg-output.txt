@@ -1,0 +1,18 @@
+$ gpgv --keyring ./public-key.gpg data.txt.asc data.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using ECDSA key CC4D3084176105CC24EB67687B8B6791D30CB959
+gpgv: Good signature from "Scarlet Subkey <subkey@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data.txt.sig data.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using ECDSA key CC4D3084176105CC24EB67687B8B6791D30CB959
+gpgv: Good signature from "Scarlet Subkey <subkey@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data.txt.clearsign.asc 
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using ECDSA key CC4D3084176105CC24EB67687B8B6791D30CB959
+gpgv: Good signature from "Scarlet Subkey <subkey@example.org>"
+[exit code: 0]
+

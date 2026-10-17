@@ -1,0 +1,36 @@
+$ gpgv --keyring ./richard-lau.gpg SHASUMS256.txt.asc 
+gpgv: Signature made Wed Oct 14 15:21:32 2026 GMT
+gpgv:                using RSA key C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C
+gpgv: Good signature from "Richard Lau <richard.lau@ibm.com>"
+gpgv:                 aka "Richard Lau <rlau@redhat.com>"
+gpgv: WARNING: not a detached signature; file 'SHASUMS256.txt' was NOT verified!
+[exit code: 0]
+
+$ gpgv --keyring ./richard-lau.gpg SHASUMS256.txt.sig SHASUMS256.txt
+gpgv: Signature made Wed Oct 14 15:21:34 2026 GMT
+gpgv:                using RSA key C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C
+gpgv: Good signature from "Richard Lau <richard.lau@ibm.com>"
+gpgv:                 aka "Richard Lau <rlau@redhat.com>"
+[exit code: 0]
+
+$ gpg --verify SHASUMS256.txt.asc     (fresh GNUPGHOME, only richard-lau.asc imported)
+gpg: Signature made Wed Oct 14 15:21:32 2026 GMT
+gpg:                using RSA key C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C
+gpg: Good signature from "Richard Lau <richard.lau@ibm.com>" [unknown]
+gpg:                 aka "Richard Lau <rlau@redhat.com>" [unknown]
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: C82F A3AE 1CBE DC6B E46B  9360 C43C EC45 C17A B93C
+gpg: WARNING: not a detached signature; file 'SHASUMS256.txt' was NOT verified!
+[exit code: 0]
+
+$ gpg --verify SHASUMS256.txt.sig SHASUMS256.txt    (fresh GNUPGHOME, only richard-lau.asc imported)
+gpg: Signature made Wed Oct 14 15:21:34 2026 GMT
+gpg:                using RSA key C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C
+gpg: Good signature from "Richard Lau <richard.lau@ibm.com>" [unknown]
+gpg:                 aka "Richard Lau <rlau@redhat.com>" [unknown]
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: C82F A3AE 1CBE DC6B E46B  9360 C43C EC45 C17A B93C
+[exit code: 0]
+

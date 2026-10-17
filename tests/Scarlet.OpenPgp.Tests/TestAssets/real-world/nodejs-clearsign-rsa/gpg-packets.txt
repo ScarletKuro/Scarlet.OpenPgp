@@ -1,0 +1,30 @@
+$ gpg --show-keys --with-subkey-fingerprints --list-options show-unusable-subkeys richard-lau.gpg
+pub   rsa4096 2019-10-28 [SC]
+      C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C
+uid                      Richard Lau <richard.lau@ibm.com>
+uid                      Richard Lau <rlau@redhat.com>
+uid           [ revoked] Richard Lau <riclau@uk.ibm.com>
+sub   rsa4096 2019-10-28 [E]
+      C4960C6DAA2AEBC352F3E5B8E140F61BC5979DCC
+
+
+$ gpg --list-packets SHASUMS256.txt.asc (signature block of clearsigned file)
+# off=0 ctb=89 tag=2 hlen=3 plen=563
+:signature packet: algo 1, keyid C43CEC45C17AB93C
+	version 4, created 1791991292, md5len 0, sigclass 0x01
+	digest algo 8, begin of digest 6c 78
+	hashed subpkt 33 len 21 (issuer fpr v4 C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C)
+	hashed subpkt 2 len 4 (sig created 2026-10-14)
+	subpkt 16 len 8 (issuer key ID C43CEC45C17AB93C)
+	data: [4096 bits]
+
+$ gpg --list-packets SHASUMS256.txt.sig
+# off=0 ctb=89 tag=2 hlen=3 plen=563
+:signature packet: algo 1, keyid C43CEC45C17AB93C
+	version 4, created 1791991294, md5len 0, sigclass 0x00
+	digest algo 8, begin of digest cc 2a
+	hashed subpkt 33 len 21 (issuer fpr v4 C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C)
+	hashed subpkt 2 len 4 (sig created 2026-10-14)
+	subpkt 16 len 8 (issuer key ID C43CEC45C17AB93C)
+	data: [4096 bits]
+

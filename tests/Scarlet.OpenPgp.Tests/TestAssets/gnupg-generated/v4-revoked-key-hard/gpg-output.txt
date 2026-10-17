@@ -1,0 +1,89 @@
+$ gpgv --keyring ./public-key.gpg data.txt.before-revocation.sig data.txt
+gpgv: Signature made Sat Feb  1 12:00:00 2020 GMT
+gpgv:                using EDDSA key DD1658A38D9EB40A29B2F815C83B6D337E988A5A
+gpgv: Good signature from "Scarlet Revoked hard <revoked-hard@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data.txt.before-revocation.asc data.txt
+gpgv: Signature made Sat Feb  1 12:00:00 2020 GMT
+gpgv:                using EDDSA key DD1658A38D9EB40A29B2F815C83B6D337E988A5A
+gpgv: Good signature from "Scarlet Revoked hard <revoked-hard@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data.txt.before-revocation.clearsign.asc 
+gpgv: Signature made Sat Feb  1 12:00:00 2020 GMT
+gpgv:                using EDDSA key DD1658A38D9EB40A29B2F815C83B6D337E988A5A
+gpgv: Good signature from "Scarlet Revoked hard <revoked-hard@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data.txt.after-revocation.sig data.txt
+gpgv: Signature made Wed Apr  1 12:00:00 2020 GMT
+gpgv:                using EDDSA key DD1658A38D9EB40A29B2F815C83B6D337E988A5A
+gpgv: Good signature from "Scarlet Revoked hard <revoked-hard@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data.txt.after-revocation.asc data.txt
+gpgv: Signature made Wed Apr  1 12:00:00 2020 GMT
+gpgv:                using EDDSA key DD1658A38D9EB40A29B2F815C83B6D337E988A5A
+gpgv: Good signature from "Scarlet Revoked hard <revoked-hard@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data.txt.after-revocation.clearsign.asc 
+gpgv: Signature made Wed Apr  1 12:00:00 2020 GMT
+gpgv:                using EDDSA key DD1658A38D9EB40A29B2F815C83B6D337E988A5A
+gpgv: Good signature from "Scarlet Revoked hard <revoked-hard@example.org>"
+[exit code: 0]
+
+### gpg --verify (full gpg, fresh home, key imported)
+$ gpg --verify data.txt.before-revocation.sig data.txt    (fresh GNUPGHOME, only public-key.asc imported)
+gpg: Signature made Sat Feb  1 12:00:00 2020 GMT
+gpg:                using EDDSA key DD1658A38D9EB40A29B2F815C83B6D337E988A5A
+gpg: Good signature from "Scarlet Revoked hard <revoked-hard@example.org>" [unknown]
+gpg: WARNING: This key has been revoked by its owner!
+gpg:          This could mean that the signature is forged.
+gpg: reason for revocation: Key has been compromised
+gpg: revocation comment: Key material compromised (fixture)
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: DD16 58A3 8D9E B40A 29B2  F815 C83B 6D33 7E98 8A5A
+[exit code: 0]
+
+$ gpg --verify data.txt.before-revocation.clearsign.asc     (fresh GNUPGHOME, only public-key.asc imported)
+gpg: Signature made Sat Feb  1 12:00:00 2020 GMT
+gpg:                using EDDSA key DD1658A38D9EB40A29B2F815C83B6D337E988A5A
+gpg: Good signature from "Scarlet Revoked hard <revoked-hard@example.org>" [unknown]
+gpg: WARNING: This key has been revoked by its owner!
+gpg:          This could mean that the signature is forged.
+gpg: reason for revocation: Key has been compromised
+gpg: revocation comment: Key material compromised (fixture)
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: DD16 58A3 8D9E B40A 29B2  F815 C83B 6D33 7E98 8A5A
+[exit code: 0]
+
+$ gpg --verify data.txt.after-revocation.sig data.txt    (fresh GNUPGHOME, only public-key.asc imported)
+gpg: Signature made Wed Apr  1 12:00:00 2020 GMT
+gpg:                using EDDSA key DD1658A38D9EB40A29B2F815C83B6D337E988A5A
+gpg: Good signature from "Scarlet Revoked hard <revoked-hard@example.org>" [unknown]
+gpg: WARNING: This key has been revoked by its owner!
+gpg:          This could mean that the signature is forged.
+gpg: reason for revocation: Key has been compromised
+gpg: revocation comment: Key material compromised (fixture)
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: DD16 58A3 8D9E B40A 29B2  F815 C83B 6D33 7E98 8A5A
+[exit code: 0]
+
+$ gpg --verify data.txt.after-revocation.clearsign.asc     (fresh GNUPGHOME, only public-key.asc imported)
+gpg: Signature made Wed Apr  1 12:00:00 2020 GMT
+gpg:                using EDDSA key DD1658A38D9EB40A29B2F815C83B6D337E988A5A
+gpg: Good signature from "Scarlet Revoked hard <revoked-hard@example.org>" [unknown]
+gpg: WARNING: This key has been revoked by its owner!
+gpg:          This could mean that the signature is forged.
+gpg: reason for revocation: Key has been compromised
+gpg: revocation comment: Key material compromised (fixture)
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: DD16 58A3 8D9E B40A 29B2  F815 C83B 6D33 7E98 8A5A
+[exit code: 0]
+

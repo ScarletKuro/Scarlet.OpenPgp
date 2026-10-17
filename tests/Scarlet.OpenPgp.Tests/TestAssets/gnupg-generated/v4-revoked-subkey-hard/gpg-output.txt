@@ -1,0 +1,89 @@
+$ gpgv --keyring ./public-key.gpg data.txt.before-revocation.sig data.txt
+gpgv: Signature made Sat Feb  1 12:00:00 2020 GMT
+gpgv:                using EDDSA key F476D06770DD92E25DCBD4022B499F4C19C6CB03
+gpgv: Good signature from "Scarlet Revoked Subkey hard <revoked-subkey-hard@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data.txt.before-revocation.asc data.txt
+gpgv: Signature made Sat Feb  1 12:00:00 2020 GMT
+gpgv:                using EDDSA key F476D06770DD92E25DCBD4022B499F4C19C6CB03
+gpgv: Good signature from "Scarlet Revoked Subkey hard <revoked-subkey-hard@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data.txt.before-revocation.clearsign.asc 
+gpgv: Signature made Sat Feb  1 12:00:00 2020 GMT
+gpgv:                using EDDSA key F476D06770DD92E25DCBD4022B499F4C19C6CB03
+gpgv: Good signature from "Scarlet Revoked Subkey hard <revoked-subkey-hard@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data.txt.after-revocation.sig data.txt
+gpgv: Signature made Wed Apr  1 12:00:00 2020 GMT
+gpgv:                using EDDSA key F476D06770DD92E25DCBD4022B499F4C19C6CB03
+gpgv: Good signature from "Scarlet Revoked Subkey hard <revoked-subkey-hard@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data.txt.after-revocation.asc data.txt
+gpgv: Signature made Wed Apr  1 12:00:00 2020 GMT
+gpgv:                using EDDSA key F476D06770DD92E25DCBD4022B499F4C19C6CB03
+gpgv: Good signature from "Scarlet Revoked Subkey hard <revoked-subkey-hard@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./public-key.gpg data.txt.after-revocation.clearsign.asc 
+gpgv: Signature made Wed Apr  1 12:00:00 2020 GMT
+gpgv:                using EDDSA key F476D06770DD92E25DCBD4022B499F4C19C6CB03
+gpgv: Good signature from "Scarlet Revoked Subkey hard <revoked-subkey-hard@example.org>"
+[exit code: 0]
+
+### gpg --verify (full gpg, fresh home, key imported)
+$ gpg --verify data.txt.before-revocation.sig data.txt    (fresh GNUPGHOME, only public-key.asc imported)
+gpg: Signature made Sat Feb  1 12:00:00 2020 GMT
+gpg:                using EDDSA key F476D06770DD92E25DCBD4022B499F4C19C6CB03
+gpg: Good signature from "Scarlet Revoked Subkey hard <revoked-subkey-hard@example.org>" [unknown]
+gpg: WARNING: This subkey has been revoked by its owner!
+gpg: reason for revocation: Key has been compromised
+gpg: revocation comment: Subkey compromised (fixture)
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: 5CC3 1361 33F4 130E 3FD6  7A4A 19BC F784 6D1B CEF0
+     Subkey fingerprint: F476 D067 70DD 92E2 5DCB  D402 2B49 9F4C 19C6 CB03
+[exit code: 0]
+
+$ gpg --verify data.txt.before-revocation.clearsign.asc     (fresh GNUPGHOME, only public-key.asc imported)
+gpg: Signature made Sat Feb  1 12:00:00 2020 GMT
+gpg:                using EDDSA key F476D06770DD92E25DCBD4022B499F4C19C6CB03
+gpg: Good signature from "Scarlet Revoked Subkey hard <revoked-subkey-hard@example.org>" [unknown]
+gpg: WARNING: This subkey has been revoked by its owner!
+gpg: reason for revocation: Key has been compromised
+gpg: revocation comment: Subkey compromised (fixture)
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: 5CC3 1361 33F4 130E 3FD6  7A4A 19BC F784 6D1B CEF0
+     Subkey fingerprint: F476 D067 70DD 92E2 5DCB  D402 2B49 9F4C 19C6 CB03
+[exit code: 0]
+
+$ gpg --verify data.txt.after-revocation.sig data.txt    (fresh GNUPGHOME, only public-key.asc imported)
+gpg: Signature made Wed Apr  1 12:00:00 2020 GMT
+gpg:                using EDDSA key F476D06770DD92E25DCBD4022B499F4C19C6CB03
+gpg: Good signature from "Scarlet Revoked Subkey hard <revoked-subkey-hard@example.org>" [unknown]
+gpg: WARNING: This subkey has been revoked by its owner!
+gpg: reason for revocation: Key has been compromised
+gpg: revocation comment: Subkey compromised (fixture)
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: 5CC3 1361 33F4 130E 3FD6  7A4A 19BC F784 6D1B CEF0
+     Subkey fingerprint: F476 D067 70DD 92E2 5DCB  D402 2B49 9F4C 19C6 CB03
+[exit code: 0]
+
+$ gpg --verify data.txt.after-revocation.clearsign.asc     (fresh GNUPGHOME, only public-key.asc imported)
+gpg: Signature made Wed Apr  1 12:00:00 2020 GMT
+gpg:                using EDDSA key F476D06770DD92E25DCBD4022B499F4C19C6CB03
+gpg: Good signature from "Scarlet Revoked Subkey hard <revoked-subkey-hard@example.org>" [unknown]
+gpg: WARNING: This subkey has been revoked by its owner!
+gpg: reason for revocation: Key has been compromised
+gpg: revocation comment: Subkey compromised (fixture)
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: 5CC3 1361 33F4 130E 3FD6  7A4A 19BC F784 6D1B CEF0
+     Subkey fingerprint: F476 D067 70DD 92E2 5DCB  D402 2B49 9F4C 19C6 CB03
+[exit code: 0]
+

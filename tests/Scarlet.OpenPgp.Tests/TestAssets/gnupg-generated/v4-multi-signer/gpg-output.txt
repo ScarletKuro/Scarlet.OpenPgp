@@ -1,0 +1,84 @@
+### keyring: keyring-both.gpg
+$ gpgv --keyring ./keyring-both.gpg data.txt.asc data.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using EDDSA key 6DB026C45610A2FDE7F5FB52D848DB657D349208
+gpgv: Good signature from "Scarlet Signer A <signer-a@example.org>"
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using RSA key A020E82754904E60FDAA1EA10972DC74CD762769
+gpgv: Good signature from "Scarlet Signer B <signer-b@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./keyring-both.gpg data.txt.sig data.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using EDDSA key 6DB026C45610A2FDE7F5FB52D848DB657D349208
+gpgv: Good signature from "Scarlet Signer A <signer-a@example.org>"
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using RSA key A020E82754904E60FDAA1EA10972DC74CD762769
+gpgv: Good signature from "Scarlet Signer B <signer-b@example.org>"
+[exit code: 0]
+
+$ gpgv --keyring ./keyring-both.gpg data.txt.clearsign.asc 
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using EDDSA key 6DB026C45610A2FDE7F5FB52D848DB657D349208
+gpgv: Good signature from "Scarlet Signer A <signer-a@example.org>"
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using RSA key A020E82754904E60FDAA1EA10972DC74CD762769
+gpgv: Good signature from "Scarlet Signer B <signer-b@example.org>"
+[exit code: 0]
+
+### keyring: keyring-a-only.gpg
+$ gpgv --keyring ./keyring-a-only.gpg data.txt.asc data.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using EDDSA key 6DB026C45610A2FDE7F5FB52D848DB657D349208
+gpgv: Good signature from "Scarlet Signer A <signer-a@example.org>"
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using RSA key A020E82754904E60FDAA1EA10972DC74CD762769
+gpgv: Can't check signature: No public key
+[exit code: 2]
+
+$ gpgv --keyring ./keyring-a-only.gpg data.txt.sig data.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using EDDSA key 6DB026C45610A2FDE7F5FB52D848DB657D349208
+gpgv: Good signature from "Scarlet Signer A <signer-a@example.org>"
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using RSA key A020E82754904E60FDAA1EA10972DC74CD762769
+gpgv: Can't check signature: No public key
+[exit code: 2]
+
+$ gpgv --keyring ./keyring-a-only.gpg data.txt.clearsign.asc 
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using EDDSA key 6DB026C45610A2FDE7F5FB52D848DB657D349208
+gpgv: Good signature from "Scarlet Signer A <signer-a@example.org>"
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using RSA key A020E82754904E60FDAA1EA10972DC74CD762769
+gpgv: Can't check signature: No public key
+[exit code: 2]
+
+### keyring: keyring-b-only.gpg
+$ gpgv --keyring ./keyring-b-only.gpg data.txt.asc data.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using EDDSA key 6DB026C45610A2FDE7F5FB52D848DB657D349208
+gpgv: Can't check signature: No public key
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using RSA key A020E82754904E60FDAA1EA10972DC74CD762769
+gpgv: Good signature from "Scarlet Signer B <signer-b@example.org>"
+[exit code: 2]
+
+$ gpgv --keyring ./keyring-b-only.gpg data.txt.sig data.txt
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using EDDSA key 6DB026C45610A2FDE7F5FB52D848DB657D349208
+gpgv: Can't check signature: No public key
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using RSA key A020E82754904E60FDAA1EA10972DC74CD762769
+gpgv: Good signature from "Scarlet Signer B <signer-b@example.org>"
+[exit code: 2]
+
+$ gpgv --keyring ./keyring-b-only.gpg data.txt.clearsign.asc 
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using EDDSA key 6DB026C45610A2FDE7F5FB52D848DB657D349208
+gpgv: Can't check signature: No public key
+gpgv: Signature made Thu Jan  2 12:00:00 2025 GMT
+gpgv:                using RSA key A020E82754904E60FDAA1EA10972DC74CD762769
+gpgv: Good signature from "Scarlet Signer B <signer-b@example.org>"
+[exit code: 2]
+
