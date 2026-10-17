@@ -57,16 +57,42 @@ namespace Scarlet.OpenPgp.Tests.Packets
         [Fact]
         public void ReadAll_WithPartialBodyLength_ShouldConcatenateChunksIntoOneBody()
         {
-            // Arrange: new-format tag 8, partial chunk of length 1 (0xE0 -> 1<<0), then a final
+            // Arrange: new-format tag 8 (Compressed Data, one of the few tags allowed partial
+            // lengths), a partial chunk of the minimum 512 bytes (0xE9 -> 1<<9), then a final
             // non-partial chunk of length 2.
-            byte[] data = { 0xC8, 0xE0, 0xAA, 0x02, 0xBB, 0xCC };
+            var data = new List<byte> { 0xC8, 0xE9 };
+            data.AddRange(System.Linq.Enumerable.Repeat((byte)0xAA, 512));
+            data.AddRange(new byte[] { 0x02, 0xBB, 0xCC });
 
             // Act
-            List<Packet> packets = PacketReader.ReadAll(data);
+            List<Packet> packets = PacketReader.ReadAll(data.ToArray());
 
             // Assert
             Assert.Single(packets);
-            Assert.Equal(new byte[] { 0xAA, 0xBB, 0xCC }, packets[0].Body);
+            Assert.Equal(514, packets[0].Body.Length);
+            Assert.Equal(new byte[] { 0xBB, 0xCC }, packets[0].Body[512..]);
+        }
+
+        [Fact]
+        public void ReadAll_WithPartialBodyLengthOnASignaturePacket_ShouldFailClosed()
+        {
+            // Arrange: RFC 4880 §4.2.2.4 only allows partial lengths on data packets.
+            var data = new List<byte> { 0xC2, 0xE9 };
+            data.AddRange(System.Linq.Enumerable.Repeat((byte)0xAA, 512));
+            data.AddRange(new byte[] { 0x01, 0xBB });
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => PacketReader.ReadAll(data.ToArray()));
+        }
+
+        [Fact]
+        public void ReadAll_WithFirstPartialChunkShorterThan512Bytes_ShouldFailClosed()
+        {
+            // Arrange: tag 8, partial chunk of length 1 (0xE0 -> 1<<0), then a final chunk.
+            byte[] data = { 0xC8, 0xE0, 0xAA, 0x02, 0xBB, 0xCC };
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => PacketReader.ReadAll(data));
         }
 
         [Fact]

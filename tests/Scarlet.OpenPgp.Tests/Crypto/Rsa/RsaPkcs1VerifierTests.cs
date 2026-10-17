@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Scarlet.OpenPgp.Crypto.Rsa;
 using Scarlet.OpenPgp.Hashing;
+using Scarlet.OpenPgp.Internal;
 using Scarlet.OpenPgp.Packets;
 
 namespace Scarlet.OpenPgp.Tests.Crypto.Rsa
@@ -106,6 +107,47 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Rsa
 
             // Assert
             Assert.False(result);
+        }
+
+        [Fact]
+        public void RsaPublicKey_WithModulusBelow2048Bits_ShouldFailClosed()
+        {
+            // Arrange
+            using (RSA rsa = RSA.Create(1024))
+            {
+                RSAParameters parameters = rsa.ExportParameters(false);
+                BigInteger modulus = Mpi.ToUnsignedBigInteger(parameters.Modulus!);
+                BigInteger exponent = Mpi.ToUnsignedBigInteger(parameters.Exponent!);
+
+                // Act & Assert
+                Assert.Throws<FailClosedException>(() => new RsaPublicKey(modulus, exponent));
+            }
+        }
+
+        [Theory]
+        [InlineData(1)] // signature == encoded message: trivially forgeable
+        [InlineData(0)]
+        [InlineData(65538)] // even
+        public void RsaPublicKey_WithInvalidExponent_ShouldFailClosed(int exponent)
+        {
+            // Arrange
+            using (RSA rsa = RSA.Create(2048))
+            {
+                BigInteger modulus = Mpi.ToUnsignedBigInteger(rsa.ExportParameters(false).Modulus!);
+
+                // Act & Assert
+                Assert.Throws<FailClosedException>(() => new RsaPublicKey(modulus, exponent));
+            }
+        }
+
+        [Fact]
+        public void RsaPublicKey_WithEvenModulus_ShouldFailClosed()
+        {
+            // Arrange
+            BigInteger evenModulus = BigInteger.One << 2048;
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => new RsaPublicKey(evenModulus, 65537));
         }
     }
 }

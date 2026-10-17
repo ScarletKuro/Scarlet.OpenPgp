@@ -97,5 +97,16 @@ namespace Scarlet.OpenPgp.Tests.Clearsign
             // Assert
             Assert.Equal("only line", Encoding.UTF8.GetString(result));
         }
+
+        [Fact]
+        public void Canonicalize_WithAnUnpairedSurrogate_ShouldFailClosed()
+        {
+            // Arrange: lenient UTF-8 encoding would map this to U+FFFD's bytes, letting a different
+            // string produce the same signed bytes as text that really contains U+FFFD.
+            string[] lines = { "bad \uD800 surrogate" };
+
+            // Act & Assert
+            Assert.Throws<Scarlet.OpenPgp.Internal.FailClosedException>(() => ClearsignCanonicalizer.Canonicalize(lines));
+        }
     }
 }

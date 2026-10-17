@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text;
 
 namespace Scarlet.OpenPgp.Cli
 {
@@ -10,6 +11,8 @@ namespace Scarlet.OpenPgp.Cli
     /// </summary>
     internal sealed class OpenPgpCliApplication
     {
+        private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
         private readonly TextWriter _stdout;
         private readonly TextWriter _stderr;
 
@@ -52,11 +55,11 @@ namespace Scarlet.OpenPgp.Cli
         private int RunVerify(OpenPgpCliOptions options)
         {
             string publicKeyArmor;
-            string signatureArmorOrClearsignedMessage;
+            byte[] signatureFileBytes;
             try
             {
                 publicKeyArmor = File.ReadAllText(options.KeyPath);
-                signatureArmorOrClearsignedMessage = File.ReadAllText(options.SignaturePath);
+                signatureFileBytes = File.ReadAllBytes(options.SignaturePath);
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
             {
@@ -64,7 +67,26 @@ namespace Scarlet.OpenPgp.Cli
                 return ExitCodes.InputError;
             }
 
+            // Decode strictly: File.ReadAllText would silently turn invalid UTF-8 into U+FFFD, so
+            // different files could verify as the same signed text.
+            string signatureArmorOrClearsignedMessage;
+            try
+            {
+                signatureArmorOrClearsignedMessage = StrictUtf8.GetString(signatureFileBytes);
+            }
+            catch (DecoderFallbackException)
+            {
+                _stderr.WriteLine("Scarlet.OpenPgp: signature file is not valid UTF-8.");
+                return ExitCodes.InputError;
+            }
+
+            if (signatureArmorOrClearsignedMessage.Length > 0 && signatureArmorOrClearsignedMessage[0] == '﻿')
+            {
+                signatureArmorOrClearsignedMessage = signatureArmorOrClearsignedMessage.Substring(1);
+            }
+
             bool verified;
+            string? signedText = null;
             if (options.DataPath is not null)
             {
                 byte[] data;
@@ -82,11 +104,20 @@ namespace Scarlet.OpenPgp.Cli
             }
             else
             {
-                verified = OpenPgpVerifier.VerifyClearsign(signatureArmorOrClearsignedMessage, publicKeyArmor);
+                verified = OpenPgpVerifier.VerifyClearsign(signatureArmorOrClearsignedMessage, publicKeyArmor, out string text);
+                signedText = text;
             }
 
             if (verified)
             {
+                if (options.OutputPath is not null && signedText is not null)
+                {
+                    if (!TryWriteSignedText(options.OutputPath, signedText))
+                    {
+                        return ExitCodes.InputError;
+                    }
+                }
+
                 _stderr.WriteLine("Scarlet.OpenPgp: signature verified.");
                 return ExitCodes.Success;
             }
@@ -95,13 +126,38 @@ namespace Scarlet.OpenPgp.Cli
             return ExitCodes.VerificationFailed;
         }
 
+        private bool TryWriteSignedText(string outputPath, string signedText)
+        {
+            if (outputPath == "-")
+            {
+                _stdout.Write(signedText);
+                _stdout.Flush();
+                return true;
+            }
+
+            try
+            {
+                File.WriteAllBytes(outputPath, StrictUtf8.GetBytes(signedText));
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                _stderr.WriteLine("Scarlet.OpenPgp: could not write output file: " + ex.Message);
+                return false;
+            }
+        }
+
         private void WriteUsage()
         {
-            _stderr.WriteLine("Usage: scarlet-openpgp verify --key <pubkey.asc> --signature <file.asc|.sig> [--data <file>]");
+            _stderr.WriteLine("Usage: scarlet-openpgp verify --key <pubkey.asc> --signature <file.asc|.sig> [--data <file> | --output <file|->]");
             _stderr.WriteLine();
             _stderr.WriteLine("  Verifies a detached signature when --data is given (--signature names the");
             _stderr.WriteLine("  detached signature, --data names the file it signs), or a self-contained");
             _stderr.WriteLine("  clearsigned message when --data is omitted (--signature names that message).");
+            _stderr.WriteLine();
+            _stderr.WriteLine("  --output (clearsign only) writes exactly the signed text, after successful");
+            _stderr.WriteLine("  verification only, to a file or to stdout with \"-\". Consume that output,");
+            _stderr.WriteLine("  not the original .asc file: only the signed text is authenticated.");
         }
     }
 }

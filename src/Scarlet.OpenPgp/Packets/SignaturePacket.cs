@@ -71,6 +71,40 @@ namespace Scarlet.OpenPgp.Packets
             }
         }
 
+        /// <summary>
+        /// Reads a 4-byte big-endian time value (a timestamp or a duration in seconds) from the
+        /// *hashed* subpacket area only - the unhashed area isn't covered by the signature, so
+        /// anyone could add or change a value there. Returns <c>false</c> when absent. Fails closed
+        /// when present more than once (which value would win is ambiguous) or not exactly 4 bytes.
+        /// </summary>
+        public bool TryGetHashedTime(SignatureSubpacketType type, out uint value)
+        {
+            value = 0;
+            bool found = false;
+            foreach (SignatureSubpacket subpacket in HashedSubpackets)
+            {
+                if (!subpacket.Is(type))
+                {
+                    continue;
+                }
+
+                if (found)
+                {
+                    throw new FailClosedException("Signature has more than one hashed subpacket of type " + (byte)type + ".");
+                }
+
+                if (subpacket.Data.Length != 4)
+                {
+                    throw new FailClosedException("Hashed time subpacket (type " + (byte)type + ") must be exactly 4 bytes.");
+                }
+
+                value = ((uint)subpacket.Data[0] << 24) | ((uint)subpacket.Data[1] << 16) | ((uint)subpacket.Data[2] << 8) | subpacket.Data[3];
+                found = true;
+            }
+
+            return found;
+        }
+
         public static SignaturePacket Parse(byte[] body)
         {
             if (body.Length < 6)
@@ -191,9 +225,11 @@ namespace Scarlet.OpenPgp.Packets
                 switch (subpacket.RawType)
                 {
                     case (byte)SignatureSubpacketType.SignatureCreationTime:
+                    case (byte)SignatureSubpacketType.SignatureExpirationTime:
+                    case (byte)SignatureSubpacketType.KeyExpirationTime:
                         if (subpacket.Data.Length != 4)
                         {
-                            throw new FailClosedException("Critical SignatureCreationTime subpacket must be exactly 4 bytes.");
+                            throw new FailClosedException("Critical time subpacket (type " + subpacket.RawType + ") must be exactly 4 bytes.");
                         }
 
                         break;

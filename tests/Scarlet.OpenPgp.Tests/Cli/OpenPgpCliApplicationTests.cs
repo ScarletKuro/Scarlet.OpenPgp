@@ -188,5 +188,74 @@ namespace Scarlet.OpenPgp.Tests.Cli
             // Assert
             Assert.Equal(ExitCodes.VerificationFailed, exitCode);
         }
+
+        private const string BunAssets = "TestAssets/bun-release/";
+
+        [Fact]
+        public void Run_WithOutputToStdout_ShouldWriteExactlyTheSignedText()
+        {
+            // Act
+            int exitCode = CreateApplication().Run(new[]
+            {
+                "verify", "--key", BunAssets + "bun-public-key.asc", "--signature", BunAssets + "SHASUMS256.txt.asc", "--output", "-",
+            });
+
+            // Assert
+            Assert.Equal(ExitCodes.Success, exitCode);
+            string expected = File.ReadAllText(BunAssets + "SHASUMS256.txt").Replace("\r\n", "\n");
+            Assert.Equal(expected, _stdout.ToString().Replace("\r\n", "\n"));
+        }
+
+        [Fact]
+        public void Run_WithOutputToAFile_ShouldWriteTheSignedTextOnlyOnSuccess()
+        {
+            // Arrange
+            string outputPath = Path.Combine(_workDir, "signed.txt");
+            string tamperedPath = WriteFile("tampered.asc", "unsigned line\n" + File.ReadAllText(BunAssets + "SHASUMS256.txt.asc"));
+            string tamperedOutputPath = Path.Combine(_workDir, "tampered-signed.txt");
+
+            // Act
+            int exitCode = CreateApplication().Run(new[]
+            {
+                "verify", "--key", BunAssets + "bun-public-key.asc", "--signature", BunAssets + "SHASUMS256.txt.asc", "--output", outputPath,
+            });
+            int tamperedExitCode = CreateApplication().Run(new[]
+            {
+                "verify", "--key", BunAssets + "bun-public-key.asc", "--signature", tamperedPath, "--output", tamperedOutputPath,
+            });
+
+            // Assert
+            Assert.Equal(ExitCodes.Success, exitCode);
+            Assert.Equal(
+                File.ReadAllText(BunAssets + "SHASUMS256.txt").Replace("\r\n", "\n"),
+                File.ReadAllText(outputPath).Replace("\r\n", "\n"));
+            Assert.Equal(ExitCodes.VerificationFailed, tamperedExitCode);
+            Assert.False(File.Exists(tamperedOutputPath));
+        }
+
+        [Fact]
+        public void Run_WithOutputAndData_ShouldReturnUsageError()
+        {
+            // Act
+            int exitCode = CreateApplication().Run(new[] { "verify", "--key", "k", "--signature", "s", "--data", "d", "--output", "-" });
+
+            // Assert
+            Assert.Equal(ExitCodes.UsageError, exitCode);
+        }
+
+        [Fact]
+        public void Run_WithSignatureFileThatIsNotValidUtf8_ShouldReturnInputError()
+        {
+            // Arrange: invalid UTF-8 would otherwise be decoded to U+FFFD and could match signed
+            // text that really contains U+FFFD.
+            string keyPath = WriteFile("key.asc", Armor("PUBLIC KEY BLOCK", Ed25519PublicKeyPacketBytes));
+            string sigPath = WriteFile("message.asc", new byte[] { 0x2D, 0x2D, 0xFF, 0xFE, 0x80, 0x0A });
+
+            // Act
+            int exitCode = CreateApplication().Run(new[] { "verify", "--key", keyPath, "--signature", sigPath });
+
+            // Assert
+            Assert.Equal(ExitCodes.InputError, exitCode);
+        }
     }
 }

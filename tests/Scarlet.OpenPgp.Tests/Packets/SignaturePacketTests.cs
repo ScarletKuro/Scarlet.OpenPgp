@@ -86,6 +86,38 @@ namespace Scarlet.OpenPgp.Tests.Packets
         }
 
         [Fact]
+        public void TryGetHashedTime_WithRealEd25519Signature_ShouldReadTheHashedCreationTime()
+        {
+            // Act
+            SignaturePacket signature = ParseFixture();
+            bool found = signature.TryGetHashedTime(SignatureSubpacketType.SignatureCreationTime, out uint seconds);
+
+            // Assert: hashed subpacket 05 02 55 f9 5f 95.
+            Assert.True(found);
+            Assert.Equal(0x55f95f95u, seconds);
+            Assert.False(signature.TryGetHashedTime(SignatureSubpacketType.SignatureExpirationTime, out _));
+        }
+
+        [Fact]
+        public void TryGetHashedTime_WithDuplicateHashedSubpacket_ShouldFailClosed()
+        {
+            // Arrange: v4, binary, EdDSA, SHA-256, hashed area holding two creation-time subpackets,
+            // empty unhashed area, left-16 bits, then r and s as 1-bit MPIs.
+            byte[] body =
+            {
+                0x04, 0x00, 0x16, 0x08,
+                0x00, 0x0C, 0x05, 0x02, 0x00, 0x00, 0x00, 0x01, 0x05, 0x02, 0x00, 0x00, 0x00, 0x02,
+                0x00, 0x00,
+                0x00, 0x00,
+                0x00, 0x01, 0x01, 0x00, 0x01, 0x01,
+            };
+            SignaturePacket signature = SignaturePacket.Parse(body);
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => signature.TryGetHashedTime(SignatureSubpacketType.SignatureCreationTime, out _));
+        }
+
+        [Fact]
         public void Parse_WithHashedSubpacketData_ShouldPreserveItVerbatimForHashBuilding()
         {
             // Act

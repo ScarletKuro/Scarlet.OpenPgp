@@ -152,8 +152,9 @@ namespace Scarlet.OpenPgp;
 
 public static class OpenPgpVerifier
 {
-    // Verifies a clearsigned message block against an ASCII-armored public key.
-    public static bool VerifyClearsign(string clearsignedMessage, string publicKeyArmor);
+    // Verifies a clearsigned message block against an ASCII-armored public key. On success,
+    // signedText is exactly the authenticated text - the only part of the input callers may use.
+    public static bool VerifyClearsign(string clearsignedMessage, string publicKeyArmor, out string signedText);
 
     // Verifies a detached signature (ASCII-armored or binary) over arbitrary bytes.
     public static bool VerifyDetached(ReadOnlySpan<byte> data, string signatureArmor, string publicKeyArmor);
@@ -227,15 +228,24 @@ may end up depending on:
 - **Verify-only.** Do not scope-creep into signing or key management.
 - **Fail closed.** Any parsing ambiguity, unknown-but-critical data, or malformed input must result in a
   verification failure, never a silent pass.
-- **Text surrounding an armor block is intentionally not fail-closed.** `AsciiArmorReader.Read` ignores
-  content before the BEGIN line and after the matching END line (a mail/commentary preamble, unrelated
-  trailing text, even a second concatenated block) and reports on the first well-formed block it finds. This
-  was checked against real GnuPG 2.4.9 (`gpg --verify`), which tolerates exactly this for both detached and
-  clearsigned verification, and even checks every detached-signature packet it finds rather than rejecting
-  extras — this library's single-`bool` API only reports on the first, which is a deliberate, narrower
-  non-goal, not an oversight. Malformed *content inside* the matched block (bad base64, wrong CRC24, a
-  packet body with unexpected trailing bytes, more than one Signature packet inside that block) still fails
-  closed as usual.
+- **Text surrounding a detached signature or key block is tolerated; around a clearsigned message it is
+  not.** For a detached signature or a public key block, `AsciiArmorReader.Read` ignores content before the
+  BEGIN line and after the matching END line (a mail/commentary preamble, unrelated trailing text, even a
+  second concatenated block) and reports on the first well-formed block it finds. That is harmless there,
+  because the signed data is supplied separately and checked as given. A clearsigned message is different:
+  its signed content sits in the same text, so any tolerated-but-unsigned text is text a caller can mistake
+  for signed content (e.g. an injected line in a `SHASUMS256.txt.asc` that a script then searches for a
+  checksum). GnuPG gets away with tolerating it because it can output the verified text; this library
+  instead parses clearsigned messages strictly: only blank lines may precede the BEGIN line or follow
+  the END line, only `Hash` armor headers are accepted and they must name the signature's algorithm, body
+  lines starting with `-` must be dash-escaped, and a bare CR is rejected. `VerifyClearsign` also returns
+  the signed text, and callers must use only that text. Malformed *content inside* a matched block (bad
+  base64, wrong CRC24, a packet body with unexpected trailing bytes, more than one Signature packet inside
+  that block) fails closed everywhere.
+- **Signature and key lifetimes are enforced.** A signature past its hashed signature-expiration time, a
+  signature created before its key, and a key past the expiration set by its most recent self-signature
+  that verifies all fail verification. Key expiration is only read from self-signatures that verify
+  against the primary key, never from unverified packets in the block.
 - **Correctness over performance**, but still write clean, readable code — this will be read and audited by
   people deciding whether to trust it. `Span<T>`/`ReadOnlySpan<T>` are fair game where they reduce
   allocations without hurting readability (see "Performance follow-up" below), but don't chase performance

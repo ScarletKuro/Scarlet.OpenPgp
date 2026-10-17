@@ -6,10 +6,15 @@ a single small native binary, no .NET runtime required at the point of use.
 ```bash
 scarlet-openpgp verify --key pubkey.asc --signature release.sig --data release.tar.gz
 scarlet-openpgp verify --key pubkey.asc --signature release.asc   # self-contained clearsigned message
+scarlet-openpgp verify --key pubkey.asc --signature SHASUMS256.txt.asc --output SHASUMS256.txt
 ```
 
 `--data` is only needed for a detached signature; omit it when `--signature` names a self-contained
 clearsigned message.
+
+`--output <file>` (clearsign only; `-` for stdout) writes exactly the signed text, and only when
+verification succeeds. Consume that output, never the original `.asc`: only the signed text is
+authenticated. The `.asc` file itself must be valid UTF-8.
 
 ## Exit codes
 

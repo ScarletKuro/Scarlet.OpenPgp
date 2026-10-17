@@ -53,7 +53,7 @@ namespace Scarlet.OpenPgp.Packets
             if (newFormat)
             {
                 rawTag = (byte)(tagByte & 0x3F);
-                ReadNewFormatBody(data, ref position, body);
+                ReadNewFormatBody(data, ref position, rawTag, body);
             }
             else
             {
@@ -98,8 +98,9 @@ namespace Scarlet.OpenPgp.Packets
             AppendBytes(data, ref position, length, body);
         }
 
-        private static void ReadNewFormatBody(byte[] data, ref int position, MemoryStream body)
+        private static void ReadNewFormatBody(byte[] data, ref int position, byte rawTag, MemoryStream body)
         {
+            bool firstChunk = true;
             while (true)
             {
                 int first = ReadByte(data, ref position, "new-format length");
@@ -127,10 +128,39 @@ namespace Scarlet.OpenPgp.Packets
                     return;
                 }
 
-                // 224..254: partial body length, a power of two. Append this chunk and loop to read
-                // the next chunk's own length header, continuing until a non-partial form is hit.
+                // 224..254: partial body length, a power of two. RFC 4880 §4.2.2.4 only allows this
+                // framing on data packets (Literal, Compressed, encrypted data) and requires the
+                // first chunk to be at least 512 octets. Signature and key packets never use it, so
+                // accepting it there would only add another way to encode the same packet.
+                if (!AllowsPartialBodyLength(rawTag))
+                {
+                    throw new FailClosedException("Partial body lengths are not permitted for packet tag " + rawTag + ".");
+                }
+
                 int partialLength = 1 << (first & 0x1F);
+                if (firstChunk && partialLength < 512)
+                {
+                    throw new FailClosedException("The first partial body chunk must be at least 512 octets.");
+                }
+
+                // Append this chunk and loop to read the next chunk's own length header, continuing
+                // until a non-partial form is hit.
                 AppendBytes(data, ref position, partialLength, body);
+                firstChunk = false;
+            }
+        }
+
+        private static bool AllowsPartialBodyLength(byte rawTag)
+        {
+            switch ((PacketTag)rawTag)
+            {
+                case PacketTag.CompressedData:
+                case PacketTag.SymmetricallyEncryptedData:
+                case PacketTag.LiteralData:
+                case PacketTag.SymmetricallyEncryptedIntegrityProtectedData:
+                    return true;
+                default:
+                    return false;
             }
         }
 

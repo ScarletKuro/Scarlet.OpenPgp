@@ -4,6 +4,8 @@ namespace Scarlet.OpenPgp.Packets
     internal enum SignatureSubpacketType : byte
     {
         SignatureCreationTime = 2,
+        SignatureExpirationTime = 3,
+        KeyExpirationTime = 9,
         IssuerKeyId = 16,
         IssuerFingerprint = 33,
     }

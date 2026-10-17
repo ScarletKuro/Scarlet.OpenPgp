@@ -1,4 +1,5 @@
 using System.Text;
+using Scarlet.OpenPgp.Internal;
 
 namespace Scarlet.OpenPgp.Clearsign
 {
@@ -15,7 +16,12 @@ namespace Scarlet.OpenPgp.Clearsign
     /// </summary>
     internal static class ClearsignCanonicalizer
     {
-        public static byte[] Canonicalize(string[] dashEscapedLines)
+        // Strict: the default Encoding.UTF8 silently turns a lone surrogate into U+FFFD's bytes, so
+        // two different strings could canonicalize to the same signed bytes.
+        private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
+        /// <summary>The canonical signed text as a string: exactly the text the signature covers.</summary>
+        public static string CanonicalizeText(string[] dashEscapedLines)
         {
             var builder = new StringBuilder();
             for (int i = 0; i < dashEscapedLines.Length; i++)
@@ -31,7 +37,21 @@ namespace Scarlet.OpenPgp.Clearsign
                 builder.Append(trimmed);
             }
 
-            return Encoding.UTF8.GetBytes(builder.ToString());
+            return builder.ToString();
+        }
+
+        public static byte[] Canonicalize(string[] dashEscapedLines) => Encode(CanonicalizeText(dashEscapedLines));
+
+        public static byte[] Encode(string canonicalText)
+        {
+            try
+            {
+                return StrictUtf8.GetBytes(canonicalText);
+            }
+            catch (EncoderFallbackException ex)
+            {
+                throw new FailClosedException("Clearsigned text is not valid Unicode (unpaired surrogate).", ex);
+            }
         }
     }
 }

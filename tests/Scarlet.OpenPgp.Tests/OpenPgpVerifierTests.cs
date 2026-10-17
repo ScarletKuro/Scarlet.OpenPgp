@@ -25,8 +25,72 @@ namespace Scarlet.OpenPgp.Tests
             string clearsignedMessage = System.IO.File.ReadAllText("TestAssets/bun-release/SHASUMS256.txt.asc");
             string publicKeyArmor = System.IO.File.ReadAllText("TestAssets/bun-release/bun-public-key.asc");
 
+            string expectedSignedText = System.IO.File.ReadAllText("TestAssets/bun-release/SHASUMS256.txt");
+
             // Act
-            bool result = OpenPgpVerifier.VerifyClearsign(clearsignedMessage, publicKeyArmor);
+            bool result = OpenPgpVerifier.VerifyClearsign(clearsignedMessage, publicKeyArmor, out string signedText);
+
+            // Assert: the returned text is exactly the original SHASUMS256.txt, CRLF-separated.
+            Assert.True(result);
+            Assert.Equal(expectedSignedText.Replace("\r\n", "\n"), signedText.Replace("\r\n", "\n"));
+            Assert.DoesNotContain("PGP", signedText);
+        }
+
+        private const string InjectedLine = "deadbeef00000000000000000000000000000000000000000000000000000000  bun-linux-x64.zip";
+
+        /// <summary>
+        /// Regression: unsigned text placed around a genuine clearsigned message (or among its armor
+        /// headers) used to verify, so a caller grepping the .asc for a checksum would trust it.
+        /// </summary>
+        [Theory]
+        [InlineData("prefix")]
+        [InlineData("suffix")]
+        [InlineData("header")]
+        public void VerifyClearsign_WithUnsignedTextInjectedAroundTheRealBunMessage_ShouldReturnFalse(string where)
+        {
+            // Arrange
+            string original = System.IO.File.ReadAllText("TestAssets/bun-release/SHASUMS256.txt.asc").Replace("\r\n", "\n");
+            string publicKeyArmor = System.IO.File.ReadAllText("TestAssets/bun-release/bun-public-key.asc");
+            string tampered = where switch
+            {
+                "prefix" => InjectedLine + "\n" + original,
+                "suffix" => original + InjectedLine + "\n",
+                _ => original.Replace("Hash: SHA512\n", "Hash: SHA512\nInjected: " + InjectedLine + "\n"),
+            };
+            Assert.NotEqual(original, tampered);
+
+            // Act
+            bool result = OpenPgpVerifier.VerifyClearsign(tampered, publicKeyArmor, out string signedText);
+
+            // Assert
+            Assert.False(result);
+            Assert.Equal(string.Empty, signedText);
+        }
+
+        [Fact]
+        public void VerifyClearsign_WithAHashHeaderThatDoesNotNameTheSignaturesAlgorithm_ShouldReturnFalse()
+        {
+            // Arrange: Bun's signature uses SHA-512.
+            string original = System.IO.File.ReadAllText("TestAssets/bun-release/SHASUMS256.txt.asc").Replace("\r\n", "\n");
+            string publicKeyArmor = System.IO.File.ReadAllText("TestAssets/bun-release/bun-public-key.asc");
+            string tampered = original.Replace("Hash: SHA512\n", "Hash: SHA256\n");
+
+            // Act
+            bool result = OpenPgpVerifier.VerifyClearsign(tampered, publicKeyArmor, out _);
+
+            // Assert
+            Assert.False(result);
+        }
+
+        [Fact]
+        public void VerifyDetached_WithAKeyThatNeverExpires_ShouldVerifyAtAnyLaterTime()
+        {
+            // Arrange: the draft vector's key has no self-signature, so it never expires; the
+            // signature (created 2015-09-16) has no expiration either - any clock verifies.
+            byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
+
+            // Act
+            bool result = OpenPgpVerifier.VerifyDetached(data, SignatureArmor, PublicKeyArmor, new DateTimeOffset(2100, 1, 1, 0, 0, 0, TimeSpan.Zero));
 
             // Assert
             Assert.True(result);
@@ -203,7 +267,7 @@ namespace Scarlet.OpenPgp.Tests
         public void VerifyClearsign_WithGarbageInput_ShouldReturnFalseNotThrow()
         {
             // Act
-            bool result = OpenPgpVerifier.VerifyClearsign("not a clearsigned message", PublicKeyArmor);
+            bool result = OpenPgpVerifier.VerifyClearsign("not a clearsigned message", PublicKeyArmor, out _);
 
             // Assert
             Assert.False(result);

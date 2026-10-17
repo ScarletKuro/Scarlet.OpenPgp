@@ -7,7 +7,8 @@ BouncyCastle.
 ## Quick start
 
 ```csharp
-bool ok = OpenPgpVerifier.VerifyClearsign(clearsignedText, publicKeyArmor);
+bool ok = OpenPgpVerifier.VerifyClearsign(clearsignedText, publicKeyArmor, out string signedText);
+// Use signedText from here on - never the original clearsignedText.
 ```
 
 ```bash

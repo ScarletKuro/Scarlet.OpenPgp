@@ -1,13 +1,14 @@
 namespace Scarlet.OpenPgp.Cli
 {
-    /// <summary>Parsed command-line options for the <c>verify</c> subcommand. Manual parsing, matching the tiny surface of this tool - no argument-parsing package is warranted for one subcommand and three flags.</summary>
+    /// <summary>Parsed command-line options for the <c>verify</c> subcommand. Manual parsing, matching the tiny surface of this tool - no argument-parsing package is warranted for one subcommand and four flags.</summary>
     internal sealed class OpenPgpCliOptions
     {
-        private OpenPgpCliOptions(string keyPath, string signaturePath, string? dataPath)
+        private OpenPgpCliOptions(string keyPath, string signaturePath, string? dataPath, string? outputPath)
         {
             KeyPath = keyPath;
             SignaturePath = signaturePath;
             DataPath = dataPath;
+            OutputPath = outputPath;
         }
 
         public string KeyPath { get; }
@@ -16,6 +17,9 @@ namespace Scarlet.OpenPgp.Cli
 
         /// <summary>When present, verify a detached signature over this file. When absent, <see cref="SignaturePath"/> names a self-contained clearsigned message.</summary>
         public string? DataPath { get; }
+
+        /// <summary>Clearsign only: where to write the verified signed text on success ("-" for stdout). Nothing is written when verification fails.</summary>
+        public string? OutputPath { get; }
 
         public static bool TryParse(string[] args, out OpenPgpCliOptions? options, out string? error)
         {
@@ -37,6 +41,7 @@ namespace Scarlet.OpenPgp.Cli
             string? key = null;
             string? signature = null;
             string? data = null;
+            string? output = null;
 
             for (int i = 1; i < args.Length; i++)
             {
@@ -72,6 +77,16 @@ namespace Scarlet.OpenPgp.Cli
                         data = args[i];
                         break;
 
+                    case "--output":
+                        if (++i >= args.Length)
+                        {
+                            error = "--output requires a path argument (or \"-\" for stdout)";
+                            return false;
+                        }
+
+                        output = args[i];
+                        break;
+
                     default:
                         error = "unknown argument \"" + args[i] + "\"";
                         return false;
@@ -90,7 +105,13 @@ namespace Scarlet.OpenPgp.Cli
                 return false;
             }
 
-            options = new OpenPgpCliOptions(key, signature, data);
+            if (data is not null && output is not null)
+            {
+                error = "--output only applies to clearsigned messages (omit --data)";
+                return false;
+            }
+
+            options = new OpenPgpCliOptions(key, signature, data, output);
             return true;
         }
     }

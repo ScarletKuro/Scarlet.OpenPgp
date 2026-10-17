@@ -142,7 +142,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
             string clearsignedMessage = SignClearsign(PublicKeyAlgorithmTag.RsaGeneral, privateKey, lines);
 
             // Act
-            bool result = OpenPgpVerifier.VerifyClearsign(clearsignedMessage, publicKeyArmor);
+            bool result = OpenPgpVerifier.VerifyClearsign(clearsignedMessage, publicKeyArmor, out _);
 
             // Assert
             Assert.True(result);
@@ -158,7 +158,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
             string tampered = clearsignedMessage.Replace("Second line", "Tampered line");
 
             // Act
-            bool result = OpenPgpVerifier.VerifyClearsign(tampered, publicKeyArmor);
+            bool result = OpenPgpVerifier.VerifyClearsign(tampered, publicKeyArmor, out _);
 
             // Assert
             Assert.False(result);
@@ -188,7 +188,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
             string clearsignedMessage = SignClearsign(PublicKeyAlgorithmTag.EdDsa, privateKey, lines);
 
             // Act
-            bool result = OpenPgpVerifier.VerifyClearsign(clearsignedMessage, publicKeyArmor);
+            bool result = OpenPgpVerifier.VerifyClearsign(clearsignedMessage, publicKeyArmor, out _);
 
             // Assert
             Assert.True(result);
