@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Scarlet.OpenPgp.Armor;
 using Scarlet.OpenPgp.Internal;
@@ -60,7 +61,7 @@ namespace Scarlet.OpenPgp
         /// <param name="armoredKeys">The armored keys.</param>
         /// <param name="keyRing">The key ring, when parsing succeeded.</param>
         /// <param name="error">Why parsing failed, when it did.</param>
-        public static bool TryParse(string armoredKeys, out OpenPgpKeyRing? keyRing, out string? error)
+        public static bool TryParse(string armoredKeys, [NotNullWhen(true)] out OpenPgpKeyRing? keyRing, [NotNullWhen(false)] out string? error)
         {
             if (armoredKeys is null)
             {
@@ -74,7 +75,7 @@ namespace Scarlet.OpenPgp
         /// <param name="keys">The armored or binary keys.</param>
         /// <param name="keyRing">The key ring, when parsing succeeded.</param>
         /// <param name="error">Why parsing failed, when it did.</param>
-        public static bool TryParse(ReadOnlySpan<byte> keys, out OpenPgpKeyRing? keyRing, out string? error)
+        public static bool TryParse(ReadOnlySpan<byte> keys, [NotNullWhen(true)] out OpenPgpKeyRing? keyRing, [NotNullWhen(false)] out string? error)
         {
             byte[] copy = keys.ToArray();
             return TryParse(() => PacketInput.Decode(copy, PublicKeyLabel), out keyRing, out error);
@@ -84,13 +85,13 @@ namespace Scarlet.OpenPgp
         {
             if (!TryParse(decode, out OpenPgpKeyRing? keyRing, out string? error))
             {
-                throw new OpenPgpFormatException(error!);
+                throw new OpenPgpFormatException(error);
             }
 
-            return keyRing!;
+            return keyRing;
         }
 
-        private static bool TryParse(Func<byte[]> decode, out OpenPgpKeyRing? keyRing, out string? error)
+        private static bool TryParse(Func<byte[]> decode, [NotNullWhen(true)] out OpenPgpKeyRing? keyRing, [NotNullWhen(false)] out string? error)
         {
             try
             {

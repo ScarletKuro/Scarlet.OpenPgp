@@ -84,7 +84,6 @@ namespace Scarlet.OpenPgp.Signing
             // What the signatures currently being read are attached to.
             byte[]? userIdPrefix = null;
             string? userId = null;
-            bool inUserIdSection = false;
             Subkey? currentSubkey = null;
             bool inSubkeySection = false;
 
@@ -100,7 +99,6 @@ namespace Scarlet.OpenPgp.Signing
                             throw new FailClosedException("User ID packet after a subkey in a public key block.");
                         }
 
-                        inUserIdSection = true;
                         userIdPrefix = BuildUserIdHashPrefix(packet.Header.Tag, packet.Body);
 
                         // User IDs are UTF-8 by convention (RFC 9580 §5.11); invalid bytes become U+FFFD,
@@ -129,9 +127,9 @@ namespace Scarlet.OpenPgp.Signing
                         {
                             currentSubkey?.AddSignature(certificate, signature);
                         }
-                        else if (inUserIdSection)
+                        else if (userIdPrefix is not null) // in the User ID section
                         {
-                            certificate.AddUserIdSignature(signature, userIdPrefix!, userId);
+                            certificate.AddUserIdSignature(signature, userIdPrefix, userId);
                         }
                         else
                         {

@@ -45,6 +45,17 @@
     <PackageReference Include="System.Memory" Version="4.6.3" />
   </ItemGroup>
 
+  <!-- PolySharp is a build-time source generator, not a runtime dependency: it compiles internal
+       copies of the C# nullability attributes into the netstandard2.0 build (net10.0 already has
+       them, so nothing is generated there). -->
+  <ItemGroup>
+    <PackageReference Include="PolySharp" Version="1.16.0" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <PolySharpIncludeGeneratedTypes>System.Diagnostics.CodeAnalysis.AllowNullAttribute;System.Diagnostics.CodeAnalysis.DisallowNullAttribute;System.Diagnostics.CodeAnalysis.DoesNotReturnAttribute;System.Diagnostics.CodeAnalysis.DoesNotReturnIfAttribute;System.Diagnostics.CodeAnalysis.MaybeNullAttribute;System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute;System.Diagnostics.CodeAnalysis.MemberNotNullAttribute;System.Diagnostics.CodeAnalysis.MemberNotNullWhenAttribute;System.Diagnostics.CodeAnalysis.NotNullAttribute;System.Diagnostics.CodeAnalysis.NotNullIfNotNullAttribute;System.Diagnostics.CodeAnalysis.NotNullWhenAttribute</PolySharpIncludeGeneratedTypes>
+  </PropertyGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="Scarlet.OpenPgp.Tests" />
   </ItemGroup>

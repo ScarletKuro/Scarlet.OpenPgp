@@ -76,25 +76,26 @@ namespace Scarlet.OpenPgp.Signing
             {
                 case PublicKeyAlgorithm.RsaEncryptOrSign:
                 case PublicKeyAlgorithm.RsaSignOnly:
-                    return signature.RsaSignatureValue is not null
-                           && RsaPkcs1Verifier.Verify(key.Rsa!, signature.HashAlgorithm, digest, signature.RsaSignatureValue.Value);
+                    return key.Rsa is not null && signature.RsaSignatureValue is not null
+                           && RsaPkcs1Verifier.Verify(key.Rsa, signature.HashAlgorithm, digest, signature.RsaSignatureValue.Value);
 
                 case PublicKeyAlgorithm.Dsa:
                     return signature.R is not null && signature.S is not null
-                           && DsaVerifier.Verify(key.Dsa!, digest, signature.R.Value, signature.S.Value);
+                           && key.Dsa is not null && DsaVerifier.Verify(key.Dsa, digest, signature.R.Value, signature.S.Value);
 
                 case PublicKeyAlgorithm.Ecdsa:
                     return signature.R is not null && signature.S is not null
-                           && EcdsaVerifier.Verify(key.EcdsaCurve!, key.EcdsaPoint!, digest, signature.R.Value, signature.S.Value);
+                           && key.EcdsaCurve is not null && key.EcdsaPoint is not null
+                           && EcdsaVerifier.Verify(key.EcdsaCurve, key.EcdsaPoint, digest, signature.R.Value, signature.S.Value);
 
                 case PublicKeyAlgorithm.EdDsaLegacy:
                 case PublicKeyAlgorithm.Ed25519:
-                    return signature.EdDsaSignatureValue is not null
-                           && Ed25519Verifier.Verify(key.Ed25519!, digest, signature.EdDsaSignatureValue);
+                    return key.Ed25519 is not null && signature.EdDsaSignatureValue is not null
+                           && Ed25519Verifier.Verify(key.Ed25519, digest, signature.EdDsaSignatureValue);
 
                 case PublicKeyAlgorithm.Ed448:
-                    return signature.Ed448SignatureValue is not null
-                           && Ed448Verifier.Verify(key.Ed448!, digest, signature.Ed448SignatureValue);
+                    return key.Ed448 is not null && signature.Ed448SignatureValue is not null
+                           && Ed448Verifier.Verify(key.Ed448, digest, signature.Ed448SignatureValue);
 
                 default:
                     return false;
@@ -145,9 +146,9 @@ namespace Scarlet.OpenPgp.Signing
                     return 512;
                 case PublicKeyAlgorithm.Ecdsa:
                     // The curve's "fsize", except NIST P-521, which needs at least a 512-bit hash.
-                    return Math.Min(BigIntegerMath.BitLength(key.EcdsaCurve!.P), 512);
+                    return key.EcdsaCurve is null ? int.MaxValue : Math.Min(BigIntegerMath.BitLength(key.EcdsaCurve.P), 512);
                 case PublicKeyAlgorithm.Dsa:
-                    return key.Dsa!.QBitLength;
+                    return key.Dsa is null ? int.MaxValue : key.Dsa.QBitLength;
                 default:
                     return 0;
             }

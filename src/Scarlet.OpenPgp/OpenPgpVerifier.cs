@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -201,7 +202,7 @@ namespace Scarlet.OpenPgp
                 throw new ArgumentNullException(nameof(clearsignedMessage));
             }
 
-            if (keys.Failure is not null)
+            if (keys.Failed)
             {
                 return keys.Failure;
             }
@@ -221,7 +222,7 @@ namespace Scarlet.OpenPgp
                 return new VerificationResult(VerificationStatus.MalformedInput, "The clearsigned message is malformed: " + ex.Message);
             }
 
-            using (DocumentVerification verification = DocumentVerification.Start(signaturePackets, keys.Value!, isClearsign: true))
+            using (DocumentVerification verification = DocumentVerification.Start(signaturePackets, keys.Value, isClearsign: true))
             {
                 verification.Update(content, 0, content.Length);
                 return verification.Complete(now, signedText);
@@ -317,18 +318,18 @@ namespace Scarlet.OpenPgp
                 throw new ArgumentNullException(nameof(keyRing));
             }
 
-            return new ParsedInput<KeyRing>(keyRing.Inner, null);
+            return new ParsedInput<KeyRing>(keyRing.Inner);
         }
 
         private static ParsedInput<KeyRing> ParseKeys(Func<byte[]> decode)
         {
             try
             {
-                return new ParsedInput<KeyRing>(KeyRing.Parse(decode()), null);
+                return new ParsedInput<KeyRing>(KeyRing.Parse(decode()));
             }
             catch (FailClosedException ex)
             {
-                return new ParsedInput<KeyRing>(null, new VerificationResult(VerificationStatus.InvalidPublicKey, "The public key input is unusable: " + ex.Message));
+                return new ParsedInput<KeyRing>(new VerificationResult(VerificationStatus.InvalidPublicKey, "The public key input is unusable: " + ex.Message));
             }
         }
 
@@ -336,38 +337,48 @@ namespace Scarlet.OpenPgp
         {
             try
             {
-                return new ParsedInput<byte[]>(decode(), null);
+                return new ParsedInput<byte[]>(decode());
             }
             catch (FailClosedException ex)
             {
-                return new ParsedInput<byte[]>(null, new VerificationResult(VerificationStatus.MalformedInput, "The signature is malformed: " + ex.Message));
+                return new ParsedInput<byte[]>(new VerificationResult(VerificationStatus.MalformedInput, "The signature is malformed: " + ex.Message));
             }
         }
 
         private static DocumentVerification StartDetached(ParsedInput<byte[]> signatures, ParsedInput<KeyRing> keys)
         {
-            if (signatures.Failure is not null)
+            if (signatures.Failed)
             {
                 return DocumentVerification.Failed(signatures.Failure.Status, signatures.Failure.Message);
             }
 
-            if (keys.Failure is not null)
+            if (keys.Failed)
             {
                 return DocumentVerification.Failed(keys.Failure.Status, keys.Failure.Message);
             }
 
-            return DocumentVerification.Start(signatures.Value!, keys.Value!, isClearsign: false);
+            return DocumentVerification.Start(signatures.Value, keys.Value, isClearsign: false);
         }
 
         /// <summary>Parsed signature or key input, or the result to report because it couldn't be parsed.</summary>
         internal sealed class ParsedInput<T>
             where T : class
         {
-            public ParsedInput(T? value, VerificationResult? failure)
+            public ParsedInput(T value)
             {
                 Value = value;
-                Failure = failure;
             }
+
+            public ParsedInput(VerificationResult failure)
+            {
+                Failure = failure;
+                Failed = true;
+            }
+
+            /// <summary>Whether parsing failed; exactly one of <see cref="Value"/> and <see cref="Failure"/> is set, and this says which.</summary>
+            [MemberNotNullWhen(true, nameof(Failure))]
+            [MemberNotNullWhen(false, nameof(Value))]
+            public bool Failed { get; }
 
             public T? Value { get; }
 

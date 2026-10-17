@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Scarlet.OpenPgp
 {
@@ -61,8 +62,13 @@ namespace Scarlet.OpenPgp
             SignedText = signedText;
         }
 
-        /// <summary>Whether a signature verified. Equivalent to <see cref="Status"/> being <see cref="VerificationStatus.Valid"/>.</summary>
-        public bool IsValid => Status == VerificationStatus.Valid;
+        /// <summary>
+        /// Whether a signature verified. Equivalent to <see cref="Status"/> being
+        /// <see cref="VerificationStatus.Valid"/>; when <c>true</c>, the signer and primary key
+        /// fingerprints are always set.
+        /// </summary>
+        [MemberNotNullWhen(true, nameof(SignerFingerprint), nameof(PrimaryKeyFingerprint))]
+        public bool IsValid => Status == VerificationStatus.Valid && SignerFingerprint is not null && PrimaryKeyFingerprint is not null;
 
         /// <summary>The outcome; anything other than <see cref="VerificationStatus.Valid"/> says why verification failed.</summary>
         public VerificationStatus Status { get; }
