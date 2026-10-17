@@ -54,18 +54,18 @@ namespace Scarlet.OpenPgp.Tests.Hashing
                 "03bdc970f50ae55428a91f7f53ac266b28419c3778a15fd248d339ede785fb7f";
 
             // Act
-            byte[] output = KeccakHash.Shake256(System.Array.Empty<byte>(), 256);
+            byte[] output = KeccakHash.Shake256([], 256);
 
             // Assert
             Assert.Equal(expectedHex, ToHex(output));
-            Assert.Equal(ToHex(BouncyCastleShake256(System.Array.Empty<byte>(), 256)), ToHex(output));
+            Assert.Equal(ToHex(BouncyCastleShake256([], 256)), ToHex(output));
         }
 
         [Fact]
         public void Shake256_WithZeroOutputLength_ShouldReturnEmptyArray()
         {
             // Act
-            byte[] output = KeccakHash.Shake256(Encoding.ASCII.GetBytes("abc"), 0);
+            byte[] output = KeccakHash.Shake256("abc"u8.ToArray(), 0);
 
             // Assert
             Assert.Empty(output);
@@ -75,7 +75,7 @@ namespace Scarlet.OpenPgp.Tests.Hashing
         public void Shake256_WithShorterOutputLength_ShouldBeAPrefixOfLongerOutput()
         {
             // Arrange
-            byte[] data = Encoding.ASCII.GetBytes("abc");
+            byte[] data = "abc"u8.ToArray();
 
             // Act
             byte[] shortOutput = KeccakHash.Shake256(data, 57);
@@ -120,7 +120,7 @@ namespace Scarlet.OpenPgp.Tests.Hashing
         [Fact]
         public void Shake256_WithAllLengthsAcrossBlockBoundaries_ShouldMatchBouncyCastle()
         {
-            int[] outputLengths = { 1, 32, 114, 135, 136, 137, 272, 300 };
+            int[] outputLengths = [1, 32, 114, 135, 136, 137, 272, 300];
             for (int length = 0; length <= 300; length++)
             {
                 // Arrange
@@ -142,7 +142,7 @@ namespace Scarlet.OpenPgp.Tests.Hashing
         {
             // Arrange: chunk sizes chosen to straddle the 72- and 136-byte rates in every alignment.
             byte[] data = DeterministicBytes(1500, seed: 42);
-            int[] chunkSizes = { 1, 2, 3, 5, 7, 13, 71, 72, 73, 135, 136, 137, 271, 500 };
+            int[] chunkSizes = [1, 2, 3, 5, 7, 13, 71, 72, 73, 135, 136, 137, 271, 500];
 
             foreach (int chunkSize in chunkSizes)
             {
@@ -170,7 +170,7 @@ namespace Scarlet.OpenPgp.Tests.Hashing
         public void Update_WithZeroCountAndNonZeroOffset_ShouldBeANoOp()
         {
             // Arrange
-            byte[] data = Encoding.ASCII.GetBytes("abc");
+            byte[] data = "abc"u8.ToArray();
             KeccakHash hash = KeccakHash.CreateSha3_256();
 
             // Act

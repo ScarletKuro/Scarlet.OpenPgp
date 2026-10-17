@@ -16,24 +16,22 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Rsa
         // check agrees with a trusted implementation.
         private static (RsaPublicKey PublicKey, byte[] Digest, BigInteger Signature) SignWithReferenceRsa(byte[] message)
         {
-            using (RSA rsa = RSA.Create(2048))
-            {
-                byte[] digest = SHA256.HashData(message);
-                byte[] signatureBytes = rsa.SignHash(digest, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+            using RSA rsa = RSA.Create(2048);
+            byte[] digest = SHA256.HashData(message);
+            byte[] signatureBytes = rsa.SignHash(digest, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
 
-                RSAParameters parameters = rsa.ExportParameters(false);
-                var publicKey = new RsaPublicKey(Mpi.ToUnsignedBigInteger(parameters.Modulus!), Mpi.ToUnsignedBigInteger(parameters.Exponent!));
-                BigInteger signature = Mpi.ToUnsignedBigInteger(signatureBytes);
+            RSAParameters parameters = rsa.ExportParameters(false);
+            var publicKey = new RsaPublicKey(Mpi.ToUnsignedBigInteger(parameters.Modulus!), Mpi.ToUnsignedBigInteger(parameters.Exponent!));
+            BigInteger signature = Mpi.ToUnsignedBigInteger(signatureBytes);
 
-                return (publicKey, digest, signature);
-            }
+            return (publicKey, digest, signature);
         }
 
         [Fact]
         public void Verify_WithReferenceRsaSignature_ShouldReturnTrue()
         {
             // Arrange
-            (RsaPublicKey publicKey, byte[] digest, BigInteger signature) = SignWithReferenceRsa(Encoding.ASCII.GetBytes("Scarlet.OpenPgp RSA test message"));
+            (RsaPublicKey publicKey, byte[] digest, BigInteger signature) = SignWithReferenceRsa("Scarlet.OpenPgp RSA test message"u8.ToArray());
 
             // Act
             bool result = RsaPkcs1Verifier.Verify(publicKey, HashAlgorithmId.Sha256, digest, signature);
@@ -46,7 +44,7 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Rsa
         public void Verify_WithTamperedDigest_ShouldReturnFalse()
         {
             // Arrange
-            (RsaPublicKey publicKey, byte[] digest, BigInteger signature) = SignWithReferenceRsa(Encoding.ASCII.GetBytes("Scarlet.OpenPgp RSA test message"));
+            (RsaPublicKey publicKey, byte[] digest, BigInteger signature) = SignWithReferenceRsa("Scarlet.OpenPgp RSA test message"u8.ToArray());
             digest[0] ^= 0xFF;
 
             // Act
@@ -60,7 +58,7 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Rsa
         public void Verify_WithCorruptedSignature_ShouldReturnFalse()
         {
             // Arrange
-            (RsaPublicKey publicKey, byte[] digest, BigInteger signature) = SignWithReferenceRsa(Encoding.ASCII.GetBytes("Scarlet.OpenPgp RSA test message"));
+            (RsaPublicKey publicKey, byte[] digest, BigInteger signature) = SignWithReferenceRsa("Scarlet.OpenPgp RSA test message"u8.ToArray());
 
             // Act
             bool result = RsaPkcs1Verifier.Verify(publicKey, HashAlgorithmId.Sha256, digest, signature + 1);
@@ -73,8 +71,8 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Rsa
         public void Verify_WithWrongPublicKey_ShouldReturnFalse()
         {
             // Arrange
-            (RsaPublicKey publicKey, byte[] digest, BigInteger signature) = SignWithReferenceRsa(Encoding.ASCII.GetBytes("Scarlet.OpenPgp RSA test message"));
-            (RsaPublicKey wrongPublicKey, _, _) = SignWithReferenceRsa(Encoding.ASCII.GetBytes("a different message, different key"));
+            (_, byte[] digest, BigInteger signature) = SignWithReferenceRsa("Scarlet.OpenPgp RSA test message"u8.ToArray());
+            (RsaPublicKey wrongPublicKey, _, _) = SignWithReferenceRsa("a different message, different key"u8.ToArray());
 
             // Act
             bool result = RsaPkcs1Verifier.Verify(wrongPublicKey, HashAlgorithmId.Sha256, digest, signature);
@@ -87,7 +85,7 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Rsa
         public void Verify_WithSignatureNotLessThanModulus_ShouldReturnFalse()
         {
             // Arrange
-            (RsaPublicKey publicKey, byte[] digest, _) = SignWithReferenceRsa(Encoding.ASCII.GetBytes("Scarlet.OpenPgp RSA test message"));
+            (RsaPublicKey publicKey, byte[] digest, _) = SignWithReferenceRsa("Scarlet.OpenPgp RSA test message"u8.ToArray());
 
             // Act
             bool result = RsaPkcs1Verifier.Verify(publicKey, HashAlgorithmId.Sha256, digest, publicKey.Modulus);
@@ -100,7 +98,7 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Rsa
         public void Verify_WithMismatchedHashAlgorithm_ShouldReturnFalse()
         {
             // Arrange: signed as SHA-256, but verification asks for the SHA-384 DigestInfo prefix.
-            (RsaPublicKey publicKey, byte[] digest, BigInteger signature) = SignWithReferenceRsa(Encoding.ASCII.GetBytes("Scarlet.OpenPgp RSA test message"));
+            (RsaPublicKey publicKey, byte[] digest, BigInteger signature) = SignWithReferenceRsa("Scarlet.OpenPgp RSA test message"u8.ToArray());
 
             // Act
             bool result = RsaPkcs1Verifier.Verify(publicKey, HashAlgorithmId.Sha384, digest, signature);
@@ -113,15 +111,13 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Rsa
         public void RsaPublicKey_WithModulusBelow2048Bits_ShouldFailClosed()
         {
             // Arrange
-            using (RSA rsa = RSA.Create(1024))
-            {
-                RSAParameters parameters = rsa.ExportParameters(false);
-                BigInteger modulus = Mpi.ToUnsignedBigInteger(parameters.Modulus!);
-                BigInteger exponent = Mpi.ToUnsignedBigInteger(parameters.Exponent!);
+            using RSA rsa = RSA.Create(1024);
+            RSAParameters parameters = rsa.ExportParameters(false);
+            BigInteger modulus = Mpi.ToUnsignedBigInteger(parameters.Modulus!);
+            BigInteger exponent = Mpi.ToUnsignedBigInteger(parameters.Exponent!);
 
-                // Act & Assert
-                Assert.Throws<FailClosedException>(() => new RsaPublicKey(modulus, exponent));
-            }
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => new RsaPublicKey(modulus, exponent));
         }
 
         [Theory]
@@ -131,13 +127,11 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Rsa
         public void RsaPublicKey_WithInvalidExponent_ShouldFailClosed(int exponent)
         {
             // Arrange
-            using (RSA rsa = RSA.Create(2048))
-            {
-                BigInteger modulus = Mpi.ToUnsignedBigInteger(rsa.ExportParameters(false).Modulus!);
+            using RSA rsa = RSA.Create(2048);
+            BigInteger modulus = Mpi.ToUnsignedBigInteger(rsa.ExportParameters(false).Modulus!);
 
-                // Act & Assert
-                Assert.Throws<FailClosedException>(() => new RsaPublicKey(modulus, exponent));
-            }
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => new RsaPublicKey(modulus, exponent));
         }
 
         [Fact]

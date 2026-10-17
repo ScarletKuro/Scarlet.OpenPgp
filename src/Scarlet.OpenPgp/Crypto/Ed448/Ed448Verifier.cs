@@ -28,9 +28,9 @@ namespace Scarlet.OpenPgp.Crypto.Ed448
         /// Unlike Ed25519 (whose dom2 is empty for the pure variant), Ed448 always prefixes this.
         /// </summary>
         private static readonly byte[] Dom4PureEmptyContext =
-        {
+        [
             (byte)'S', (byte)'i', (byte)'g', (byte)'E', (byte)'d', (byte)'4', (byte)'4', (byte)'8', 0x00, 0x00,
-        };
+        ];
 
         public static bool Verify(byte[] publicKey, byte[] message, byte[] signature)
         {

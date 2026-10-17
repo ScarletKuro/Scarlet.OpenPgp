@@ -46,26 +46,22 @@ namespace Scarlet.OpenPgp.Packets
             // A v4 fingerprint *is* SHA-1 by definition (RFC 9580 §5.5.4.2); it identifies a key,
             // it doesn't authenticate anything.
 #pragma warning disable CA5350 // Do Not Use Weak Cryptographic Algorithms
-            using (var sha1 = SHA1.Create())
+            using var sha1 = SHA1.Create();
 #pragma warning restore CA5350
-            {
-                byte[] fingerprint = sha1.ComputeHash(hashInput);
-                var keyId = new byte[8];
-                System.Array.Copy(fingerprint, fingerprint.Length - 8, keyId, 0, 8);
-                return new KeyFingerprint(4, fingerprint, keyId);
-            }
+            byte[] fingerprint = sha1.ComputeHash(hashInput);
+            var keyId = new byte[8];
+            System.Array.Copy(fingerprint, fingerprint.Length - 8, keyId, 0, 8);
+            return new KeyFingerprint(4, fingerprint, keyId);
         }
 
         public static KeyFingerprint ComputeV6(byte[] publicKeyPacketBody)
         {
             byte[] hashInput = KeyHashPrefix.Build(6, publicKeyPacketBody);
-            using (var sha256 = SHA256.Create())
-            {
-                byte[] fingerprint = sha256.ComputeHash(hashInput);
-                var keyId = new byte[8];
-                System.Array.Copy(fingerprint, 0, keyId, 0, 8);
-                return new KeyFingerprint(6, fingerprint, keyId);
-            }
+            using var sha256 = SHA256.Create();
+            byte[] fingerprint = sha256.ComputeHash(hashInput);
+            var keyId = new byte[8];
+            System.Array.Copy(fingerprint, 0, keyId, 0, 8);
+            return new KeyFingerprint(6, fingerprint, keyId);
         }
 
         public bool Matches(byte[] other) => FixedTimeEquals(Bytes, other);

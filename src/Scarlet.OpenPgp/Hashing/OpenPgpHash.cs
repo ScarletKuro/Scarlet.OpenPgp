@@ -5,11 +5,9 @@ namespace Scarlet.OpenPgp.Hashing
     {
         public static byte[] ComputeHash(HashAlgorithmId algorithm, byte[] data)
         {
-            using (HashContext context = HashContext.Create(algorithm))
-            {
-                context.Update(data);
-                return context.Finish();
-            }
+            using HashContext context = HashContext.Create(algorithm);
+            context.Update(data);
+            return context.Finish();
         }
     }
 }

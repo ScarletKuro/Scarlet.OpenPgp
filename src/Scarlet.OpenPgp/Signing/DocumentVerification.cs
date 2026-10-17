@@ -76,7 +76,7 @@ namespace Scarlet.OpenPgp.Signing
 
         public static DocumentVerification Failed(VerificationStatus status, string message)
         {
-            return new DocumentVerification(new List<Entry>(), new VerificationResult(status, message));
+            return new DocumentVerification([], new VerificationResult(status, message));
         }
 
         /// <summary>Whether the outcome is already known without reading any content (every signature failed before hashing, or the input was unusable).</summary>
@@ -119,7 +119,7 @@ namespace Scarlet.OpenPgp.Signing
         {
             foreach (Entry entry in _entries)
             {
-                entry.Digest?.Dispose();
+                entry.Dispose();
             }
         }
 
@@ -149,13 +149,15 @@ namespace Scarlet.OpenPgp.Signing
         }
 
         /// <summary>One signature: either an early failure, or its digest-in-progress and the keys that may have made it.</summary>
-        private sealed class Entry
+        private sealed class Entry : IDisposable
         {
             private VerificationResult? _failure;
             private SignaturePacket? _signature;
-            private readonly List<(Certificate Certificate, PublicKeyPacket Key)> _candidates = new List<(Certificate, PublicKeyPacket)>();
+            private readonly List<(Certificate Certificate, PublicKeyPacket Key)> _candidates = [];
 
             public SignatureDigest? Digest { get; private set; }
+
+            public void Dispose() => Digest?.Dispose();
 
             public static Entry Create(byte[] body, KeyRing keyRing, bool isClearsign)
             {

@@ -52,20 +52,18 @@ namespace Scarlet.OpenPgp.Armor
         public static byte[] Decode(string armorText, string expectedLabel)
         {
             List<AsciiArmorBlock> blocks = AsciiArmorReader.ReadAll(armorText);
-            using (var packets = new MemoryStream())
+            using var packets = new MemoryStream();
+            foreach (AsciiArmorBlock block in blocks)
             {
-                foreach (AsciiArmorBlock block in blocks)
+                if (!string.Equals(block.Label, expectedLabel, StringComparison.Ordinal))
                 {
-                    if (!string.Equals(block.Label, expectedLabel, StringComparison.Ordinal))
-                    {
-                        throw new FailClosedException("Expected a \"" + expectedLabel + "\" armor block, found \"" + block.Label + "\".");
-                    }
-
-                    packets.Write(block.Body, 0, block.Body.Length);
+                    throw new FailClosedException("Expected a \"" + expectedLabel + "\" armor block, found \"" + block.Label + "\".");
                 }
 
-                return packets.ToArray();
+                packets.Write(block.Body, 0, block.Body.Length);
             }
+
+            return packets.ToArray();
         }
 
         private static bool LooksArmored(ReadOnlySpan<byte> input)

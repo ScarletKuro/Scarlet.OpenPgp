@@ -24,7 +24,7 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Dsa
         private static readonly Lazy<DsaParameters> Parameters3072x256 = new Lazy<DsaParameters>(() => GenerateParameters(3072, 256));
         private static readonly Lazy<DsaParameters> Parameters1024x160 = new Lazy<DsaParameters>(() => GenerateLegacyParameters());
 
-        private static readonly byte[] Message = Encoding.ASCII.GetBytes("Scarlet.OpenPgp DSA test message");
+        private static readonly byte[] Message = "Scarlet.OpenPgp DSA test message"u8.ToArray();
 
         private sealed class ReferenceSignature
         {
@@ -333,7 +333,7 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Dsa
             BigInteger y = BigInteger.ModPow(g, 12345, p);
 
             // Act
-            Action act = () => _ = new DsaPublicKey(p, ToNumerics(parameters.Q), g, y);
+            void act() => _ = new DsaPublicKey(p, ToNumerics(parameters.Q), g, y);
 
             // Assert
             Assert.Equal(1024, Scarlet.OpenPgp.Crypto.BigIntegerMath.BitLength(p));
@@ -406,7 +406,7 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Dsa
             }
 
             // Act
-            Action act = () => _ = new DsaPublicKey(p, q, g, y);
+            void act() => _ = new DsaPublicKey(p, q, g, y);
 
             // Assert
             Assert.Throws<FailClosedException>(act);

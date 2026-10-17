@@ -55,10 +55,8 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
 
         private static byte[] ComputeSha512(byte[] data)
         {
-            using (SHA512 sha512 = SHA512.Create())
-            {
-                return sha512.ComputeHash(data);
-            }
+            using SHA512 sha512 = SHA512.Create();
+            return sha512.ComputeHash(data);
         }
 
         private static byte[] Concat(byte[] a, byte[] b, byte[] c)

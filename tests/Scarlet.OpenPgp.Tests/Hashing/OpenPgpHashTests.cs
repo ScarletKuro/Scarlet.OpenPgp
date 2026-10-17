@@ -10,7 +10,7 @@ namespace Scarlet.OpenPgp.Tests.Hashing
         public void ComputeHash_WithSha256OfAbc_ShouldMatchTheKnownFips1804Vector()
         {
             // Arrange
-            byte[] data = Encoding.ASCII.GetBytes("abc");
+            byte[] data = "abc"u8.ToArray();
 
             // Act
             byte[] hash = OpenPgpHash.ComputeHash(HashAlgorithmId.Sha256, data);
@@ -23,7 +23,7 @@ namespace Scarlet.OpenPgp.Tests.Hashing
         public void ComputeHash_WithUnsupportedAlgorithm_ShouldFailClosed()
         {
             // Arrange
-            byte[] data = Encoding.ASCII.GetBytes("abc");
+            byte[] data = "abc"u8.ToArray();
 
             // Act & Assert
             Assert.Throws<FailClosedException>(() => OpenPgpHash.ComputeHash(HashAlgorithmId.Sha1, data));

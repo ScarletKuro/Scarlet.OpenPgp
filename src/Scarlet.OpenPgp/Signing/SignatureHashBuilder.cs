@@ -28,26 +28,24 @@ namespace Scarlet.OpenPgp.Signing
         /// <summary>The digest of <paramref name="content"/> (hashed as-is, no text canonicalization) under <paramref name="signature"/>.</summary>
         public static byte[] ComputeDigest(byte[] content, SignaturePacket signature, bool isKeySignature = false)
         {
-            using (SignatureDigest digest = SignatureDigest.Begin(signature, canonicalizeText: false, isKeySignature))
-            {
-                digest.Update(content, 0, content.Length);
-                return digest.Finish();
-            }
+            using SignatureDigest digest = SignatureDigest.Begin(signature, canonicalizeText: false, isKeySignature);
+            digest.Update(content, 0, content.Length);
+            return digest.Finish();
         }
 
         /// <summary>The trailer: the signature version, 0xFF, and the hashed portion's length as a 4-octet big-endian number.</summary>
         public static byte[] BuildTrailer(SignaturePacket signature)
         {
             int length = signature.HashedPortion.Length;
-            return new[]
-            {
+            return
+            [
                 signature.Version,
                 (byte)0xFF,
                 (byte)(length >> 24),
                 (byte)(length >> 16),
                 (byte)(length >> 8),
                 (byte)length,
-            };
+            ];
         }
 
         private static void Append(byte[] target, ref int offset, byte[] source)
@@ -65,7 +63,7 @@ namespace Scarlet.OpenPgp.Signing
     /// </summary>
     internal sealed class SignatureDigest : IDisposable
     {
-        private static readonly byte[] CarriageReturn = { (byte)'\r' };
+        private static readonly byte[] CarriageReturn = [(byte)'\r'];
 
         private readonly SignaturePacket _signature;
         private readonly HashContext _hash;

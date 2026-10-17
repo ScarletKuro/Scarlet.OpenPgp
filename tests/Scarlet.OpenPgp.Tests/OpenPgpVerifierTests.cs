@@ -1,4 +1,3 @@
-using System;
 using System.Text;
 using Scarlet.OpenPgp.Armor;
 
@@ -107,7 +106,7 @@ namespace Scarlet.OpenPgp.Tests
         {
             // Arrange: the draft vector's key has no self-signature, so it never expires; the
             // signature (created 2015-09-16) has no expiration either - any clock verifies.
-            byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
+            byte[] data = "OpenPGP"u8.ToArray();
 
             // Act
             bool result = OpenPgpVerifier.VerifyDetached(data, SignatureArmor, PublicKeyArmor, new DateTimeOffset(2100, 1, 1, 0, 0, 0, TimeSpan.Zero)).IsValid;
@@ -119,7 +118,7 @@ namespace Scarlet.OpenPgp.Tests
         private static string Armor(string label, byte[] body)
         {
             int crc = Crc24.Compute(body);
-            byte[] crcBytes = { (byte)(crc >> 16), (byte)(crc >> 8), (byte)crc };
+            byte[] crcBytes = [(byte)(crc >> 16), (byte)(crc >> 8), (byte)crc];
             return "-----BEGIN PGP " + label + "-----\n"
                    + "\n"
                    + Convert.ToBase64String(body) + "\n"
@@ -132,22 +131,22 @@ namespace Scarlet.OpenPgp.Tests
         // message "OpenPGP" - an authoritative, independent-of-this-library end-to-end fixture that
         // needs no external tooling (BouncyCastle) to generate.
         private static readonly byte[] Ed25519PublicKeyPacketBytes =
-        {
+        [
             0x98, 0x33, 0x04, 0x53, 0xf3, 0x5f, 0x0b, 0x16, 0x09, 0x2b, 0x06, 0x01, 0x04, 0x01, 0xda, 0x47,
             0x0f, 0x01, 0x01, 0x07, 0x40, 0x3f, 0x09, 0x89, 0x94, 0xbd, 0xd9, 0x16, 0xed, 0x40, 0x53, 0x19,
             0x79, 0x34, 0xe4, 0xa8, 0x7c, 0x80, 0x73, 0x3a, 0x12, 0x80, 0xd6, 0x2f, 0x80, 0x10, 0x99, 0x2e,
             0x43, 0xee, 0x3b, 0x24, 0x06,
-        };
+        ];
 
         private static readonly byte[] Ed25519SignaturePacketBytes =
-        {
+        [
             0x88, 0x5e, 0x04, 0x00, 0x16, 0x08, 0x00, 0x06, 0x05, 0x02, 0x55, 0xf9, 0x5f, 0x95, 0x00, 0x0a,
             0x09, 0x10, 0x8c, 0xfd, 0xe1, 0x21, 0x97, 0x96, 0x5a, 0x9a, 0xf6, 0x22, 0x01, 0x00, 0x56, 0xf9,
             0x0c, 0xca, 0x98, 0xe2, 0x10, 0x26, 0x37, 0xbd, 0x98, 0x3f, 0xdb, 0x16, 0xc1, 0x31, 0xdf, 0xd2,
             0x7e, 0xd8, 0x2b, 0xf4, 0xdd, 0xe5, 0x60, 0x6e, 0x0d, 0x75, 0x6a, 0xed, 0x33, 0x66, 0x01, 0x00,
             0xd0, 0x9c, 0x4f, 0xa1, 0x15, 0x27, 0xf0, 0x38, 0xe0, 0xf5, 0x7f, 0x22, 0x01, 0xd8, 0x2f, 0x2e,
             0xa2, 0xc9, 0x03, 0x32, 0x65, 0xfa, 0x6c, 0xeb, 0x48, 0x9e, 0x85, 0x4b, 0xae, 0x61, 0xb4, 0x04,
-        };
+        ];
 
         private static readonly string PublicKeyArmor = Armor("PUBLIC KEY BLOCK", Ed25519PublicKeyPacketBytes);
         private static readonly string SignatureArmor = Armor("SIGNATURE", Ed25519SignaturePacketBytes);
@@ -156,7 +155,7 @@ namespace Scarlet.OpenPgp.Tests
         public void VerifyDetached_WithRealEd25519DraftVector_ShouldReturnTrue()
         {
             // Arrange
-            byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
+            byte[] data = "OpenPGP"u8.ToArray();
 
             // Act
             bool result = OpenPgpVerifier.VerifyDetached(data, SignatureArmor, PublicKeyArmor).IsValid;
@@ -169,7 +168,7 @@ namespace Scarlet.OpenPgp.Tests
         public void VerifyDetached_WithTamperedData_ShouldReturnFalse()
         {
             // Arrange
-            byte[] data = Encoding.ASCII.GetBytes("OpenPGX");
+            byte[] data = "OpenPGX"u8.ToArray();
 
             // Act
             bool result = OpenPgpVerifier.VerifyDetached(data, SignatureArmor, PublicKeyArmor).IsValid;
@@ -187,7 +186,7 @@ namespace Scarlet.OpenPgp.Tests
             byte[] tamperedSignaturePacket = (byte[])Ed25519SignaturePacketBytes.Clone();
             tamperedSignaturePacket[26] ^= 0xFF;
             string tamperedSignatureArmor = Armor("SIGNATURE", tamperedSignaturePacket);
-            byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
+            byte[] data = "OpenPGP"u8.ToArray();
 
             // Act
             bool result = OpenPgpVerifier.VerifyDetached(data, tamperedSignatureArmor, PublicKeyArmor).IsValid;
@@ -205,7 +204,7 @@ namespace Scarlet.OpenPgp.Tests
             Array.Copy(Ed25519SignaturePacketBytes, 0, doubled, 0, Ed25519SignaturePacketBytes.Length);
             Array.Copy(Ed25519SignaturePacketBytes, 0, doubled, Ed25519SignaturePacketBytes.Length, Ed25519SignaturePacketBytes.Length);
             string doubledSignatureArmor = Armor("SIGNATURE", doubled);
-            byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
+            byte[] data = "OpenPGP"u8.ToArray();
 
             // Act
             bool result = OpenPgpVerifier.VerifyDetached(data, doubledSignatureArmor, PublicKeyArmor).IsValid;
@@ -222,7 +221,7 @@ namespace Scarlet.OpenPgp.Tests
             byte[] mixed = new byte[Ed25519SignaturePacketBytes.Length + Ed25519PublicKeyPacketBytes.Length];
             Array.Copy(Ed25519SignaturePacketBytes, 0, mixed, 0, Ed25519SignaturePacketBytes.Length);
             Array.Copy(Ed25519PublicKeyPacketBytes, 0, mixed, Ed25519SignaturePacketBytes.Length, Ed25519PublicKeyPacketBytes.Length);
-            byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
+            byte[] data = "OpenPGP"u8.ToArray();
 
             // Act
             VerificationResult result = OpenPgpVerifier.VerifyDetached(data, Armor("SIGNATURE", mixed), PublicKeyArmor);
@@ -238,7 +237,7 @@ namespace Scarlet.OpenPgp.Tests
             byte[] tamperedKey = (byte[])Ed25519PublicKeyPacketBytes.Clone();
             tamperedKey[25] ^= 0xFF;
             string wrongKeyArmor = Armor("PUBLIC KEY BLOCK", tamperedKey);
-            byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
+            byte[] data = "OpenPGP"u8.ToArray();
 
             // Act
             bool result = OpenPgpVerifier.VerifyDetached(data, SignatureArmor, wrongKeyArmor).IsValid;
@@ -254,7 +253,7 @@ namespace Scarlet.OpenPgp.Tests
             // armor label instead of "PUBLIC KEY BLOCK" - the label must be checked, not just
             // whatever packet type happens to be found inside.
             string mislabeledKeyArmor = Armor("SIGNATURE", Ed25519PublicKeyPacketBytes);
-            byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
+            byte[] data = "OpenPGP"u8.ToArray();
 
             // Act
             bool result = OpenPgpVerifier.VerifyDetached(data, SignatureArmor, mislabeledKeyArmor).IsValid;
@@ -267,7 +266,7 @@ namespace Scarlet.OpenPgp.Tests
         public void VerifyDetached_WithGarbageSignatureArmor_ShouldReturnFalseNotThrow()
         {
             // Arrange
-            byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
+            byte[] data = "OpenPGP"u8.ToArray();
 
             // Act
             bool result = OpenPgpVerifier.VerifyDetached(data, "not armor at all", PublicKeyArmor).IsValid;
@@ -280,7 +279,7 @@ namespace Scarlet.OpenPgp.Tests
         public void VerifyDetached_WithGarbagePublicKeyArmor_ShouldReturnFalseNotThrow()
         {
             // Arrange
-            byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
+            byte[] data = "OpenPGP"u8.ToArray();
 
             // Act
             bool result = OpenPgpVerifier.VerifyDetached(data, SignatureArmor, "not armor at all").IsValid;
@@ -293,7 +292,7 @@ namespace Scarlet.OpenPgp.Tests
         public void VerifyDetached_WithEmptyStrings_ShouldReturnFalseNotThrow()
         {
             // Act
-            bool result = OpenPgpVerifier.VerifyDetached(Array.Empty<byte>(), string.Empty, string.Empty).IsValid;
+            bool result = OpenPgpVerifier.VerifyDetached([], string.Empty, string.Empty).IsValid;
 
             // Assert
             Assert.False(result);

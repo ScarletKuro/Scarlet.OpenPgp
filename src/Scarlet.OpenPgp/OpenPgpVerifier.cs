@@ -222,21 +222,17 @@ namespace Scarlet.OpenPgp
                 return new VerificationResult(VerificationStatus.MalformedInput, "The clearsigned message is malformed: " + ex.Message);
             }
 
-            using (DocumentVerification verification = DocumentVerification.Start(signaturePackets, keys.Value, isClearsign: true))
-            {
-                verification.Update(content, 0, content.Length);
-                return verification.Complete(now, signedText);
-            }
+            using DocumentVerification verification = DocumentVerification.Start(signaturePackets, keys.Value, isClearsign: true);
+            verification.Update(content, 0, content.Length);
+            return verification.Complete(now, signedText);
         }
 
         internal static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, ParsedInput<byte[]> signatures, ParsedInput<KeyRing> keys, DateTimeOffset now)
         {
-            using (DocumentVerification verification = StartDetached(signatures, keys))
-            {
-                byte[] content = data.ToArray();
-                verification.Update(content, 0, content.Length);
-                return verification.Complete(now, signedText: null);
-            }
+            using DocumentVerification verification = StartDetached(signatures, keys);
+            byte[] content = data.ToArray();
+            verification.Update(content, 0, content.Length);
+            return verification.Complete(now, signedText: null);
         }
 
         internal static VerificationResult VerifyDetached(Stream data, ParsedInput<byte[]> signatures, ParsedInput<KeyRing> keys, DateTimeOffset now)
@@ -246,17 +242,15 @@ namespace Scarlet.OpenPgp
                 throw new ArgumentNullException(nameof(data));
             }
 
-            using (DocumentVerification verification = StartDetached(signatures, keys))
+            using DocumentVerification verification = StartDetached(signatures, keys);
+            var buffer = new byte[StreamBufferSize];
+            int read;
+            while (verification.NeedsContent && (read = data.Read(buffer, 0, buffer.Length)) > 0)
             {
-                var buffer = new byte[StreamBufferSize];
-                int read;
-                while (verification.NeedsContent && (read = data.Read(buffer, 0, buffer.Length)) > 0)
-                {
-                    verification.Update(buffer, 0, read);
-                }
-
-                return verification.Complete(now, signedText: null);
+                verification.Update(buffer, 0, read);
             }
+
+            return verification.Complete(now, signedText: null);
         }
 
         internal static async Task<VerificationResult> VerifyDetachedAsync(Stream data, ParsedInput<byte[]> signatures, ParsedInput<KeyRing> keys, DateTimeOffset now, CancellationToken cancellationToken)
@@ -266,17 +260,15 @@ namespace Scarlet.OpenPgp
                 throw new ArgumentNullException(nameof(data));
             }
 
-            using (DocumentVerification verification = StartDetached(signatures, keys))
+            using DocumentVerification verification = StartDetached(signatures, keys);
+            var buffer = new byte[StreamBufferSize];
+            int read;
+            while (verification.NeedsContent && (read = await data.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
             {
-                var buffer = new byte[StreamBufferSize];
-                int read;
-                while (verification.NeedsContent && (read = await data.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
-                {
-                    verification.Update(buffer, 0, read);
-                }
-
-                return verification.Complete(now, signedText: null);
+                verification.Update(buffer, 0, read);
             }
+
+            return verification.Complete(now, signedText: null);
         }
 
         internal static ParsedInput<KeyRing> ParseKeys(string publicKeys)

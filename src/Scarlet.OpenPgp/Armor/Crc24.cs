@@ -15,9 +15,9 @@ namespace Scarlet.OpenPgp.Armor
         public static int Compute(byte[] data)
         {
             int crc = Init;
-            for (int i = 0; i < data.Length; i++)
+            foreach (byte b in data)
             {
-                crc ^= data[i] << 16;
+                crc ^= b << 16;
                 for (int bit = 0; bit < 8; bit++)
                 {
                     crc <<= 1;

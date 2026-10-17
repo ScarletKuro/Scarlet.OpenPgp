@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using SharpFuzz;
 
@@ -40,11 +41,15 @@ internal static class Program
     {
         // "replay <target> <file-or-directory>...": run inputs directly, without libFuzzer - to
         // reproduce a crash, or to smoke-test the harness against a corpus.
-        if (args.Length >= 2 && args[0] == "replay")
+        if (args is ["replay", _, ..])
         {
-            Action<ReadOnlySpan<byte>> replayTarget = ResolveTarget(args[1]);
+            if (!TryResolveTarget(args[1], out Action<ReadOnlySpan<byte>>? replayTarget))
+            {
+                return 64;
+            }
+
             int count = 0;
-            foreach (string path in args.Skip(2).SelectMany(p => Directory.Exists(p) ? Directory.EnumerateFiles(p, "*", SearchOption.AllDirectories) : new[] { p }))
+            foreach (string path in args.Skip(2).SelectMany(p => Directory.Exists(p) ? Directory.EnumerateFiles(p, "*", SearchOption.AllDirectories) : [p]))
             {
                 replayTarget(File.ReadAllBytes(path));
                 count++;
@@ -54,19 +59,23 @@ internal static class Program
             return 0;
         }
 
-        Action<ReadOnlySpan<byte>> target = ResolveTarget(Environment.GetEnvironmentVariable("SCARLET_FUZZ_TARGET") ?? string.Empty);
+        if (!TryResolveTarget(Environment.GetEnvironmentVariable("SCARLET_FUZZ_TARGET") ?? string.Empty, out Action<ReadOnlySpan<byte>>? target))
+        {
+            return 64;
+        }
+
         Fuzzer.LibFuzzer.Run(span => target(span));
         return 0;
     }
 
-    private static Action<ReadOnlySpan<byte>> ResolveTarget(string name)
+    private static bool TryResolveTarget(string name, [NotNullWhen(true)] out Action<ReadOnlySpan<byte>>? target)
     {
-        if (!Targets.TryGetValue(name, out Action<ReadOnlySpan<byte>>? target))
+        if (Targets.TryGetValue(name, out target))
         {
-            Console.Error.WriteLine("Unknown fuzz target '" + name + "'. Expected one of: " + string.Join(", ", Targets.Keys) + ".");
-            Environment.Exit(64);
+            return true;
         }
 
-        return target;
+        Console.Error.WriteLine("Unknown fuzz target '" + name + "'. Expected one of: " + string.Join(", ", Targets.Keys) + ".");
+        return false;
     }
 }

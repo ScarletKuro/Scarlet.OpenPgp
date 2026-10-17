@@ -15,7 +15,7 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Ecdsa
 {
     public class EcdsaVerifierTests
     {
-        private static readonly byte[] Message = Encoding.ASCII.GetBytes("Scarlet.OpenPgp ECDSA test message");
+        private static readonly byte[] Message = "Scarlet.OpenPgp ECDSA test message"u8.ToArray();
 
         private sealed class ReferenceSignature
         {
@@ -197,24 +197,22 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Ecdsa
                     break;
             }
 
-            using (ECDsa ecdsa = ECDsa.Create(dotnetCurve))
-            {
-                byte[] digest = Hash(hashName, Message);
-                byte[] signature = ecdsa.SignHash(digest); // IEEE P1363: r || s, each ceil(bitlen(n)/8) bytes
-                int half = signature.Length / 2;
-                BigInteger r = Mpi.ToUnsignedBigInteger(signature[..half]);
-                BigInteger s = Mpi.ToUnsignedBigInteger(signature[half..]);
+            using ECDsa ecdsa = ECDsa.Create(dotnetCurve);
+            byte[] digest = Hash(hashName, Message);
+            byte[] signature = ecdsa.SignHash(digest); // IEEE P1363: r || s, each ceil(bitlen(n)/8) bytes
+            int half = signature.Length / 2;
+            BigInteger r = Mpi.ToUnsignedBigInteger(signature[..half]);
+            BigInteger s = Mpi.ToUnsignedBigInteger(signature[half..]);
 
-                ECParameters parameters = ecdsa.ExportParameters(false);
-                byte[] publicPoint = [0x04, .. parameters.Q.X!, .. parameters.Q.Y!];
+            ECParameters parameters = ecdsa.ExportParameters(false);
+            byte[] publicPoint = [0x04, .. parameters.Q.X!, .. parameters.Q.Y!];
 
-                // Act
-                bool result = EcdsaVerifier.Verify(curve, publicPoint, digest, r, s);
+            // Act
+            bool result = EcdsaVerifier.Verify(curve, publicPoint, digest, r, s);
 
-                // Assert
-                Assert.Equal(curve.FieldByteLength * 2, signature.Length);
-                Assert.True(result);
-            }
+            // Assert
+            Assert.Equal(curve.FieldByteLength * 2, signature.Length);
+            Assert.True(result);
         }
 
         [Fact]

@@ -189,7 +189,7 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Ed448
         {
             // Arrange
             byte[] publicKey = System.Convert.FromHexString(OneOctetPublicKeyHex);
-            byte[] tamperedMessage = { 0x04 };
+            byte[] tamperedMessage = [0x04];
             byte[] signature = System.Convert.FromHexString(OneOctetSignatureHex);
 
             // Act
@@ -204,7 +204,7 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Ed448
         {
             // Arrange
             byte[] publicKey = System.Convert.FromHexString(OneOctetPublicKeyHex);
-            byte[] extendedMessage = { 0x03, 0x00 };
+            byte[] extendedMessage = [0x03, 0x00];
             byte[] signature = System.Convert.FromHexString(OneOctetSignatureHex);
 
             // Act
@@ -437,7 +437,7 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Ed448
 
         private static byte[] BouncyCastleSign(Ed448PrivateKeyParameters privateKey, byte[] message)
         {
-            var signer = new Ed448Signer(System.Array.Empty<byte>());
+            var signer = new Ed448Signer([]);
             signer.Init(true, privateKey);
             signer.BlockUpdate(message, 0, message.Length);
             return signer.GenerateSignature();

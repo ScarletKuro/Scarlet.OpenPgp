@@ -24,9 +24,9 @@ namespace Scarlet.OpenPgp.Hashing
         /// parts of the square roots of the 9th through 16th primes. Checked by the known-answer tests.
         /// </summary>
         private static readonly uint[] InitialState =
-        {
+        [
             0xC1059ED8, 0x367CD507, 0x3070DD17, 0xF70E5939, 0xFFC00B31, 0x68581511, 0x64F98FA7, 0xBEFA4FA4,
-        };
+        ];
 
         private readonly uint[] _state = (uint[])InitialState.Clone();
         private readonly byte[] _buffer = new byte[BlockSize];

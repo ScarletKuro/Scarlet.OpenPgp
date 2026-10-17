@@ -1,5 +1,3 @@
-using System;
-using System.IO;
 using System.Text;
 using Org.BouncyCastle.Bcpg;
 using Org.BouncyCastle.Bcpg.OpenPgp;
@@ -23,7 +21,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
         private static string Armor(string label, byte[] body)
         {
             int crc = Scarlet.OpenPgp.Armor.Crc24.Compute(body);
-            byte[] crcBytes = { (byte)(crc >> 16), (byte)(crc >> 8), (byte)crc };
+            byte[] crcBytes = [(byte)(crc >> 16), (byte)(crc >> 8), (byte)crc];
             return "-----BEGIN PGP " + label + "-----\n\n"
                    + Convert.ToBase64String(body) + "\n"
                    + "=" + Convert.ToBase64String(crcBytes) + "\n"
@@ -47,12 +45,10 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
         private static (string PublicKeyArmor, PgpPrivateKey PrivateKey) CreateKeyPair(PublicKeyAlgorithmTag algorithm, AsymmetricCipherKeyPair rawKeyPair)
         {
             var pgpKeyPair = new PgpKeyPair(algorithm, rawKeyPair, DateTime.UtcNow);
-            using (var ms = new MemoryStream())
-            {
-                pgpKeyPair.PublicKey.Encode(ms);
-                string armor = Armor("PUBLIC KEY BLOCK", ms.ToArray());
-                return (armor, pgpKeyPair.PrivateKey);
-            }
+            using var ms = new MemoryStream();
+            pgpKeyPair.PublicKey.Encode(ms);
+            string armor = Armor("PUBLIC KEY BLOCK", ms.ToArray());
+            return (armor, pgpKeyPair.PrivateKey);
         }
 
         private static string SignDetached(PublicKeyAlgorithmTag algorithm, PgpPrivateKey privateKey, byte[] content)
@@ -62,11 +58,9 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
             generator.Update(content);
             PgpSignature signature = generator.Generate();
 
-            using (var ms = new MemoryStream())
-            {
-                signature.Encode(ms);
-                return Armor("SIGNATURE", ms.ToArray());
-            }
+            using var ms = new MemoryStream();
+            signature.Encode(ms);
+            return Armor("SIGNATURE", ms.ToArray());
         }
 
         private static string SignClearsign(PublicKeyAlgorithmTag algorithm, PgpPrivateKey privateKey, string[] lines)
@@ -80,25 +74,23 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
             generator.Update(canonicalContent);
             PgpSignature signature = generator.Generate();
 
-            using (var ms = new MemoryStream())
+            using var ms = new MemoryStream();
+            signature.Encode(ms);
+            string signatureArmor = Armor("SIGNATURE", ms.ToArray());
+
+            var sb = new StringBuilder();
+            sb.Append("-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\n");
+            foreach (string line in lines)
             {
-                signature.Encode(ms);
-                string signatureArmor = Armor("SIGNATURE", ms.ToArray());
-
-                var sb = new StringBuilder();
-                sb.Append("-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\n");
-                foreach (string line in lines)
-                {
-                    // Dash-escape on the wire (RFC 4880 §7.1) - the hash above was computed over
-                    // the *unescaped* canonical content, exactly as ClearsignCanonicalizer expects
-                    // to reconstruct it after unescaping.
-                    string wireLine = line.StartsWith("-", StringComparison.Ordinal) ? "- " + line : line;
-                    sb.Append(wireLine).Append('\n');
-                }
-
-                sb.Append(signatureArmor);
-                return sb.ToString();
+                // Dash-escape on the wire (RFC 4880 §7.1) - the hash above was computed over
+                // the *unescaped* canonical content, exactly as ClearsignCanonicalizer expects
+                // to reconstruct it after unescaping.
+                string wireLine = line.StartsWith("-", StringComparison.Ordinal) ? "- " + line : line;
+                sb.Append(wireLine).Append('\n');
             }
+
+            sb.Append(signatureArmor);
+            return sb.ToString();
         }
 
         [Fact]
@@ -106,7 +98,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
         {
             // Arrange
             (string publicKeyArmor, PgpPrivateKey privateKey) = CreateKeyPair(PublicKeyAlgorithmTag.RsaGeneral, GenerateRsaKeyPair());
-            byte[] data = Encoding.UTF8.GetBytes("Scarlet.OpenPgp cross-validation: RSA detached signature.");
+            byte[] data = "Scarlet.OpenPgp cross-validation: RSA detached signature."u8.ToArray();
             string signatureArmor = SignDetached(PublicKeyAlgorithmTag.RsaGeneral, privateKey, data);
 
             // Act
@@ -122,7 +114,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
             // Arrange
             (string publicKeyArmor, PgpPrivateKey privateKey) = CreateKeyPair(PublicKeyAlgorithmTag.RsaGeneral, GenerateRsaKeyPair());
             (string wrongKeyArmor, _) = CreateKeyPair(PublicKeyAlgorithmTag.RsaGeneral, GenerateRsaKeyPair());
-            byte[] data = Encoding.UTF8.GetBytes("Scarlet.OpenPgp cross-validation: RSA detached signature.");
+            byte[] data = "Scarlet.OpenPgp cross-validation: RSA detached signature."u8.ToArray();
             string signatureArmor = SignDetached(PublicKeyAlgorithmTag.RsaGeneral, privateKey, data);
 
             // Act
@@ -138,7 +130,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
         {
             // Arrange
             (string publicKeyArmor, PgpPrivateKey privateKey) = CreateKeyPair(PublicKeyAlgorithmTag.RsaGeneral, GenerateRsaKeyPair());
-            string[] lines = { "Scarlet.OpenPgp cross-validation.", "Second line of the clearsigned message." };
+            string[] lines = ["Scarlet.OpenPgp cross-validation.", "Second line of the clearsigned message."];
             string clearsignedMessage = SignClearsign(PublicKeyAlgorithmTag.RsaGeneral, privateKey, lines);
 
             // Act
@@ -153,7 +145,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
         {
             // Arrange
             (string publicKeyArmor, PgpPrivateKey privateKey) = CreateKeyPair(PublicKeyAlgorithmTag.RsaGeneral, GenerateRsaKeyPair());
-            string[] lines = { "Scarlet.OpenPgp cross-validation.", "Second line of the clearsigned message." };
+            string[] lines = ["Scarlet.OpenPgp cross-validation.", "Second line of the clearsigned message."];
             string clearsignedMessage = SignClearsign(PublicKeyAlgorithmTag.RsaGeneral, privateKey, lines);
             string tampered = clearsignedMessage.Replace("Second line", "Tampered line");
 
@@ -169,7 +161,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
         {
             // Arrange
             (string publicKeyArmor, PgpPrivateKey privateKey) = CreateKeyPair(PublicKeyAlgorithmTag.EdDsa, GenerateEd25519KeyPair());
-            byte[] data = Encoding.UTF8.GetBytes("Scarlet.OpenPgp cross-validation: Ed25519 detached signature.");
+            byte[] data = "Scarlet.OpenPgp cross-validation: Ed25519 detached signature."u8.ToArray();
             string signatureArmor = SignDetached(PublicKeyAlgorithmTag.EdDsa, privateKey, data);
 
             // Act
@@ -184,7 +176,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
         {
             // Arrange
             (string publicKeyArmor, PgpPrivateKey privateKey) = CreateKeyPair(PublicKeyAlgorithmTag.EdDsa, GenerateEd25519KeyPair());
-            string[] lines = { "Scarlet.OpenPgp Ed25519 clearsign cross-validation.", "- a line starting with a dash to exercise escaping." };
+            string[] lines = ["Scarlet.OpenPgp Ed25519 clearsign cross-validation.", "- a line starting with a dash to exercise escaping."];
             string clearsignedMessage = SignClearsign(PublicKeyAlgorithmTag.EdDsa, privateKey, lines);
 
             // Act

@@ -1,4 +1,3 @@
-using System;
 using System.Text;
 using Scarlet.OpenPgp.Armor;
 using Scarlet.OpenPgp.Internal;
@@ -15,7 +14,7 @@ namespace Scarlet.OpenPgp.Tests.Armor
                 crc ^= 0xFF;
             }
 
-            byte[] crcBytes = { (byte)(crc >> 16), (byte)(crc >> 8), (byte)crc };
+            byte[] crcBytes = [(byte)(crc >> 16), (byte)(crc >> 8), (byte)crc];
 
             var sb = new StringBuilder();
             sb.Append("-----BEGIN PGP ").Append(label).Append("-----\n");
@@ -34,7 +33,7 @@ namespace Scarlet.OpenPgp.Tests.Armor
         public void Read_WithWellFormedBlock_ShouldDecodeLabelHeadersAndBody()
         {
             // Arrange
-            byte[] body = Encoding.ASCII.GetBytes("hello world");
+            byte[] body = "hello world"u8.ToArray();
             string armor = BuildArmor("SIGNATURE", "Version: Test\n", body);
 
             // Act
@@ -51,7 +50,7 @@ namespace Scarlet.OpenPgp.Tests.Armor
         public void Read_WithNoHeaders_ShouldStillDecodeBody()
         {
             // Arrange
-            byte[] body = Encoding.ASCII.GetBytes("abc");
+            byte[] body = "abc"u8.ToArray();
             string armor = BuildArmor("PUBLIC KEY BLOCK", "", body);
 
             // Act
@@ -66,7 +65,7 @@ namespace Scarlet.OpenPgp.Tests.Armor
         public void Read_WithMissingEndLine_ShouldFailClosed()
         {
             // Arrange
-            byte[] body = Encoding.ASCII.GetBytes("abc");
+            byte[] body = "abc"u8.ToArray();
             string armor = BuildArmor("SIGNATURE", "", body).Replace("-----END PGP SIGNATURE-----\n", "");
 
             // Act & Assert
@@ -78,7 +77,7 @@ namespace Scarlet.OpenPgp.Tests.Armor
         {
             // Arrange: RFC 9580 §6.1 - an implementation MUST NOT reject armor whose CRC24 is
             // missing, malformed, or wrong. Tampering is the signature check's job.
-            byte[] body = Encoding.ASCII.GetBytes("abc");
+            byte[] body = "abc"u8.ToArray();
             string armor = BuildArmor("SIGNATURE", "", body, corruptCrc: true);
 
             // Act
@@ -102,7 +101,7 @@ namespace Scarlet.OpenPgp.Tests.Armor
         public void Read_WithMismatchedBeginEndLabels_ShouldFailClosed()
         {
             // Arrange
-            byte[] body = Encoding.ASCII.GetBytes("abc");
+            byte[] body = "abc"u8.ToArray();
             string armor = BuildArmor("SIGNATURE", "", body).Replace(
                 "-----END PGP SIGNATURE-----", "-----END PGP PUBLIC KEY BLOCK-----");
 
@@ -126,7 +125,7 @@ namespace Scarlet.OpenPgp.Tests.Armor
             // Arrange: confirmed against real GnuPG 2.4.9, which tolerates arbitrary trailing text
             // after a detached signature's armor block (`gpg --verify` still reports "Good
             // signature"). See AsciiArmorReader.Read's doc comment.
-            byte[] body = Encoding.ASCII.GetBytes("abc");
+            byte[] body = "abc"u8.ToArray();
             string armor = BuildArmor("SIGNATURE", "", body) + "unexpected trailing content\n";
 
             // Act
@@ -144,8 +143,8 @@ namespace Scarlet.OpenPgp.Tests.Armor
             // library's single-bool API only reports on the first block found; the second is
             // ignored rather than causing a failure, matching gpg's tolerance rather than gpg's
             // fuller multi-signature reporting.
-            byte[] firstBody = Encoding.ASCII.GetBytes("first");
-            byte[] secondBody = Encoding.ASCII.GetBytes("second");
+            byte[] firstBody = "first"u8.ToArray();
+            byte[] secondBody = "second"u8.ToArray();
             string armor = BuildArmor("SIGNATURE", "", firstBody) + BuildArmor("SIGNATURE", "", secondBody);
 
             // Act
@@ -161,7 +160,7 @@ namespace Scarlet.OpenPgp.Tests.Armor
             // Arrange: confirmed against real GnuPG 2.4.9, which tolerates an arbitrary preamble
             // before the armor block (e.g. mail/commentary text) for both detached and clearsigned
             // verification.
-            byte[] body = Encoding.ASCII.GetBytes("abc");
+            byte[] body = "abc"u8.ToArray();
             string armor = "some leading preamble text that is not part of the armor\n\n" + BuildArmor("SIGNATURE", "", body);
 
             // Act

@@ -1,5 +1,3 @@
-using System;
-using System.IO;
 using System.Text;
 
 namespace Scarlet.OpenPgp.Tests.Fixtures
@@ -132,7 +130,7 @@ namespace Scarlet.OpenPgp.Tests.Fixtures
             }
 
             VerificationResult asyncResult;
-            using (FileStream data = File.OpenRead(Path.Combine("TestAssets", "real-world/gnupg-npth-multisig/npth-1.8.tar.bz2")))
+            await using (FileStream data = File.OpenRead(Path.Combine("TestAssets", "real-world/gnupg-npth-multisig/npth-1.8.tar.bz2")))
             {
                 // The public async API uses the real clock; Werner Koch's key is valid until 2030.
                 asyncResult = await OpenPgpVerifier.VerifyDetachedAsync(data, signature, keys, TestContext.Current.CancellationToken);

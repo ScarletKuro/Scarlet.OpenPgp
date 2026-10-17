@@ -1,5 +1,3 @@
-using System;
-using System.IO;
 using System.Text;
 using Org.BouncyCastle.Bcpg;
 using Org.BouncyCastle.Bcpg.OpenPgp;
@@ -20,12 +18,12 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
         private const PublicKeyAlgorithmTag Algorithm = PublicKeyAlgorithmTag.EdDsa;
         private const string UserId = "Scarlet Test <test@example.invalid>";
 
-        private static readonly byte[] Data = Encoding.UTF8.GetBytes("Scarlet.OpenPgp expiration cross-validation.");
+        private static readonly byte[] Data = "Scarlet.OpenPgp expiration cross-validation."u8.ToArray();
 
         private static string Armor(string label, byte[] body)
         {
             int crc = Scarlet.OpenPgp.Armor.Crc24.Compute(body);
-            byte[] crcBytes = { (byte)(crc >> 16), (byte)(crc >> 8), (byte)crc };
+            byte[] crcBytes = [(byte)(crc >> 16), (byte)(crc >> 8), (byte)crc];
             return "-----BEGIN PGP " + label + "-----\n\n"
                    + Convert.ToBase64String(body) + "\n"
                    + "=" + Convert.ToBase64String(crcBytes) + "\n"
@@ -41,11 +39,9 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
 
         private static string ArmorPublicKey(PgpPublicKey publicKey)
         {
-            using (var ms = new MemoryStream())
-            {
-                publicKey.Encode(ms);
-                return Armor("PUBLIC KEY BLOCK", ms.ToArray());
-            }
+            using var ms = new MemoryStream();
+            publicKey.Encode(ms);
+            return Armor("PUBLIC KEY BLOCK", ms.ToArray());
         }
 
         /// <summary>Adds a positive User ID certification of <paramref name="subject"/>, made by <paramref name="signer"/>, carrying a key-expiration time.</summary>
@@ -76,11 +72,9 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
             generator.SetHashedSubpackets(subpackets.Generate());
             generator.Update(Data);
 
-            using (var ms = new MemoryStream())
-            {
-                generator.Generate().Encode(ms);
-                return Armor("SIGNATURE", ms.ToArray());
-            }
+            using var ms = new MemoryStream();
+            generator.Generate().Encode(ms);
+            return Armor("SIGNATURE", ms.ToArray());
         }
 
         private static DateTime TruncateToSeconds(DateTime value) => new DateTime(value.Ticks - (value.Ticks % TimeSpan.TicksPerSecond), DateTimeKind.Utc);

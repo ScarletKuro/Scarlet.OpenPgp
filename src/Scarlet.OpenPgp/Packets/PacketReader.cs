@@ -5,17 +5,11 @@ using Scarlet.OpenPgp.Internal;
 namespace Scarlet.OpenPgp.Packets
 {
     /// <summary>A single parsed OpenPGP packet: its tag and fully-assembled body.</summary>
-    internal sealed class Packet
+    internal sealed class Packet(PacketHeader header, byte[] body)
     {
-        public Packet(PacketHeader header, byte[] body)
-        {
-            Header = header;
-            Body = body;
-        }
+        public PacketHeader Header { get; } = header;
 
-        public PacketHeader Header { get; }
-
-        public byte[] Body { get; }
+        public byte[] Body { get; } = body;
     }
 
     /// <summary>

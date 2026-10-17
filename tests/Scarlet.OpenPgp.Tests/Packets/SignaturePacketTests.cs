@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Scarlet.OpenPgp.Hashing;
 using Scarlet.OpenPgp.Internal;
 using Scarlet.OpenPgp.Packets;
@@ -10,28 +9,28 @@ namespace Scarlet.OpenPgp.Tests.Packets
         // The matching signature packet from draft-koch-eddsa-for-openpgp-04 Appendix A: signs the
         // literal text "OpenPGP" with the key from PublicKeyPacketTests.
         internal static readonly byte[] Ed25519SignaturePacketBytes =
-        {
+        [
             0x88, 0x5e, 0x04, 0x00, 0x16, 0x08, 0x00, 0x06, 0x05, 0x02, 0x55, 0xf9, 0x5f, 0x95, 0x00, 0x0a,
             0x09, 0x10, 0x8c, 0xfd, 0xe1, 0x21, 0x97, 0x96, 0x5a, 0x9a, 0xf6, 0x22, 0x01, 0x00, 0x56, 0xf9,
             0x0c, 0xca, 0x98, 0xe2, 0x10, 0x26, 0x37, 0xbd, 0x98, 0x3f, 0xdb, 0x16, 0xc1, 0x31, 0xdf, 0xd2,
             0x7e, 0xd8, 0x2b, 0xf4, 0xdd, 0xe5, 0x60, 0x6e, 0x0d, 0x75, 0x6a, 0xed, 0x33, 0x66, 0x01, 0x00,
             0xd0, 0x9c, 0x4f, 0xa1, 0x15, 0x27, 0xf0, 0x38, 0xe0, 0xf5, 0x7f, 0x22, 0x01, 0xd8, 0x2f, 0x2e,
             0xa2, 0xc9, 0x03, 0x32, 0x65, 0xfa, 0x6c, 0xeb, 0x48, 0x9e, 0x85, 0x4b, 0xae, 0x61, 0xb4, 0x04,
-        };
+        ];
 
-        internal static readonly byte[] ExpectedIssuerKeyId = { 0x8c, 0xfd, 0xe1, 0x21, 0x97, 0x96, 0x5a, 0x9a };
+        internal static readonly byte[] ExpectedIssuerKeyId = [0x8c, 0xfd, 0xe1, 0x21, 0x97, 0x96, 0x5a, 0x9a];
 
         internal static readonly byte[] ExpectedR =
-        {
+        [
             0x56, 0xf9, 0x0c, 0xca, 0x98, 0xe2, 0x10, 0x26, 0x37, 0xbd, 0x98, 0x3f, 0xdb, 0x16, 0xc1, 0x31,
             0xdf, 0xd2, 0x7e, 0xd8, 0x2b, 0xf4, 0xdd, 0xe5, 0x60, 0x6e, 0x0d, 0x75, 0x6a, 0xed, 0x33, 0x66,
-        };
+        ];
 
         internal static readonly byte[] ExpectedS =
-        {
+        [
             0xd0, 0x9c, 0x4f, 0xa1, 0x15, 0x27, 0xf0, 0x38, 0xe0, 0xf5, 0x7f, 0x22, 0x01, 0xd8, 0x2f, 0x2e,
             0xa2, 0xc9, 0x03, 0x32, 0x65, 0xfa, 0x6c, 0xeb, 0x48, 0x9e, 0x85, 0x4b, 0xae, 0x61, 0xb4, 0x04,
-        };
+        ];
 
         private static SignaturePacket ParseFixture()
         {
@@ -68,7 +67,7 @@ namespace Scarlet.OpenPgp.Tests.Packets
             SignaturePacket signature = ParseFixture();
 
             // Assert: documented SHA-256 digest starts with f6 22.
-            Assert.Equal(new byte[] { 0xf6, 0x22 }, signature.LeftHashBytes16);
+            Assert.Equal([0xf6, 0x22], signature.LeftHashBytes16);
         }
 
         [Fact]
@@ -104,13 +103,13 @@ namespace Scarlet.OpenPgp.Tests.Packets
             // Arrange: v4, binary, EdDSA, SHA-256, hashed area holding two creation-time subpackets,
             // empty unhashed area, left-16 bits, then r and s as 1-bit MPIs.
             byte[] body =
-            {
+            [
                 0x04, 0x00, 0x16, 0x08,
                 0x00, 0x0C, 0x05, 0x02, 0x00, 0x00, 0x00, 0x01, 0x05, 0x02, 0x00, 0x00, 0x00, 0x02,
                 0x00, 0x00,
                 0x00, 0x00,
                 0x00, 0x01, 0x01, 0x00, 0x01, 0x01,
-            };
+            ];
             SignaturePacket signature = SignaturePacket.Parse(body);
 
             // Act & Assert
@@ -126,7 +125,7 @@ namespace Scarlet.OpenPgp.Tests.Packets
             // Assert: version(04) type(00) pubalg(16) hashalg(08) hashed-subpacket-count(0006)
             // hashed-subpacket-data(05 02 55 f9 5f 95) - the exact 12-byte "hashed data" region
             // documented in the draft's own hash-input worked example.
-            Assert.Equal(new byte[] { 0x05, 0x02, 0x55, 0xf9, 0x5f, 0x95 }, signature.HashedSubpacketData);
+            Assert.Equal([0x05, 0x02, 0x55, 0xf9, 0x5f, 0x95], signature.HashedSubpacketData);
         }
 
         [Fact]
@@ -165,9 +164,9 @@ namespace Scarlet.OpenPgp.Tests.Packets
             // required 4 - "critical" means understood, and a malformed payload for a recognized
             // type is exactly as unusable as an unknown type would be.
             byte[] body =
-            {
+            [
                 0x04, 0x00, 0x01, 0x08, 0x00, 0x05, 0x04, 0x82, 0xAA, 0xBB, 0xCC,
-            };
+            ];
 
             // Act & Assert
             Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(body));
@@ -178,9 +177,9 @@ namespace Scarlet.OpenPgp.Tests.Packets
         {
             // Arrange: critical IssuerKeyId (type 16) with 7 data bytes instead of the required 8.
             byte[] body =
-            {
+            [
                 0x04, 0x00, 0x01, 0x08, 0x00, 0x09, 0x08, 0x90, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-            };
+            ];
 
             // Act & Assert
             Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(body));
@@ -192,11 +191,11 @@ namespace Scarlet.OpenPgp.Tests.Packets
             // Arrange: critical IssuerFingerprint (type 33), 21 bytes total, but version byte 5
             // instead of 4 (this library only supports v4 signatures/keys).
             byte[] body =
-            {
+            [
                 0x04, 0x00, 0x01, 0x08, 0x00, 0x17, 0x16, 0xA1, 0x05,
                 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
                 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
-            };
+            ];
 
             // Act & Assert
             Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(body));
@@ -208,11 +207,11 @@ namespace Scarlet.OpenPgp.Tests.Packets
             // Arrange: critical IssuerFingerprint (type 33) with 20 data bytes (missing the version
             // octet) instead of the required 21.
             byte[] body =
-            {
+            [
                 0x04, 0x00, 0x01, 0x08, 0x00, 0x16, 0x15, 0xA1,
                 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
                 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
-            };
+            ];
 
             // Act & Assert
             Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(body));
@@ -225,12 +224,12 @@ namespace Scarlet.OpenPgp.Tests.Packets
             // critical bit clear (type byte 0x02, not 0x82) - non-critical malformed data in a
             // known type must still be tolerated, matching RFC 4880's "safe to ignore" rule.
             byte[] body =
-            {
+            [
                 0x04, 0x00, 0x01, 0x08, 0x00, 0x05, 0x04, 0x02, 0xAA, 0xBB, 0xCC,
                 0x00, 0x00,
                 0x00, 0x00,
                 0x00, 0x08, 0x80,
-            };
+            ];
 
             // Act
             SignaturePacket signature = SignaturePacket.Parse(body);
@@ -247,12 +246,23 @@ namespace Scarlet.OpenPgp.Tests.Packets
             // using the *wire* byte count instead of a fixed 32 would spuriously reject this
             // otherwise-valid signature (this is exactly what an intermittent BouncyCastle
             // cross-validation test failure caught - random keys occasionally hit this case).
-            var body = new List<byte> { 0x04, 0x00, 0x16, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-
-            // R: bit length 248 (31 bytes), value = 31 bytes of 0xAA - the true 32-byte R is
-            // 0x00 followed by those 31 bytes.
-            body.Add(0x00);
-            body.Add(0xF8);
+            var body = new List<byte>
+            {
+                0x04,
+                0x00,
+                0x16,
+                0x08,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                // R: bit length 248 (31 bytes), value = 31 bytes of 0xAA - the true 32-byte R is
+                // 0x00 followed by those 31 bytes.
+                0x00,
+                0xF8
+            };
             for (int i = 0; i < 31; i++)
             {
                 body.Add(0xAA);
@@ -305,7 +315,7 @@ namespace Scarlet.OpenPgp.Tests.Packets
         public void Parse_WithTruncatedBody_ShouldFailClosed()
         {
             // Arrange
-            byte[] body = { 0x04, 0x00, 0x16, 0x08 };
+            byte[] body = [0x04, 0x00, 0x16, 0x08];
 
             // Act & Assert
             Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(body));
@@ -333,9 +343,9 @@ namespace Scarlet.OpenPgp.Tests.Packets
             // canonical 3) - an attacker could otherwise re-encode any real RSA signature value in
             // more than one way and have it still verify.
             byte[] body =
-            {
+            [
                 0x04, 0x00, 0x01, 0x08, 0x00, 0x00, 0x00, 0x00, 0xAA, 0xBB, 0x00, 0x10, 0x00, 0x05,
-            };
+            ];
 
             // Act & Assert
             Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(body));
@@ -346,7 +356,7 @@ namespace Scarlet.OpenPgp.Tests.Packets
         {
             var body = new List<byte> { 0x04, 0x00, 0x16, 0x08, (byte)(hashedSubpackets.Length >> 8), (byte)hashedSubpackets.Length };
             body.AddRange(hashedSubpackets);
-            body.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01 });
+            body.AddRange([0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01]);
             return body.ToArray();
         }
 
@@ -372,7 +382,7 @@ namespace Scarlet.OpenPgp.Tests.Packets
             SignaturePacket signature = SignaturePacket.Parse(body);
 
             // Assert
-            Assert.Equal(new byte[] { 0x03 }, signature.KeyFlags);
+            Assert.Equal([0x03], signature.KeyFlags);
             Assert.True(signature.TryGetHashedTime(SignatureSubpacketType.KeyExpirationTime, out uint lifetime));
             Assert.Equal(3600u, lifetime);
         }
@@ -406,7 +416,7 @@ namespace Scarlet.OpenPgp.Tests.Packets
             Assert.Equal(HashAlgorithmId.Sha512, signature.HashAlgorithm);
             Assert.Equal("76495F50218890F7F5E2EE3C1822514F70500F551D86E5C921E404E34A53FBAC", System.Convert.ToHexString(signature.Salt));
             Assert.Equal(64, signature.EdDsaSignatureValue!.Length);
-            Assert.Equal(new byte[] { 0x69, 0x36 }, signature.LeftHashBytes16);
+            Assert.Equal([0x69, 0x36], signature.LeftHashBytes16);
         }
 
         [Fact]
@@ -426,7 +436,7 @@ namespace Scarlet.OpenPgp.Tests.Packets
             // Arrange: EdDSALegacy (22) is forbidden in v6 signatures (RFC 9580 §5.2.3.3).
             var body = new List<byte> { 0x06, 0x00, 22, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0x00, 0x00, 16 };
             body.AddRange(new byte[16]);
-            body.AddRange(new byte[] { 0x00, 0x01, 0x01, 0x00, 0x01, 0x01 });
+            body.AddRange([0x00, 0x01, 0x01, 0x00, 0x01, 0x01]);
 
             // Act & Assert
             Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(body.ToArray()));

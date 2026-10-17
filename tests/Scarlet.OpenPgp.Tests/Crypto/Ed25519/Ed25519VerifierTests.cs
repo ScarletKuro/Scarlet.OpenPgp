@@ -58,25 +58,25 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Ed25519
             // EdDSA-in-OpenPGP feeds the SHA-256 *digest* of the signed data as the EdDSA "message" -
             // not the raw document - per the draft's own text ("the resulting digest value is used
             // verbatim as input to the EdDSA algorithm"). This exercises that exact wiring.
-            var publicKey = new Ed25519PublicKey(new byte[]
-            {
+            var publicKey = new Ed25519PublicKey(
+            [
                 0x3f, 0x09, 0x89, 0x94, 0xbd, 0xd9, 0x16, 0xed, 0x40, 0x53, 0x19, 0x79, 0x34, 0xe4, 0xa8, 0x7c,
                 0x80, 0x73, 0x3a, 0x12, 0x80, 0xd6, 0x2f, 0x80, 0x10, 0x99, 0x2e, 0x43, 0xee, 0x3b, 0x24, 0x06,
-            });
+            ]);
 
             byte[] digest =
-            {
+            [
                 0xf6, 0x22, 0x0a, 0x3f, 0x75, 0x78, 0x14, 0xf4, 0xc2, 0x17, 0x6f, 0xfb, 0xb6, 0x8b, 0x00, 0x24,
                 0x9c, 0xd4, 0xcc, 0xdc, 0x05, 0x9c, 0x4b, 0x34, 0xad, 0x87, 0x1f, 0x30, 0xb1, 0x74, 0x02, 0x80,
-            };
+            ];
 
             byte[] signature =
-            {
+            [
                 0x56, 0xf9, 0x0c, 0xca, 0x98, 0xe2, 0x10, 0x26, 0x37, 0xbd, 0x98, 0x3f, 0xdb, 0x16, 0xc1, 0x31,
                 0xdf, 0xd2, 0x7e, 0xd8, 0x2b, 0xf4, 0xdd, 0xe5, 0x60, 0x6e, 0x0d, 0x75, 0x6a, 0xed, 0x33, 0x66,
                 0xd0, 0x9c, 0x4f, 0xa1, 0x15, 0x27, 0xf0, 0x38, 0xe0, 0xf5, 0x7f, 0x22, 0x01, 0xd8, 0x2f, 0x2e,
                 0xa2, 0xc9, 0x03, 0x32, 0x65, 0xfa, 0x6c, 0xeb, 0x48, 0x9e, 0x85, 0x4b, 0xae, 0x61, 0xb4, 0x04,
-            };
+            ];
 
             // Act
             bool result = Ed25519Verifier.Verify(publicKey, digest, signature);
@@ -90,7 +90,7 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Ed25519
         {
             // Arrange
             var publicKey = new Ed25519PublicKey(System.Convert.FromHexString("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"));
-            byte[] tamperedMessage = { 0x00 }; // TEST 1's message was empty; this is not
+            byte[] tamperedMessage = [0x00]; // TEST 1's message was empty; this is not
             byte[] signature = System.Convert.FromHexString(
                 "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b");
 
@@ -122,7 +122,7 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Ed25519
         {
             // Arrange
             var publicKey = new Ed25519PublicKey(System.Convert.FromHexString("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"));
-            byte[] message = System.Array.Empty<byte>();
+            byte[] message = [];
             byte[] signature = System.Convert.FromHexString(
                 "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b");
             signature[0] ^= 0xFF;
@@ -141,7 +141,7 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Ed25519
             var publicKey = new Ed25519PublicKey(System.Convert.FromHexString("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"));
 
             // Act
-            bool result = Ed25519Verifier.Verify(publicKey, System.Array.Empty<byte>(), new byte[63]);
+            bool result = Ed25519Verifier.Verify(publicKey, [], new byte[63]);
 
             // Assert
             Assert.False(result);
@@ -151,15 +151,15 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Ed25519
         public void Verify_WithInvalidPublicKeyPoint_ShouldReturnFalse()
         {
             // Arrange: all-0xFF is not a valid compressed Ed25519 point (y >= p).
-            var invalidPublicKey = new Ed25519PublicKey(new byte[32]
-            {
+            var invalidPublicKey = new Ed25519PublicKey(
+            [
                 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
                 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-            });
+            ]);
             byte[] signature = new byte[64];
 
             // Act
-            bool result = Ed25519Verifier.Verify(invalidPublicKey, System.Array.Empty<byte>(), signature);
+            bool result = Ed25519Verifier.Verify(invalidPublicKey, [], signature);
 
             // Assert
             Assert.False(result);

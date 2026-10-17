@@ -23,10 +23,10 @@ namespace Scarlet.OpenPgp.Signing
         private const byte SignDataFlag = 0x02;
 
         private readonly byte[] _primaryHashPrefix;
-        private readonly List<SignaturePacket> _selfSignatures = new List<SignaturePacket>();
-        private readonly List<SignaturePacket> _revocations = new List<SignaturePacket>();
-        private readonly List<Subkey> _subkeys = new List<Subkey>();
-        private readonly List<string> _userIds = new List<string>();
+        private readonly List<SignaturePacket> _selfSignatures = [];
+        private readonly List<SignaturePacket> _revocations = [];
+        private readonly List<Subkey> _subkeys = [];
+        private readonly List<string> _userIds = [];
 
         private Certificate(PublicKeyPacket primary)
         {
@@ -439,8 +439,8 @@ namespace Scarlet.OpenPgp.Signing
         private sealed class Subkey
         {
             private readonly byte[] _bindingContent;
-            private readonly List<(SignaturePacket Binding, List<SignaturePacket> BackSignatures)> _bindings = new List<(SignaturePacket, List<SignaturePacket>)>();
-            private readonly List<SignaturePacket> _revocations = new List<SignaturePacket>();
+            private readonly List<(SignaturePacket Binding, List<SignaturePacket> BackSignatures)> _bindings = [];
+            private readonly List<SignaturePacket> _revocations = [];
 
             private Subkey(PublicKeyPacket key, byte[] bindingContent)
             {

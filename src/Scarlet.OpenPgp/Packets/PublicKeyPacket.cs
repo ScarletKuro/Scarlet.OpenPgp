@@ -22,7 +22,7 @@ namespace Scarlet.OpenPgp.Packets
     internal sealed class PublicKeyPacket
     {
         /// <summary>The Ed25519 curve OID content octets used by the EdDSALegacy convention: 1.3.6.1.4.1.11591.15.1.</summary>
-        private static readonly byte[] Ed25519LegacyCurveOid = { 0x2B, 0x06, 0x01, 0x04, 0x01, 0xDA, 0x47, 0x0F, 0x01 };
+        private static readonly byte[] Ed25519LegacyCurveOid = [0x2B, 0x06, 0x01, 0x04, 0x01, 0xDA, 0x47, 0x0F, 0x01];
 
         private PublicKeyPacket(byte version, DateTimeOffset createdAt, PublicKeyAlgorithm algorithm, byte[] body)
         {

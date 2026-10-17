@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Text;
 using Org.BouncyCastle.Bcpg;
 using Org.BouncyCastle.Bcpg.OpenPgp;
@@ -23,7 +19,7 @@ namespace Scarlet.OpenPgp.Tests.Signing
     {
         private const PublicKeyAlgorithmTag Algorithm = PublicKeyAlgorithmTag.EdDsa;
 
-        private static readonly byte[] Data = Encoding.UTF8.GetBytes("Scarlet.OpenPgp certificate rules.");
+        private static readonly byte[] Data = "Scarlet.OpenPgp certificate rules."u8.ToArray();
 
         private static readonly DateTime CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
@@ -110,7 +106,7 @@ namespace Scarlet.OpenPgp.Tests.Signing
             if (subkey is not null)
             {
                 packets.Add(Packet(PacketTag.PublicSubkey, KeyBody(subkey.PublicKey)));
-                packets.AddRange(subkeySignatures ?? Enumerable.Empty<byte[]>());
+                packets.AddRange(subkeySignatures ?? []);
             }
 
             return packets.SelectMany(p => p).ToArray();
@@ -127,7 +123,7 @@ namespace Scarlet.OpenPgp.Tests.Signing
             // Arrange
             PgpKeyPair primary = NewKey();
             PgpKeyPair subkey = NewKey();
-            byte[] certificate = Certificate(primary, new[] { Encoded(DirectKeySignature(primary, PgpKeyFlags.CanCertify)) }, subkey, new[] { Encoded(SubkeyBinding(primary, subkey, PgpKeyFlags.CanSign, withBackSignature: true)) });
+            byte[] certificate = Certificate(primary, [Encoded(DirectKeySignature(primary, PgpKeyFlags.CanCertify))], subkey, [Encoded(SubkeyBinding(primary, subkey, PgpKeyFlags.CanSign, withBackSignature: true))]);
 
             // Act
             VerificationResult result = Verify(SignData(subkey), certificate);
@@ -144,7 +140,7 @@ namespace Scarlet.OpenPgp.Tests.Signing
             // their own certificate and claim its signatures.
             PgpKeyPair primary = NewKey();
             PgpKeyPair subkey = NewKey();
-            byte[] certificate = Certificate(primary, Array.Empty<byte[]>(), subkey, new[] { Encoded(SubkeyBinding(primary, subkey, PgpKeyFlags.CanSign, withBackSignature: false)) });
+            byte[] certificate = Certificate(primary, [], subkey, [Encoded(SubkeyBinding(primary, subkey, PgpKeyFlags.CanSign, withBackSignature: false))]);
 
             // Act
             VerificationResult result = Verify(SignData(subkey), certificate);
@@ -160,7 +156,7 @@ namespace Scarlet.OpenPgp.Tests.Signing
             PgpKeyPair primary = NewKey();
             PgpKeyPair subkey = NewKey();
             PgpKeyPair impostor = NewKey();
-            byte[] certificate = Certificate(primary, Array.Empty<byte[]>(), subkey, new[] { Encoded(SubkeyBinding(primary, subkey, PgpKeyFlags.CanSign, withBackSignature: true, backSigner: impostor)) });
+            byte[] certificate = Certificate(primary, [], subkey, [Encoded(SubkeyBinding(primary, subkey, PgpKeyFlags.CanSign, withBackSignature: true, backSigner: impostor))]);
 
             // Act
             VerificationResult result = Verify(SignData(subkey), certificate);
@@ -175,7 +171,7 @@ namespace Scarlet.OpenPgp.Tests.Signing
             // Arrange: an encryption subkey (with a back-signature even) must not sign data.
             PgpKeyPair primary = NewKey();
             PgpKeyPair subkey = NewKey();
-            byte[] certificate = Certificate(primary, Array.Empty<byte[]>(), subkey, new[] { Encoded(SubkeyBinding(primary, subkey, PgpKeyFlags.CanEncryptCommunications, withBackSignature: true)) });
+            byte[] certificate = Certificate(primary, [], subkey, [Encoded(SubkeyBinding(primary, subkey, PgpKeyFlags.CanEncryptCommunications, withBackSignature: true))]);
 
             // Act
             VerificationResult result = Verify(SignData(subkey), certificate);
@@ -192,7 +188,7 @@ namespace Scarlet.OpenPgp.Tests.Signing
             PgpKeyPair otherPrimary = NewKey();
             PgpKeyPair subkey = NewKey();
             PgpSignature foreignBinding = SubkeyBinding(otherPrimary, subkey, PgpKeyFlags.CanSign, withBackSignature: true);
-            byte[] certificate = Certificate(primary, Array.Empty<byte[]>(), subkey, new[] { Encoded(foreignBinding) });
+            byte[] certificate = Certificate(primary, [], subkey, [Encoded(foreignBinding)]);
 
             // Act
             VerificationResult result = Verify(SignData(subkey), certificate);
@@ -208,7 +204,7 @@ namespace Scarlet.OpenPgp.Tests.Signing
             // (only second-preimage resistance matters for them); data signatures still need SHA-2/3.
             PgpKeyPair primary = NewKey();
             PgpKeyPair subkey = NewKey();
-            byte[] certificate = Certificate(primary, Array.Empty<byte[]>(), subkey, new[] { Encoded(SubkeyBinding(primary, subkey, PgpKeyFlags.CanSign, withBackSignature: true, HashAlgorithmTag.Sha1)) });
+            byte[] certificate = Certificate(primary, [], subkey, [Encoded(SubkeyBinding(primary, subkey, PgpKeyFlags.CanSign, withBackSignature: true, HashAlgorithmTag.Sha1))]);
 
             // Act
             VerificationResult result = Verify(SignData(subkey), certificate);
@@ -222,7 +218,7 @@ namespace Scarlet.OpenPgp.Tests.Signing
         {
             // Arrange
             PgpKeyPair primary = NewKey();
-            byte[] certificate = Certificate(primary, new[] { Encoded(DirectKeySignature(primary, PgpKeyFlags.CanCertify)) });
+            byte[] certificate = Certificate(primary, [Encoded(DirectKeySignature(primary, PgpKeyFlags.CanCertify))]);
 
             // Act
             VerificationResult result = Verify(SignData(primary), certificate);
@@ -236,7 +232,7 @@ namespace Scarlet.OpenPgp.Tests.Signing
         {
             // Arrange
             PgpKeyPair primary = NewKey();
-            byte[] certificate = Certificate(primary, new[] { Encoded(DirectKeySignature(primary, PgpKeyFlags.CanCertify | PgpKeyFlags.CanSign)) });
+            byte[] certificate = Certificate(primary, [Encoded(DirectKeySignature(primary, PgpKeyFlags.CanCertify | PgpKeyFlags.CanSign))]);
 
             // Act
             VerificationResult result = Verify(SignData(primary), certificate);
@@ -256,7 +252,7 @@ namespace Scarlet.OpenPgp.Tests.Signing
             generator.InitSign(PgpSignature.DirectKey, other.PrivateKey);
             generator.SetHashedSubpackets(Subpackets(g => g.SetKeyFlags(false, PgpKeyFlags.CanCertify)));
             PgpSignature forged = generator.GenerateCertification(primary.PublicKey);
-            byte[] certificate = Certificate(primary, new[] { Encoded(forged) });
+            byte[] certificate = Certificate(primary, [Encoded(forged)]);
 
             // Act
             VerificationResult result = Verify(SignData(primary), certificate);
@@ -290,7 +286,7 @@ namespace Scarlet.OpenPgp.Tests.Signing
         {
             // Arrange: secret key material has no business in a trusted public key file.
             PgpKeyPair primary = NewKey();
-            byte[] certificate = Certificate(primary, Array.Empty<byte[]>())
+            byte[] certificate = Certificate(primary, [])
                 .Concat(Packet(PacketTag.SecretKey, KeyBody(primary.PublicKey)))
                 .ToArray();
 

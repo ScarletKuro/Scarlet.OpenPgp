@@ -1,4 +1,3 @@
-using System;
 using System.Text;
 using Scarlet.OpenPgp.Armor;
 using Scarlet.OpenPgp.Clearsign;
@@ -12,7 +11,7 @@ namespace Scarlet.OpenPgp.Tests.Clearsign
         private static string BuildSignatureArmor(byte[] body)
         {
             int crc = Crc24.Compute(body);
-            byte[] crcBytes = { (byte)(crc >> 16), (byte)(crc >> 8), (byte)crc };
+            byte[] crcBytes = [(byte)(crc >> 16), (byte)(crc >> 8), (byte)crc];
 
             return "-----BEGIN PGP SIGNATURE-----\n"
                    + "Version: Test\n"
@@ -26,7 +25,7 @@ namespace Scarlet.OpenPgp.Tests.Clearsign
         public void Parse_WithWellFormedClearsignMessage_ShouldExtractBodyLinesAndSignatureArmor()
         {
             // Arrange
-            byte[] sigBody = Encoding.ASCII.GetBytes("fake-signature-bytes");
+            byte[] sigBody = "fake-signature-bytes"u8.ToArray();
             string message = "-----BEGIN PGP SIGNED MESSAGE-----\n"
                               + "Hash: SHA256\n"
                               + "\n"
@@ -67,9 +66,9 @@ namespace Scarlet.OpenPgp.Tests.Clearsign
         public void Parse_WithWrongTrailingArmorLabel_ShouldFailClosed()
         {
             // Arrange: a PUBLIC KEY BLOCK where a SIGNATURE was expected.
-            byte[] body = Encoding.ASCII.GetBytes("not a signature");
+            byte[] body = "not a signature"u8.ToArray();
             int crc = Crc24.Compute(body);
-            byte[] crcBytes = { (byte)(crc >> 16), (byte)(crc >> 8), (byte)crc };
+            byte[] crcBytes = [(byte)(crc >> 16), (byte)(crc >> 8), (byte)crc];
             string wrongArmor = "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\n"
                                  + Convert.ToBase64String(body) + "\n"
                                  + "=" + Convert.ToBase64String(crcBytes) + "\n"
@@ -84,7 +83,7 @@ namespace Scarlet.OpenPgp.Tests.Clearsign
         public void Parse_WithNoHashHeaders_ShouldStillWork()
         {
             // Arrange
-            byte[] sigBody = Encoding.ASCII.GetBytes("sig");
+            byte[] sigBody = "sig"u8.ToArray();
             string message = "-----BEGIN PGP SIGNED MESSAGE-----\n"
                               + "\n"
                               + "only line\n"
@@ -104,7 +103,7 @@ namespace Scarlet.OpenPgp.Tests.Clearsign
                    + headers
                    + "\n"
                    + body
-                   + BuildSignatureArmor(Encoding.ASCII.GetBytes("sig"));
+                   + BuildSignatureArmor("sig"u8.ToArray());
         }
 
         [Fact]
@@ -117,7 +116,7 @@ namespace Scarlet.OpenPgp.Tests.Clearsign
             ClearsignMessage result = ClearsignParser.Parse(message);
 
             // Assert
-            Assert.Equal(new[] { HashAlgorithmId.Sha256, HashAlgorithmId.Sha512, HashAlgorithmId.Sha384 }, result.HashHeaderAlgorithms);
+            Assert.Equal([HashAlgorithmId.Sha256, HashAlgorithmId.Sha512, HashAlgorithmId.Sha384], result.HashHeaderAlgorithms);
         }
 
         [Fact]

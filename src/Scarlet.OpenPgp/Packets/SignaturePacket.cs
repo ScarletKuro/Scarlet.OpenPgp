@@ -33,20 +33,20 @@ namespace Scarlet.OpenPgp.Packets
         /// The packet body from the version octet through the end of the hashed subpackets - the part
         /// of the signature that is itself hashed, before the trailer (RFC 9580 §5.2.4).
         /// </summary>
-        public byte[] HashedPortion { get; private set; } = Array.Empty<byte>();
+        public byte[] HashedPortion { get; private set; } = [];
 
         /// <summary>The raw hashed-subpacket area bytes.</summary>
-        public byte[] HashedSubpacketData { get; private set; } = Array.Empty<byte>();
+        public byte[] HashedSubpacketData { get; private set; } = [];
 
         public IReadOnlyList<SignatureSubpacket> HashedSubpackets { get; private set; } = Array.Empty<SignatureSubpacket>();
 
         public IReadOnlyList<SignatureSubpacket> UnhashedSubpackets { get; private set; } = Array.Empty<SignatureSubpacket>();
 
         /// <summary>The 2-byte quick-check prefix of the expected hash (RFC 9580 §5.2.3), immediately preceding the salt/signature values.</summary>
-        public byte[] LeftHashBytes16 { get; private set; } = Array.Empty<byte>();
+        public byte[] LeftHashBytes16 { get; private set; } = [];
 
         /// <summary>The v6 signature salt, hashed before any other data (RFC 9580 §5.2.4). Empty for v4.</summary>
-        public byte[] Salt { get; private set; } = Array.Empty<byte>();
+        public byte[] Salt { get; private set; } = [];
 
         public BigInteger? RsaSignatureValue { get; private set; }
 

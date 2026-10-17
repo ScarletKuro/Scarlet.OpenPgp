@@ -93,7 +93,7 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
                     result = result.Add(addend);
                 }
 
-                addend = addend.Add(addend);
+                addend = addend.Add(addend); // doubling: the addition law is complete, so P + P is fine
                 remaining >>= 1;
             }
 

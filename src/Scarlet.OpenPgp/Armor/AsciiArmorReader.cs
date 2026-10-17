@@ -50,8 +50,7 @@ namespace Scarlet.OpenPgp.Armor
             string[] lines = SplitLines(armorText);
             var blocks = new List<AsciiArmorBlock>();
             int i = 0;
-            AsciiArmorBlock? block;
-            while ((block = ReadNext(lines, ref i)) is not null)
+            while (ReadNext(lines, ref i) is { } block)
             {
                 blocks.Add(block);
             }

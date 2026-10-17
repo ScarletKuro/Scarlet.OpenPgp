@@ -1,8 +1,4 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
 using System.Text;
 using Scarlet.OpenPgp.Armor;
 using Scarlet.OpenPgp.Clearsign;
@@ -237,13 +233,13 @@ namespace Scarlet.OpenPgp.Tests.Fuzzing
         /// <summary>Byte- and text-level mutations biased toward what breaks binary parsers: length fields, boundary values, truncation, splicing.</summary>
         private sealed class Mutator
         {
-            private static readonly byte[] InterestingBytes = { 0x00, 0x01, 0x7F, 0x80, 0xBF, 0xC0, 0xDF, 0xE0, 0xFE, 0xFF };
+            private static readonly byte[] InterestingBytes = [0x00, 0x01, 0x7F, 0x80, 0xBF, 0xC0, 0xDF, 0xE0, 0xFE, 0xFF];
 
             private static readonly string[] InterestingText =
-            {
+            [
                 "\n", "\r", "\r\n", "-", "- ", " ", "\t", "=", ":", "-----BEGIN PGP SIGNATURE-----", "-----END PGP SIGNATURE-----",
                 "-----BEGIN PGP SIGNED MESSAGE-----", "Hash: SHA256", "﻿", "\uD800", "é", "A", "//", "==",
-            };
+            ];
 
             private readonly Random _random;
 

@@ -148,7 +148,7 @@ namespace Scarlet.OpenPgp.Signing
                     // The curve's "fsize", except NIST P-521, which needs at least a 512-bit hash.
                     return key.EcdsaCurve is null ? int.MaxValue : Math.Min(BigIntegerMath.BitLength(key.EcdsaCurve.P), 512);
                 case PublicKeyAlgorithm.Dsa:
-                    return key.Dsa is null ? int.MaxValue : key.Dsa.QBitLength;
+                    return key.Dsa?.QBitLength ?? int.MaxValue;
                 default:
                     return 0;
             }

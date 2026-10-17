@@ -9,7 +9,7 @@ namespace Scarlet.OpenPgp.Tests.Armor
         public void Compute_WithEmptyInput_ShouldReturnTheInitializationValue()
         {
             // Arrange
-            byte[] data = System.Array.Empty<byte>();
+            byte[] data = [];
 
             // Act
             int crc = Crc24.Compute(data);
@@ -23,7 +23,7 @@ namespace Scarlet.OpenPgp.Tests.Armor
         {
             // Arrange
             // "123456789" -> 0x21CF02 is the standard published CRC-24/OPENPGP test vector.
-            byte[] data = Encoding.ASCII.GetBytes("123456789");
+            byte[] data = "123456789"u8.ToArray();
 
             // Act
             int crc = Crc24.Compute(data);

@@ -61,7 +61,7 @@ namespace Scarlet.OpenPgp.Crypto.Rsa
             int padLength = k - fixedLength;
             if (padLength < 8)
             {
-                return System.Array.Empty<byte>(); // signals "does not fit"; will never byte-match em
+                return []; // signals "does not fit"; will never byte-match em
             }
 
             var em = new byte[k];

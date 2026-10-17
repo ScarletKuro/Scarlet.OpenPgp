@@ -1,8 +1,4 @@
-using System;
-using System.IO;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace Scarlet.OpenPgp.Tests
 {
@@ -43,7 +39,7 @@ namespace Scarlet.OpenPgp.Tests
             // Assert
             Assert.Equal(6, keyRing.Certificates.Count);
             Assert.Equal(
-                new[] { "EdDSA Ed25519 (legacy)", "EdDSA Ed25519 (legacy)", "RSA 3072", "EdDSA Ed25519 (legacy)", "ECDSA brainpoolP256r1", "ECDSA brainpoolP384r1" },
+                ["EdDSA Ed25519 (legacy)", "EdDSA Ed25519 (legacy)", "RSA 3072", "EdDSA Ed25519 (legacy)", "ECDSA brainpoolP256r1", "ECDSA brainpoolP384r1"],
                 keyRing.Certificates.Select(c => c.PrimaryKey.Algorithm));
             // A UTF-8 User ID ("ö") must come through intact.
             Assert.Contains(keyRing.Certificates.SelectMany(c => c.UserIds), u => u.StartsWith("Ingo Klöcker", StringComparison.Ordinal));

@@ -1,4 +1,3 @@
-using System;
 using System.Text;
 using Org.BouncyCastle.Crypto.Digests;
 using Scarlet.OpenPgp.Hashing;
@@ -72,11 +71,9 @@ namespace Scarlet.OpenPgp.Tests.Hashing
         {
             // Act & Assert
             Assert.Throws<Scarlet.OpenPgp.Internal.FailClosedException>(() => HashContext.Create(HashAlgorithmId.Sha1));
-            using (HashContext context = HashContext.Create(HashAlgorithmId.Sha1, allowSha1: true))
-            {
-                context.Update(Encoding.ASCII.GetBytes("abc"));
-                Assert.Equal("a9993e364706816aba3e25717850c26c9cd0d89d", Convert.ToHexString(context.Finish()).ToLowerInvariant());
-            }
+            using HashContext context = HashContext.Create(HashAlgorithmId.Sha1, allowSha1: true);
+            context.Update("abc"u8.ToArray());
+            Assert.Equal("a9993e364706816aba3e25717850c26c9cd0d89d", Convert.ToHexString(context.Finish()).ToLowerInvariant());
         }
     }
 }
