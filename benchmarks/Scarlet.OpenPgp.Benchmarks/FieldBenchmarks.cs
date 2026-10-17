@@ -10,6 +10,7 @@ namespace Scarlet.OpenPgp.Benchmarks
         private FieldElement _a = new FieldElement(BigInteger.Parse("12345678901234567890123456789012345678901234567890123456789", System.Globalization.CultureInfo.InvariantCulture));
         private FieldElement _b = new FieldElement(BigInteger.Parse("98765432109876543210987654321098765432109876543210987654321", System.Globalization.CultureInfo.InvariantCulture));
         private readonly EdwardsPoint _p = EdwardsPoint.B.Double();
+        private readonly EdwardsPoint _other = EdwardsPoint.B.Double().Double().Add(EdwardsPoint.B);
         private FieldElement _r;
         private EdwardsPoint _q;
 
@@ -26,7 +27,7 @@ namespace Scarlet.OpenPgp.Benchmarks
         public bool AreEqual() => _a == _b;
 
         [Benchmark]
-        public void PointAdd() => _q = _p.Add(_p);
+        public void PointAdd() => _q = _p.Add(_other);
 
         [Benchmark]
         public void PointDouble() => _q = _p.Double();
