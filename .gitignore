@@ -22,3 +22,6 @@ Thumbs.db
 
 ## Test results
 TestResults/
+
+## Benchmarks
+BenchmarkDotNet.Artifacts/

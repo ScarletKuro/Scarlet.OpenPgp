@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <!-- Benchmarks reach into internals (hashes, curve arithmetic) to time them in isolation. -->
+    <NoWarn>$(NoWarn);CA1515;CA1822;CA1707</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Scarlet.OpenPgp\Scarlet.OpenPgp.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\tests\Scarlet.OpenPgp.Tests\TestAssets\**\*" LinkBase="TestAssets" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

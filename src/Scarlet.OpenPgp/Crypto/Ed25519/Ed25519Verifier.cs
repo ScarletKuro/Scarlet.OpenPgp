@@ -50,11 +50,9 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
             byte[] hash = ComputeSha512(Concat(rBytes, publicKey.CompressedPoint, message));
             BigInteger k = PointDecoder.LittleEndianToBigInteger(hash) % GroupOrderL;
 
-            EdwardsPoint sB = EdwardsPoint.B.ScalarMultiply(s);
-            EdwardsPoint kA = a.ScalarMultiply(k);
-            EdwardsPoint rPlusKA = r.Add(kA);
-
-            return sB.Equals(rPlusKA);
+            // [S]B = R + [k]A, checked as [S]B + [k](-A) = R so both scalar multiplications share
+            // one doubling chain.
+            return EdwardsPoint.MultiplyAdd(s, EdwardsPoint.B, k, a.Negate()).Equals(r);
         }
 
         private static byte[] ComputeSha512(byte[] data)

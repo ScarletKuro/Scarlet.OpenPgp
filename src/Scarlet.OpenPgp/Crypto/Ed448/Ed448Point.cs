@@ -5,10 +5,10 @@ namespace Scarlet.OpenPgp.Crypto.Ed448
     /// <summary>
     /// A point on edwards448, the untwisted Edwards curve x^2 + y^2 = 1 + d*x^2*y^2 with d = -39081
     /// (RFC 8032 §5.2), in projective coordinates (X : Y : Z) with x = X/Z, y = Y/Z.
-    /// Unlike the Ed25519 code, which stays affine, projective coordinates are used here because
-    /// affine addition needs two field inversions per step, and with a 448-bit field and ~450-bit
-    /// scalars that pushes a single verification well past a second; projective formulas need
-    /// no inversion at all until the final comparison, which is itself done by cross-multiplying.
+    /// Projective coordinates because affine addition needs two field inversions per step, and
+    /// with a 448-bit field and ~450-bit scalars that pushes a single verification well past a
+    /// second; projective formulas need no inversion at all until the final comparison, which is
+    /// itself done by cross-multiplying.
     /// </summary>
     internal readonly struct Ed448Point : System.IEquatable<Ed448Point>
     {
@@ -97,24 +97,50 @@ namespace Scarlet.OpenPgp.Crypto.Ed448
             return new Ed448Point(x3, y3, z3);
         }
 
-        public Ed448Point ScalarMultiply(BigInteger scalar)
+        /// <summary>-P = (-x, y), i.e. (-X : Y : Z).</summary>
+        public Ed448Point Negate() => new Ed448Point(-X, Y, Z);
+
+        /// <summary>[scalar]P by left-to-right double-and-add. <paramref name="scalar"/> must be non-negative.</summary>
+        public Ed448Point ScalarMultiply(BigInteger scalar) => MultiplyAdd(scalar, this, BigInteger.Zero, Identity);
+
+        /// <summary>
+        /// [u1]P + [u2]Q in a single left-to-right pass ("Shamir's trick"): one shared doubling
+        /// chain, adding P, Q or the precomputed P + Q according to the current bit pair - about
+        /// the cost of one scalar multiplication instead of two. Both scalars must be non-negative.
+        /// </summary>
+        public static Ed448Point MultiplyAdd(BigInteger u1, Ed448Point p, BigInteger u2, Ed448Point q)
         {
+            byte[] u1Bytes = u1.ToByteArray(); // little-endian; bit i lives in byte i / 8
+            byte[] u2Bytes = u2.ToByteArray();
+            Ed448Point pPlusQ = p.Add(q);
+
             Ed448Point result = Identity;
-            Ed448Point addend = this;
-
-            BigInteger remaining = scalar;
-            while (remaining > 0)
+            for (int bit = (System.Math.Max(u1Bytes.Length, u2Bytes.Length) * 8) - 1; bit >= 0; bit--)
             {
-                if (!remaining.IsEven)
+                result = result.Double();
+                bool bit1 = TestBit(u1Bytes, bit);
+                bool bit2 = TestBit(u2Bytes, bit);
+                if (bit1 && bit2)
                 {
-                    result = result.Add(addend);
+                    result = result.Add(pPlusQ);
                 }
-
-                addend = addend.Double();
-                remaining >>= 1;
+                else if (bit1)
+                {
+                    result = result.Add(p);
+                }
+                else if (bit2)
+                {
+                    result = result.Add(q);
+                }
             }
 
             return result;
+        }
+
+        private static bool TestBit(byte[] littleEndian, int bit)
+        {
+            int index = bit >> 3;
+            return index < littleEndian.Length && ((littleEndian[index] >> (bit & 7)) & 1) != 0;
         }
 
         /// <summary>Projective equality: (X1 : Y1 : Z1) and (X2 : Y2 : Z2) are the same point iff X1*Z2 = X2*Z1 and Y1*Z2 = Y2*Z1 - no inversion needed.</summary>

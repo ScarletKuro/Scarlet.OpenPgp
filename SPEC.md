@@ -327,30 +327,19 @@ may end up depending on:
   allocations without hurting readability (see "Performance follow-up" below), but don't chase performance
   work that isn't backed by a measurement.
 
-## Performance follow-up (not done in v1, noted for whoever picks this up next)
+## Performance follow-up
 
-v1 prioritized correctness and used plain `byte[]` throughout the packet/MPI framing layer (one array per
-packet body, one per MPI, etc.) — reasonable for verifying a handful of signatures in a build script, but
-there are real allocation hot spots if this ever needs to verify many signatures quickly:
+`benchmarks/Scarlet.OpenPgp.Benchmarks` (BenchmarkDotNet, not referenced by the shipped library) measures
+verification per algorithm, key ring parsing, hashing, and the Ed25519 field primitives. Measure there
+before and after any performance change. Done so far, each backed by a measurement:
 
-- `Packets/PacketReader.cs` — allocates a `MemoryStream` + `byte[]` per packet. Could instead return
-  `ReadOnlyMemory<byte>` slices into the original input buffer for non-partial-length packets (the common
-  case), only falling back to a copy when partial-body chunks actually need concatenating.
-- `Packets/Mpi.cs` — `ReadFrom`/`ToUnsignedBigInteger`/`ToFixedLengthUnsignedBytes` each allocate a fresh
-  array to reverse byte order for `BigInteger`. Could take `ReadOnlySpan<byte>` instead of `byte[]` to at
-  least avoid one intermediate copy at each call site, though the byte-reversal allocation itself is
-  probably unavoidable without dropping to `stackalloc` for small (≤64-byte) MPIs.
-- Ed25519 now uses extended (inversion-free) coordinates and Ed448 projective ones; the next step for
-  either would be fixed-width field arithmetic instead of `BigInteger`.
-- `Crypto/Ed25519/Ed25519Verifier.cs`'s `Concat`/`LittleEndianToBigInteger` helpers, and the equivalent
-  spots in `Crypto/Rsa/RsaPkcs1Verifier.cs` — same story, small allocations that `stackalloc` + `Span<byte>`
-  could avoid for the fixed-size (32/64-byte) Ed25519 values.
-- None of this will matter next to the cost of the actual `BigInteger` modular exponentiation/field
-  arithmetic in `RsaPkcs1Verifier`/`Ed25519Verifier` (the RFC8032 field/curve math is the real hot path, and
-  `Span<T>` doesn't help there — that would need fixed-width arithmetic instead of `BigInteger`, a much
-  bigger change explicitly deferred per the performance non-goal above).
+- Ed25519 uses fixed-width field arithmetic (ten 25.5-bit limbs, ref10's layout, in a `fixed` buffer)
+  instead of `BigInteger`, a dedicated doubling formula, and Shamir's trick for `[S]B - [k]A`. The
+  limb arithmetic is checked against `BigInteger` by a differential test.
+- RSA computes the modulus size once instead of shifting the modulus a bit at a time on every call.
+- Keccak's permutation is unrolled over the lanes (SHA3 and Ed448's SHAKE256).
+- Text-mode canonicalization copies whole lines found with a vectorized search.
 
-**Before doing any of this: add a benchmark project (`BenchmarkDotNet`, test-only dependency, not referenced
-by the shipped library) and measure first.** Guessing at allocation hot spots without a baseline is exactly
-the kind of premature optimization this doc's non-goals warn against — do the measurement, then decide
-which of the above (if any) is worth the added complexity.
+Remaining, if it ever matters: ECDSA, DSA and Ed448 still use `BigInteger` arithmetic (ECDSA P-256 is
+~1.5 ms per verification, brainpool/P-521 several times that; DSA-3072 ~10 ms). The platform's own SHA-3
+was measured and is no faster than the managed Keccak, so it isn't used.

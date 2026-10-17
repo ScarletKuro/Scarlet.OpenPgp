@@ -81,10 +81,9 @@ namespace Scarlet.OpenPgp.Crypto.Ed448
             shake.Update(message, 0, message.Length);
             BigInteger k = Ed448PointDecoder.LittleEndianToBigInteger(shake.Finish()) % GroupOrderL;
 
-            Ed448Point sB = Ed448Point.B.ScalarMultiply(s);
-            Ed448Point rPlusKA = r.Add(a.ScalarMultiply(k));
-
-            return sB.Equals(rPlusKA);
+            // [S]B = R + [k]A, checked as [S]B + [k](-A) = R so both scalar multiplications share
+            // one doubling chain.
+            return Ed448Point.MultiplyAdd(s, Ed448Point.B, k, a.Negate()).Equals(r);
         }
     }
 }

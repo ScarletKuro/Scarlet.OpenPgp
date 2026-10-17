@@ -7,8 +7,10 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
     {
         // p is prime and p = 5 (mod 8), so a square root of a quadratic residue a can be computed
         // as a^((p+3)/8); if that candidate is off by a factor of sqrt(-1), multiplying by
-        // 2^((p-1)/4) (a square root of -1 mod p) fixes it. Both exponents per RFC 8032 §5.1.3.
-        private static readonly BigInteger SqrtCandidateExponent = (FieldElement.P + 3) / 8;
+        // 2^((p-1)/4) (a square root of -1 mod p) fixes it. RFC 8032 §5.1.3 folds the division
+        // u/v into the same exponentiation: (u/v)^((p+3)/8) = u v^3 (u v^7)^((p-5)/8), saving a
+        // whole inversion.
+        private static readonly BigInteger SqrtRatioExponent = (FieldElement.P - 5) / 8;
         private static readonly BigInteger SqrtMinusOneExponent = (FieldElement.P - 1) / 4;
 
         /// <summary>sqrt(-1) mod p = 2^((p-1)/4): a constant, so computed once rather than on every point decode.</summary>
@@ -53,10 +55,11 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
             FieldElement u = ySquared - FieldElement.One;
             FieldElement v = (EdwardsPoint.D * ySquared) + FieldElement.One;
 
-            FieldElement x2 = u * v.Invert();
-            FieldElement candidate = x2.Pow(SqrtCandidateExponent);
+            FieldElement v3 = v.Square() * v;
+            FieldElement uv7 = u * v3.Square() * v;
+            FieldElement candidate = u * v3 * uv7.Pow(SqrtRatioExponent);
 
-            FieldElement vCandidateSquared = v * candidate * candidate;
+            FieldElement vCandidateSquared = v * candidate.Square();
             if (vCandidateSquared == u)
             {
                 // candidate is already a square root of x2.

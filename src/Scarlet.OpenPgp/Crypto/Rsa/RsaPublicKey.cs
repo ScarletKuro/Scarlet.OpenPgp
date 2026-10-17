@@ -30,7 +30,11 @@ namespace Scarlet.OpenPgp.Crypto.Rsa
                 throw new FailClosedException("RSA modulus must be odd.");
             }
 
-            if (ModulusBitLength < MinimumModulusBitLength || ModulusBitLength > MaximumModulusBitLength)
+            // Computed once: verification needs the byte length on every call, and finding it by
+            // shifting the modulus a bit at a time allocated a fresh BigInteger per bit.
+            int modulusBitLength = BigIntegerMath.BitLength(modulus);
+            ModulusByteLength = (modulusBitLength + 7) / 8;
+            if (modulusBitLength < MinimumModulusBitLength || modulusBitLength > MaximumModulusBitLength)
             {
                 throw FailClosedException.Unsupported("RSA modulus must be between " + MinimumModulusBitLength + " and " + MaximumModulusBitLength + " bits.");
             }
@@ -51,22 +55,6 @@ namespace Scarlet.OpenPgp.Crypto.Rsa
         public BigInteger Exponent { get; }
 
         /// <summary>The modulus size in octets, i.e. the fixed width used to render the recovered EMSA-PKCS1-v1_5 block.</summary>
-        public int ModulusByteLength => (ModulusBitLength + 7) / 8;
-
-        private int ModulusBitLength
-        {
-            get
-            {
-                int bits = 0;
-                BigInteger value = Modulus;
-                while (value > 0)
-                {
-                    value >>= 1;
-                    bits++;
-                }
-
-                return bits;
-            }
-        }
+        public int ModulusByteLength { get; }
     }
 }

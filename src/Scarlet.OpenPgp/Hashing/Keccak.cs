@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 
 namespace Scarlet.OpenPgp.Hashing
 {
@@ -32,12 +33,7 @@ namespace Scarlet.OpenPgp.Hashing
         /// <summary>Round constants for the iota step, derived from the rc(t) LFSR of FIPS 202 Algorithm 5 rather than hardcoded so they are auditable against the standard.</summary>
         private static readonly ulong[] RoundConstants = CreateRoundConstants();
 
-        /// <summary>Rotation offsets for the rho step, derived per FIPS 202 Algorithm 2, indexed by lane x + 5y.</summary>
-        private static readonly int[] RhoOffsets = CreateRhoOffsets();
-
         private readonly ulong[] _state = new ulong[LaneCount];
-        private readonly ulong[] _scratch = new ulong[LaneCount];
-        private readonly ulong[] _columnParity = new ulong[5];
         private readonly int _rateBytes;
         private readonly byte _domainSuffix;
         private readonly int _outputLength;
@@ -177,65 +173,101 @@ namespace Scarlet.OpenPgp.Hashing
             _state[index / 8] ^= (ulong)value << (8 * (index % 8));
         }
 
-        private static ulong ReadUInt64LittleEndian(byte[] data, int offset)
-        {
-            ulong value = 0;
-            for (int b = 7; b >= 0; b--)
-            {
-                value = (value << 8) | data[offset + b];
-            }
+        private static ulong ReadUInt64LittleEndian(byte[] data, int offset) => BinaryPrimitives.ReadUInt64LittleEndian(data.AsSpan(offset, 8));
 
-            return value;
-        }
+        /// <summary>Only ever called with a constant 1 &lt;= count &lt;= 63, which the JIT turns into a single rotate instruction.</summary>
+        private static ulong RotateLeft(ulong value, int count) => (value << count) | (value >> (64 - count));
 
-        private static ulong RotateLeft(ulong value, int count) => count == 0 ? value : (value << count) | (value >> (64 - count));
-
-        /// <summary>Keccak-p[1600, 24] = Keccak-f[1600] (FIPS 202 §3.3, §3.4). Lane A[x, y] lives at index x + 5y.</summary>
+        /// <summary>
+        /// Keccak-p[1600, 24] = Keccak-f[1600] (FIPS 202 §3.3, §3.4). Lane A[x, y] is local a(x + 5y).
+        /// Fully unrolled over the lanes, so the state lives in locals rather than arrays indexed
+        /// with modulo arithmetic: theta's column parities (§3.2.1), then rho's rotations (§3.2.2,
+        /// offsets from FIPS 202 Table 2) fused with pi's lane permutation (§3.2.3, A[x, y] moves to
+        /// (y, 2x + 3y)), then chi (§3.2.4) row by row and iota (§3.2.5). The known-answer and
+        /// BouncyCastle cross-check tests cover every lane and offset.
+        /// </summary>
         private void Permute()
         {
-            ulong[] a = _state;
-            ulong[] b = _scratch;
-            ulong[] c = _columnParity;
+            ulong[] s = _state;
+            ulong a0 = s[0], a1 = s[1], a2 = s[2], a3 = s[3], a4 = s[4];
+            ulong a5 = s[5], a6 = s[6], a7 = s[7], a8 = s[8], a9 = s[9];
+            ulong a10 = s[10], a11 = s[11], a12 = s[12], a13 = s[13], a14 = s[14];
+            ulong a15 = s[15], a16 = s[16], a17 = s[17], a18 = s[18], a19 = s[19];
+            ulong a20 = s[20], a21 = s[21], a22 = s[22], a23 = s[23], a24 = s[24];
 
             for (int round = 0; round < RoundCount; round++)
             {
-                // theta (§3.2.1): XOR each lane with the parities of two neighbouring columns.
-                for (int x = 0; x < 5; x++)
-                {
-                    c[x] = a[x] ^ a[x + 5] ^ a[x + 10] ^ a[x + 15] ^ a[x + 20];
-                }
+                ulong c0 = a0 ^ a5 ^ a10 ^ a15 ^ a20;
+                ulong c1 = a1 ^ a6 ^ a11 ^ a16 ^ a21;
+                ulong c2 = a2 ^ a7 ^ a12 ^ a17 ^ a22;
+                ulong c3 = a3 ^ a8 ^ a13 ^ a18 ^ a23;
+                ulong c4 = a4 ^ a9 ^ a14 ^ a19 ^ a24;
+                ulong d0 = c4 ^ RotateLeft(c1, 1);
+                ulong d1 = c0 ^ RotateLeft(c2, 1);
+                ulong d2 = c1 ^ RotateLeft(c3, 1);
+                ulong d3 = c2 ^ RotateLeft(c4, 1);
+                ulong d4 = c3 ^ RotateLeft(c0, 1);
 
-                for (int x = 0; x < 5; x++)
-                {
-                    ulong d = c[(x + 4) % 5] ^ RotateLeft(c[(x + 1) % 5], 1);
-                    for (int y = 0; y < 25; y += 5)
-                    {
-                        a[x + y] ^= d;
-                    }
-                }
+                ulong b0 = a0 ^ d0;
+                ulong b16 = RotateLeft(a5 ^ d0, 36);
+                ulong b7 = RotateLeft(a10 ^ d0, 3);
+                ulong b23 = RotateLeft(a15 ^ d0, 41);
+                ulong b14 = RotateLeft(a20 ^ d0, 18);
+                ulong b10 = RotateLeft(a1 ^ d1, 1);
+                ulong b1 = RotateLeft(a6 ^ d1, 44);
+                ulong b17 = RotateLeft(a11 ^ d1, 10);
+                ulong b8 = RotateLeft(a16 ^ d1, 45);
+                ulong b24 = RotateLeft(a21 ^ d1, 2);
+                ulong b20 = RotateLeft(a2 ^ d2, 62);
+                ulong b11 = RotateLeft(a7 ^ d2, 6);
+                ulong b2 = RotateLeft(a12 ^ d2, 43);
+                ulong b18 = RotateLeft(a17 ^ d2, 15);
+                ulong b9 = RotateLeft(a22 ^ d2, 61);
+                ulong b5 = RotateLeft(a3 ^ d3, 28);
+                ulong b21 = RotateLeft(a8 ^ d3, 55);
+                ulong b12 = RotateLeft(a13 ^ d3, 25);
+                ulong b3 = RotateLeft(a18 ^ d3, 21);
+                ulong b19 = RotateLeft(a23 ^ d3, 56);
+                ulong b15 = RotateLeft(a4 ^ d4, 27);
+                ulong b6 = RotateLeft(a9 ^ d4, 20);
+                ulong b22 = RotateLeft(a14 ^ d4, 39);
+                ulong b13 = RotateLeft(a19 ^ d4, 8);
+                ulong b4 = RotateLeft(a24 ^ d4, 14);
 
-                // rho (§3.2.2) and pi (§3.2.3) combined: pi maps A[x, y] to position
-                // (y, 2x + 3y), i.e. A'[x, y] = A[(x + 3y) mod 5, x].
-                for (int x = 0; x < 5; x++)
-                {
-                    for (int y = 0; y < 5; y++)
-                    {
-                        b[y + (5 * (((2 * x) + (3 * y)) % 5))] = RotateLeft(a[x + (5 * y)], RhoOffsets[x + (5 * y)]);
-                    }
-                }
+                a0 = b0 ^ (~b1 & b2);
+                a1 = b1 ^ (~b2 & b3);
+                a2 = b2 ^ (~b3 & b4);
+                a3 = b3 ^ (~b4 & b0);
+                a4 = b4 ^ (~b0 & b1);
+                a5 = b5 ^ (~b6 & b7);
+                a6 = b6 ^ (~b7 & b8);
+                a7 = b7 ^ (~b8 & b9);
+                a8 = b8 ^ (~b9 & b5);
+                a9 = b9 ^ (~b5 & b6);
+                a10 = b10 ^ (~b11 & b12);
+                a11 = b11 ^ (~b12 & b13);
+                a12 = b12 ^ (~b13 & b14);
+                a13 = b13 ^ (~b14 & b10);
+                a14 = b14 ^ (~b10 & b11);
+                a15 = b15 ^ (~b16 & b17);
+                a16 = b16 ^ (~b17 & b18);
+                a17 = b17 ^ (~b18 & b19);
+                a18 = b18 ^ (~b19 & b15);
+                a19 = b19 ^ (~b15 & b16);
+                a20 = b20 ^ (~b21 & b22);
+                a21 = b21 ^ (~b22 & b23);
+                a22 = b22 ^ (~b23 & b24);
+                a23 = b23 ^ (~b24 & b20);
+                a24 = b24 ^ (~b20 & b21);
 
-                // chi (§3.2.4): the only non-linear step, row by row.
-                for (int y = 0; y < 25; y += 5)
-                {
-                    for (int x = 0; x < 5; x++)
-                    {
-                        a[x + y] = b[x + y] ^ (~b[((x + 1) % 5) + y] & b[((x + 2) % 5) + y]);
-                    }
-                }
-
-                // iota (§3.2.5).
-                a[0] ^= RoundConstants[round];
+                a0 ^= RoundConstants[round];
             }
+
+            s[0] = a0; s[1] = a1; s[2] = a2; s[3] = a3; s[4] = a4;
+            s[5] = a5; s[6] = a6; s[7] = a7; s[8] = a8; s[9] = a9;
+            s[10] = a10; s[11] = a11; s[12] = a12; s[13] = a13; s[14] = a14;
+            s[15] = a15; s[16] = a16; s[17] = a17; s[18] = a18; s[19] = a19;
+            s[20] = a20; s[21] = a21; s[22] = a22; s[23] = a23; s[24] = a24;
         }
 
         /// <summary>FIPS 202 Algorithm 5: rc(t), one output bit of a degree-8 LFSR with feedback polynomial x^8 + x^6 + x^5 + x^4 + 1.</summary>
@@ -274,23 +306,6 @@ namespace Scarlet.OpenPgp.Hashing
             }
 
             return constants;
-        }
-
-        /// <summary>FIPS 202 Algorithm 2: walking (x, y) from (1, 0) via (y, (2x + 3y) mod 5), lane t gets offset (t + 1)(t + 2) / 2 mod 64; A[0, 0] is never rotated.</summary>
-        private static int[] CreateRhoOffsets()
-        {
-            var offsets = new int[LaneCount];
-            int x = 1;
-            int y = 0;
-            for (int t = 0; t < 24; t++)
-            {
-                offsets[x + (5 * y)] = ((t + 1) * (t + 2) / 2) % 64;
-                int nextY = ((2 * x) + (3 * y)) % 5;
-                x = y;
-                y = nextY;
-            }
-
-            return offsets;
         }
     }
 }

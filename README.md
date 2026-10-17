@@ -32,4 +32,7 @@ scarlet-openpgp verify --key pubkey.asc --signature release.sig --data release.t
 [src/Scarlet.OpenPgp.Cli/README.md](src/Scarlet.OpenPgp.Cli/README.md) ·
 [fuzz/Scarlet.OpenPgp.Fuzz/README.md](fuzz/Scarlet.OpenPgp.Fuzz/README.md)
 
+Benchmarks: `dotnet run -c Release --project benchmarks/Scarlet.OpenPgp.Benchmarks -- --filter '*'` (BenchmarkDotNet;
+per-algorithm verification, key ring parsing, hashing and the Ed25519 field primitives).
+
 See [SPEC.md](SPEC.md) for the full design rationale and non-goals.

@@ -7,8 +7,7 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
     /// homogeneous coordinates (X:Y:Z:T) with x = X/Z, y = Y/Z, x*y = T/Z (RFC 8032 §5.1.4).
     /// Extended coordinates make addition inversion-free - affine addition needs two field
     /// inversions per step, which made every verification (and every self-signature check in a
-    /// keyring) needlessly slow. BigInteger-backed field arithmetic remains a deliberate
-    /// simplicity-over-speed choice, acceptable per SPEC.md: a verify-only library has no secret
+    /// keyring) needlessly slow. Nothing here is constant-time: a verify-only library has no secret
     /// scalars to protect from timing leaks.
     /// </summary>
     internal readonly struct EdwardsPoint : System.IEquatable<EdwardsPoint>
@@ -80,21 +79,58 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
             return new EdwardsPoint(e * f, g * h, f * g, e * h);
         }
 
-        public EdwardsPoint ScalarMultiply(BigInteger scalar)
+        /// <summary>
+        /// 2P with the dedicated doubling formula (RFC 8032 §5.1.4): 4 squarings and 4
+        /// multiplications instead of the 9 multiplications of <see cref="Add"/> with itself.
+        /// </summary>
+        public EdwardsPoint Double()
         {
+            FieldElement a = _x.Square();
+            FieldElement b = _y.Square();
+            FieldElement zz = _z.Square();
+            FieldElement c = zz + zz;
+            FieldElement h = a + b;
+            FieldElement e = h - (_x + _y).Square();
+            FieldElement g = a - b;
+            FieldElement f = c + g;
+            return new EdwardsPoint(e * f, g * h, f * g, e * h);
+        }
+
+        /// <summary>-P = (-x, y), i.e. (-X : Y : Z : -T).</summary>
+        public EdwardsPoint Negate() => new EdwardsPoint(-_x, _y, _z, -_t);
+
+        /// <summary>[scalar]P by left-to-right double-and-add. <paramref name="scalar"/> must be non-negative.</summary>
+        public EdwardsPoint ScalarMultiply(BigInteger scalar) => MultiplyAdd(scalar, this, BigInteger.Zero, Identity);
+
+        /// <summary>
+        /// [u1]P + [u2]Q in a single left-to-right pass ("Shamir's trick"): one shared doubling
+        /// chain, adding P, Q or the precomputed P + Q according to the current bit pair - about
+        /// the cost of one scalar multiplication instead of two. Both scalars must be non-negative.
+        /// </summary>
+        public static EdwardsPoint MultiplyAdd(BigInteger u1, EdwardsPoint p, BigInteger u2, EdwardsPoint q)
+        {
+            byte[] u1Bytes = u1.ToByteArray(); // little-endian; bit i lives in byte i / 8
+            byte[] u2Bytes = u2.ToByteArray();
+            EdwardsPoint pPlusQ = p.Add(q);
+
             EdwardsPoint result = Identity;
-            EdwardsPoint addend = this;
-
-            BigInteger remaining = scalar;
-            while (remaining > 0)
+            for (int bit = (System.Math.Max(u1Bytes.Length, u2Bytes.Length) * 8) - 1; bit >= 0; bit--)
             {
-                if (!remaining.IsEven)
+                result = result.Double();
+                bool bit1 = TestBit(u1Bytes, bit);
+                bool bit2 = TestBit(u2Bytes, bit);
+                if (bit1 && bit2)
                 {
-                    result = result.Add(addend);
+                    result = result.Add(pPlusQ);
                 }
-
-                addend = addend.Add(addend); // doubling: the addition law is complete, so P + P is fine
-                remaining >>= 1;
+                else if (bit1)
+                {
+                    result = result.Add(p);
+                }
+                else if (bit2)
+                {
+                    result = result.Add(q);
+                }
             }
 
             return result;
@@ -111,6 +147,12 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
             {
                 return (X.GetHashCode() * 397) ^ Y.GetHashCode();
             }
+        }
+
+        private static bool TestBit(byte[] littleEndian, int bit)
+        {
+            int index = bit >> 3;
+            return index < littleEndian.Length && ((littleEndian[index] >> (bit & 7)) & 1) != 0;
         }
 
         private static EdwardsPoint CreateBasePoint()

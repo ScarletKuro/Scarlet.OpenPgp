@@ -102,27 +102,46 @@ namespace Scarlet.OpenPgp.Signing
 
             // Canonicalize into a scratch buffer and hash it with one update per slice. Hashing each
             // run between line breaks separately cost two hash calls per bare LF - 26x slower on
-            // LF-dense input (8 MiB of LFs: 572 ms). A slice expands at most 2x (every byte a LF).
+            // LF-dense input (8 MiB of LFs: 572 ms). Within a slice, each line is found with a
+            // (vectorized) search for LF and copied whole, rather than byte by byte. A slice
+            // expands at most 2x (every byte a LF).
             _scratch ??= ArrayPool<byte>.Shared.Rent(2 * TextSliceSize);
-            int end = offset + count;
-            while (offset < end)
+            var input = new ReadOnlySpan<byte>(buffer, offset, count);
+            while (!input.IsEmpty)
             {
-                int sliceEnd = Math.Min(end, offset + TextSliceSize);
+                ReadOnlySpan<byte> slice = input.Slice(0, Math.Min(input.Length, TextSliceSize));
+                input = input.Slice(slice.Length);
+                var output = new Span<byte>(_scratch);
                 int written = 0;
-                for (int i = offset; i < sliceEnd; i++)
+                while (true)
                 {
-                    byte b = buffer[i];
-                    if (b == (byte)'\n' && !_previousWasCarriageReturn)
+                    int lineFeed = slice.IndexOf((byte)'\n');
+                    if (lineFeed < 0)
                     {
-                        _scratch[written++] = (byte)'\r';
+                        slice.CopyTo(output.Slice(written));
+                        written += slice.Length;
+                        if (!slice.IsEmpty)
+                        {
+                            _previousWasCarriageReturn = slice[slice.Length - 1] == (byte)'\r';
+                        }
+
+                        break;
                     }
 
-                    _scratch[written++] = b;
-                    _previousWasCarriageReturn = b == (byte)'\r';
+                    bool alreadyCrLf = lineFeed > 0 ? slice[lineFeed - 1] == (byte)'\r' : _previousWasCarriageReturn;
+                    slice.Slice(0, lineFeed).CopyTo(output.Slice(written));
+                    written += lineFeed;
+                    if (!alreadyCrLf)
+                    {
+                        output[written++] = (byte)'\r';
+                    }
+
+                    output[written++] = (byte)'\n';
+                    _previousWasCarriageReturn = false;
+                    slice = slice.Slice(lineFeed + 1);
                 }
 
                 _hash.Update(_scratch, 0, written);
-                offset = sliceEnd;
             }
         }
 

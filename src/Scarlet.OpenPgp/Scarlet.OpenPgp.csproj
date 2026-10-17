@@ -17,6 +17,8 @@
     <NoWarn>$(NoWarn);CA1510;CA1850;CA1835;CA1865;CA2249;CA1307</NoWarn>
     <LangVersion>latest</LangVersion>
     <RootNamespace>Scarlet.OpenPgp</RootNamespace>
+    <!-- For fixed-size limb buffers in the curve field arithmetic (Crypto/Ed25519/FieldElement.cs). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
 
@@ -58,6 +60,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Scarlet.OpenPgp.Tests" />
+    <InternalsVisibleTo Include="Scarlet.OpenPgp.Benchmarks" />
   </ItemGroup>
 
   <ItemGroup>
