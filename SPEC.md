@@ -309,6 +309,14 @@ may end up depending on:
   key, never from unverified packets in the block.
 - **Bounded work on hostile input.** RSA moduli are capped at 16384 bits (and exponents at 256 bits),
   DSA primes at 16384 bits, so no input can make a single verification take minutes.
+- **Unsigned data never decides anything.** A signature's unhashed subpacket area is editable by anyone
+  (RFC 9580 §13.13), so it is parsed leniently and never validated, and certificate checks use only
+  signed issuer hints. Otherwise adding two unsigned bytes to a revocation could make it vanish.
+- **Uncheckable is not absent.** A self-signature, binding or revocation that appears to be the key's own
+  but can't be parsed or verified (unsupported or too-weak hash) makes that key unusable; it is never
+  treated as if it weren't there. The one thing no OpenPGP implementation can detect is a signature
+  *deleted* from a certificate - the fingerprint covers the key, not its signatures - so revocations
+  only count if the caller's key data contains them.
 - **Correctness over performance**, but still write clean, readable code — this will be read and audited by
   people deciding whether to trust it. `Span<T>`/`ReadOnlySpan<T>` are fair game where they reduce
   allocations without hurting readability (see "Performance follow-up" below), but don't chase performance

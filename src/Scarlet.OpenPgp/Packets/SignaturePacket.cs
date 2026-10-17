@@ -95,30 +95,33 @@ namespace Scarlet.OpenPgp.Packets
         /// hints for finding the right key - the unhashed area is unauthenticated - so a wrong hint
         /// can make verification fail, never succeed.
         /// </summary>
-        public IEnumerable<byte[]> IssuerFingerprints
+        public IEnumerable<byte[]> IssuerFingerprints => GetIssuerFingerprints(hashedOnly: false);
+
+        public IEnumerable<byte[]> IssuerKeyIds => GetIssuerKeyIds(hashedOnly: false);
+
+        /// <param name="hashedOnly">
+        /// Only the signed hints. Use this wherever skipping a signature on the strength of its
+        /// hints must not be steerable by whoever handled it - e.g. a key's own revocations.
+        /// </param>
+        public IEnumerable<byte[]> GetIssuerFingerprints(bool hashedOnly)
         {
-            get
+            foreach (SignatureSubpacket subpacket in hashedOnly ? HashedSubpackets : AllSubpackets())
             {
-                foreach (SignatureSubpacket subpacket in AllSubpackets())
+                if (subpacket.Is(SignatureSubpacketType.IssuerFingerprint) && subpacket.Data.Length > 1)
                 {
-                    if (subpacket.Is(SignatureSubpacketType.IssuerFingerprint) && subpacket.Data.Length > 1)
-                    {
-                        yield return subpacket.Data.AsSpan(1).ToArray();
-                    }
+                    yield return subpacket.Data.AsSpan(1).ToArray();
                 }
             }
         }
 
-        public IEnumerable<byte[]> IssuerKeyIds
+        /// <inheritdoc cref="GetIssuerFingerprints"/>
+        public IEnumerable<byte[]> GetIssuerKeyIds(bool hashedOnly)
         {
-            get
+            foreach (SignatureSubpacket subpacket in hashedOnly ? HashedSubpackets : AllSubpackets())
             {
-                foreach (SignatureSubpacket subpacket in AllSubpackets())
+                if (subpacket.Is(SignatureSubpacketType.IssuerKeyId) && subpacket.Data.Length == 8)
                 {
-                    if (subpacket.Is(SignatureSubpacketType.IssuerKeyId) && subpacket.Data.Length == 8)
-                    {
-                        yield return subpacket.Data;
-                    }
+                    yield return subpacket.Data;
                 }
             }
         }
@@ -239,12 +242,15 @@ namespace Scarlet.OpenPgp.Packets
             List<SignatureSubpacket> hashedSubpackets = SubpacketReader.ReadAll(signature.HashedSubpacketData);
             signature.HashedSubpackets = hashedSubpackets;
 
+            // The unhashed area isn't covered by the signature, so anyone can add to or change it
+            // (RFC 9580 §13.13). Nothing in it may decide whether the signature is valid: if a
+            // malformed or "critical" unhashed subpacket could make the signature fail to parse, then
+            // two unsigned bytes added to a certificate's revocation would make the revocation
+            // vanish. It is read leniently (unreadable = empty) and never validated.
             byte[] unhashedSubpacketData = ReadSubpacketRegion(body, ref offset, lengthFieldSize, "unhashed");
-            List<SignatureSubpacket> unhashedSubpackets = SubpacketReader.ReadAll(unhashedSubpacketData);
-            signature.UnhashedSubpackets = unhashedSubpackets;
+            signature.UnhashedSubpackets = TryReadSubpackets(unhashedSubpacketData);
 
             signature.ValidateSubpackets(hashedSubpackets);
-            signature.ValidateSubpackets(unhashedSubpackets);
 
             signature.LeftHashBytes16 = ReadFixed(body, ref offset, 2, "left-hash-bits field");
 
@@ -305,6 +311,19 @@ namespace Scarlet.OpenPgp.Packets
 
                 default:
                     throw FailClosedException.Unsupported("Unsupported signature public-key algorithm: " + (byte)PublicKeyAlgorithm + ".");
+            }
+        }
+
+        /// <summary>The unhashed area's subpackets, or none if its framing is broken - it is advisory, so an unreadable one is simply absent.</summary>
+        private static List<SignatureSubpacket> TryReadSubpackets(byte[] data)
+        {
+            try
+            {
+                return SubpacketReader.ReadAll(data);
+            }
+            catch (FailClosedException)
+            {
+                return [];
             }
         }
 

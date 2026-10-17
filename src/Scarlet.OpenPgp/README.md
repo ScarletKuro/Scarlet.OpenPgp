@@ -55,6 +55,13 @@ dash-escaping and the signature block's own armor headers, so reading data strai
   expired fails *now* even for signatures it made while still valid, the same policy as apt.
 - Revocations in the supplied certificates are honored: "compromised" (or no reason) invalidates
   every signature; "superseded" and "retired" only signatures made after the revocation.
+- Revocations only count if they're in the key data you supply. A certificate's fingerprint
+  identifies its primary key only, not its list of signatures: anyone who handles a certificate
+  can *delete* a revocation or an expiring self-signature without changing the fingerprint. Adding
+  unsigned data can't change a verdict, and a revocation or self-signature that can't be parsed or
+  checked makes the key unusable rather than disappearing. A deleted one, though, is
+  indistinguishable from one that never existed. So if you refresh a certificate from an
+  untrusted source, checking its fingerprint doesn't prove you've seen its latest revocations.
 - No signing, key generation, encryption, or trust management. Supply exactly the keys you already
   trust; this library does not decide whether to trust them.
 - Nothing throws on bad input: every failure is a `VerificationResult` with a `Status` and `Message`.

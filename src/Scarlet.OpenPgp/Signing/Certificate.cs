@@ -170,7 +170,25 @@ namespace Scarlet.OpenPgp.Signing
                         SignaturePacket? signature = TryParseSignature(packet.Body);
                         if (signature is null)
                         {
-                            break; // an unparseable signature can't say anything about the key
+                            // A revocation, direct-key or binding signature that can't even be parsed
+                            // may still be the key's own statement - often a revocation - so it must
+                            // not just vanish: count it as uncheckable, which makes the key unusable.
+                            // (User ID certifications can't be told apart from third parties' here,
+                            // so an unparseable one is ignored.)
+                            byte type = RawSignatureType(packet.Body);
+                            if (inSubkeySection)
+                            {
+                                if (type == (byte)SignatureType.SubkeyBinding || type == (byte)SignatureType.SubkeyRevocation)
+                                {
+                                    currentSubkey?.MarkUnverifiable();
+                                }
+                            }
+                            else if (userIdPrefix is null && (type == (byte)SignatureType.DirectKey || type == (byte)SignatureType.KeyRevocation))
+                            {
+                                certificate._unverifiableSignatures++;
+                            }
+
+                            break;
                         }
 
                         if (inSubkeySection)
@@ -363,7 +381,7 @@ namespace Scarlet.OpenPgp.Signing
         {
             try
             {
-                if (!IsIssuedBy(signature, issuer) || SignatureVerifier.IsForDifferentKey(issuer, signature))
+                if (!IsIssuedBy(signature, issuer, hashedOnly: true) || SignatureVerifier.IsForDifferentKey(issuer, signature))
                 {
                     return KeySignatureCheck.NotFromKey;
                 }
@@ -389,15 +407,23 @@ namespace Scarlet.OpenPgp.Signing
         /// <paramref name="key"/> to be its issuer. A signature with no hints at all could be from
         /// any key. The hints may be unauthenticated; they only ever narrow the search.
         /// </summary>
-        internal static bool IsIssuedBy(SignaturePacket signature, PublicKeyPacket key)
+        /// <param name="signature">The signature.</param>
+        /// <param name="key">The candidate issuer.</param>
+        /// <param name="hashedOnly">
+        /// Consider only signed hints. Required wherever a mismatch makes a signature be *ignored*
+        /// in a way that could help an attacker - a key's own revocations and restrictions: an
+        /// unsigned hint is editable by anyone, so replacing it must not make a revocation
+        /// "someone else's". Without a signed hint the signature is simply verified against the key.
+        /// </param>
+        internal static bool IsIssuedBy(SignaturePacket signature, PublicKeyPacket key, bool hashedOnly = false)
         {
-            List<byte[]> fingerprints = signature.IssuerFingerprints.ToList();
+            List<byte[]> fingerprints = signature.GetIssuerFingerprints(hashedOnly).ToList();
             if (fingerprints.Count > 0)
             {
                 return fingerprints.Any(key.Fingerprint.Matches);
             }
 
-            List<byte[]> keyIds = signature.IssuerKeyIds.ToList();
+            List<byte[]> keyIds = signature.GetIssuerKeyIds(hashedOnly).ToList();
             if (keyIds.Count > 0)
             {
                 return keyIds.Any(key.Fingerprint.MatchesKeyId);
@@ -488,6 +514,13 @@ namespace Scarlet.OpenPgp.Signing
         }
 
         private static bool HasSignFlag(byte[] flags) => flags.Length > 0 && (flags[0] & SignDataFlag) != 0;
+
+        /// <summary>The signature type octet of a signature body that may not parse: the third octet in v3, the second otherwise; 0 if too short.</summary>
+        private static byte RawSignatureType(byte[] body)
+        {
+            int index = body.Length > 0 && body[0] == 3 ? 2 : 1;
+            return body.Length > index ? body[index] : (byte)0;
+        }
 
         private static SignaturePacket? TryParseSignature(byte[] body)
         {
@@ -601,6 +634,9 @@ namespace Scarlet.OpenPgp.Signing
             }
 
             public bool IsRevoked => _revocations.Count > 0;
+
+            /// <summary>Records a binding or revocation of this subkey that can't be parsed (see <see cref="Certificate.Build"/>).</summary>
+            public void MarkUnverifiable() => _unverifiableSignatures++;
 
             /// <summary>Takes another copy of this subkey's verified bindings and revocations (see <see cref="Certificate.MergeFrom"/>).</summary>
             public void MergeFrom(Subkey other)
