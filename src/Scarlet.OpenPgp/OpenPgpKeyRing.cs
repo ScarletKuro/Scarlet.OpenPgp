@@ -58,14 +58,16 @@ namespace Scarlet.OpenPgp
         }
 
         /// <summary>Parses ASCII-armored public key(s), reporting failure instead of throwing.</summary>
-        /// <param name="armoredKeys">The armored keys.</param>
+        /// <param name="armoredKeys">The armored keys; <c>null</c> fails like any other unusable input.</param>
         /// <param name="keyRing">The key ring, when parsing succeeded.</param>
         /// <param name="error">Why parsing failed, when it did.</param>
-        public static bool TryParse(string armoredKeys, [NotNullWhen(true)] out OpenPgpKeyRing? keyRing, [NotNullWhen(false)] out string? error)
+        public static bool TryParse([NotNullWhen(true)] string? armoredKeys, [NotNullWhen(true)] out OpenPgpKeyRing? keyRing, [NotNullWhen(false)] out string? error)
         {
             if (armoredKeys is null)
             {
-                throw new ArgumentNullException(nameof(armoredKeys));
+                keyRing = null;
+                error = "The public key input is null.";
+                return false;
             }
 
             return TryParse(() => PacketInput.Decode(armoredKeys, PublicKeyLabel), out keyRing, out error);

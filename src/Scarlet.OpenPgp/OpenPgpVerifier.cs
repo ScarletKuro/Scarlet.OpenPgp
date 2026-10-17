@@ -41,163 +41,158 @@ namespace Scarlet.OpenPgp
         /// </summary>
         /// <param name="clearsignedMessage">The complete clearsigned message. Nothing but blank lines may precede its BEGIN line or follow its END line.</param>
         /// <param name="publicKeys">The trusted ASCII-armored public key(s).</param>
-        public static VerificationResult VerifyClearsign(string clearsignedMessage, string publicKeys)
+        /// <param name="verificationTime">The moment expiration, revocation and future-dated signatures are judged against; the current time when <c>null</c>.</param>
+        public static VerificationResult VerifyClearsign(string clearsignedMessage, string publicKeys, DateTimeOffset? verificationTime = null)
         {
-            return VerifyClearsign(clearsignedMessage, ParseKeys(publicKeys), DateTimeOffset.UtcNow);
+            return VerifyClearsign(clearsignedMessage, ParseKeys(publicKeys), verificationTime);
         }
 
-        /// <inheritdoc cref="VerifyClearsign(string, string)"/>
+        /// <inheritdoc cref="VerifyClearsign(string, string, DateTimeOffset?)"/>
         /// <param name="clearsignedMessage">The complete clearsigned message.</param>
         /// <param name="publicKeys">The trusted public key(s), ASCII-armored or binary.</param>
-        public static VerificationResult VerifyClearsign(string clearsignedMessage, ReadOnlySpan<byte> publicKeys)
+        /// <param name="verificationTime">The moment expiration, revocation and future-dated signatures are judged against; the current time when <c>null</c>.</param>
+        public static VerificationResult VerifyClearsign(string clearsignedMessage, ReadOnlySpan<byte> publicKeys, DateTimeOffset? verificationTime = null)
         {
-            return VerifyClearsign(clearsignedMessage, ParseKeys(publicKeys), DateTimeOffset.UtcNow);
+            return VerifyClearsign(clearsignedMessage, ParseKeys(publicKeys), verificationTime);
         }
 
-        /// <summary>Verifies detached signature(s) over in-memory data.</summary>
-        /// <param name="data">The signed data.</param>
-        /// <param name="signature">The ASCII-armored detached signature(s).</param>
-        /// <param name="publicKeys">The trusted ASCII-armored public key(s).</param>
-        public static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, string signature, string publicKeys)
-        {
-            return VerifyDetached(data, ParseSignatures(signature), ParseKeys(publicKeys), DateTimeOffset.UtcNow);
-        }
-
-        /// <summary>Verifies detached signature(s) over in-memory data.</summary>
-        /// <param name="data">The signed data.</param>
-        /// <param name="signature">The detached signature(s), ASCII-armored (.asc) or binary (.sig).</param>
-        /// <param name="publicKeys">The trusted public key(s), ASCII-armored or binary.</param>
-        public static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> publicKeys)
-        {
-            return VerifyDetached(data, ParseSignatures(signature), ParseKeys(publicKeys), DateTimeOffset.UtcNow);
-        }
-
-        /// <summary>Verifies detached signature(s) over data read from <paramref name="data"/>, which is read to its end once and never buffered whole.</summary>
-        /// <param name="data">The signed data. Not disposed.</param>
-        /// <param name="signature">The ASCII-armored detached signature(s).</param>
-        /// <param name="publicKeys">The trusted ASCII-armored public key(s).</param>
-        public static VerificationResult VerifyDetached(Stream data, string signature, string publicKeys)
-        {
-            return VerifyDetached(data, ParseSignatures(signature), ParseKeys(publicKeys), DateTimeOffset.UtcNow);
-        }
-
-        /// <inheritdoc cref="VerifyDetached(Stream, string, string)"/>
-        /// <param name="data">The signed data. Not disposed.</param>
-        /// <param name="signature">The detached signature(s), ASCII-armored (.asc) or binary (.sig).</param>
-        /// <param name="publicKeys">The trusted public key(s), ASCII-armored or binary.</param>
-        public static VerificationResult VerifyDetached(Stream data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> publicKeys)
-        {
-            return VerifyDetached(data, ParseSignatures(signature), ParseKeys(publicKeys), DateTimeOffset.UtcNow);
-        }
-
-        /// <summary>Asynchronously verifies detached signature(s) over data read from <paramref name="data"/>, which is read to its end once and never buffered whole.</summary>
-        /// <param name="data">The signed data. Not disposed.</param>
-        /// <param name="signature">The detached signature(s), ASCII-armored (.asc) or binary (.sig).</param>
-        /// <param name="publicKeys">The trusted public key(s), ASCII-armored or binary.</param>
-        /// <param name="cancellationToken">Cancels reading <paramref name="data"/>.</param>
-        public static Task<VerificationResult> VerifyDetachedAsync(Stream data, ReadOnlyMemory<byte> signature, ReadOnlyMemory<byte> publicKeys, CancellationToken cancellationToken = default)
-        {
-            return VerifyDetachedAsync(data, ParseSignatures(signature.Span), ParseKeys(publicKeys.Span), DateTimeOffset.UtcNow, cancellationToken);
-        }
-
-        /// <inheritdoc cref="VerifyClearsign(string, string)"/>
+        /// <inheritdoc cref="VerifyClearsign(string, string, DateTimeOffset?)"/>
         /// <param name="clearsignedMessage">The complete clearsigned message.</param>
         /// <param name="keyRing">The trusted keys, parsed once with <see cref="OpenPgpKeyRing.Parse(string)"/>.</param>
-        public static VerificationResult VerifyClearsign(string clearsignedMessage, OpenPgpKeyRing keyRing)
+        /// <param name="verificationTime">The moment expiration, revocation and future-dated signatures are judged against; the current time when <c>null</c>.</param>
+        public static VerificationResult VerifyClearsign(string clearsignedMessage, OpenPgpKeyRing keyRing, DateTimeOffset? verificationTime = null)
         {
-            return VerifyClearsign(clearsignedMessage, Keys(keyRing), DateTimeOffset.UtcNow);
+            return VerifyClearsign(clearsignedMessage, Keys(keyRing), verificationTime);
         }
 
         /// <summary>Verifies detached signature(s) over in-memory data.</summary>
         /// <param name="data">The signed data.</param>
         /// <param name="signature">The ASCII-armored detached signature(s).</param>
-        /// <param name="keyRing">The trusted keys.</param>
-        public static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, string signature, OpenPgpKeyRing keyRing)
+        /// <param name="publicKeys">The trusted ASCII-armored public key(s).</param>
+        /// <param name="verificationTime">The moment expiration, revocation and future-dated signatures are judged against; the current time when <c>null</c>.</param>
+        public static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, string signature, string publicKeys, DateTimeOffset? verificationTime = null)
         {
-            return VerifyDetached(data, ParseSignatures(signature), Keys(keyRing), DateTimeOffset.UtcNow);
+            return VerifyDetached(data, ParseSignatures(signature), ParseKeys(publicKeys), verificationTime);
         }
 
-        /// <summary>Verifies detached signature(s) over in-memory data.</summary>
+        /// <inheritdoc cref="VerifyDetached(ReadOnlySpan{byte}, string, string, DateTimeOffset?)"/>
+        /// <param name="data">The signed data.</param>
+        /// <param name="signature">The detached signature(s), ASCII-armored (.asc) or binary (.sig).</param>
+        /// <param name="publicKeys">The trusted public key(s), ASCII-armored or binary.</param>
+        /// <param name="verificationTime">The moment expiration, revocation and future-dated signatures are judged against; the current time when <c>null</c>.</param>
+        public static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> publicKeys, DateTimeOffset? verificationTime = null)
+        {
+            return VerifyDetached(data, ParseSignatures(signature), ParseKeys(publicKeys), verificationTime);
+        }
+
+        /// <inheritdoc cref="VerifyDetached(ReadOnlySpan{byte}, string, string, DateTimeOffset?)"/>
+        /// <param name="data">The signed data.</param>
+        /// <param name="signature">The ASCII-armored detached signature(s).</param>
+        /// <param name="keyRing">The trusted keys.</param>
+        /// <param name="verificationTime">The moment expiration, revocation and future-dated signatures are judged against; the current time when <c>null</c>.</param>
+        public static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, string signature, OpenPgpKeyRing keyRing, DateTimeOffset? verificationTime = null)
+        {
+            return VerifyDetached(data, ParseSignatures(signature), Keys(keyRing), verificationTime);
+        }
+
+        /// <inheritdoc cref="VerifyDetached(ReadOnlySpan{byte}, string, string, DateTimeOffset?)"/>
         /// <param name="data">The signed data.</param>
         /// <param name="signature">The detached signature(s), ASCII-armored (.asc) or binary (.sig).</param>
         /// <param name="keyRing">The trusted keys.</param>
-        public static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, OpenPgpKeyRing keyRing)
+        /// <param name="verificationTime">The moment expiration, revocation and future-dated signatures are judged against; the current time when <c>null</c>.</param>
+        public static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, OpenPgpKeyRing keyRing, DateTimeOffset? verificationTime = null)
         {
-            return VerifyDetached(data, ParseSignatures(signature), Keys(keyRing), DateTimeOffset.UtcNow);
+            return VerifyDetached(data, ParseSignatures(signature), Keys(keyRing), verificationTime);
         }
 
         /// <summary>Verifies detached signature(s) over data read from <paramref name="data"/>, which is read to its end once and never buffered whole.</summary>
         /// <param name="data">The signed data. Not disposed.</param>
         /// <param name="signature">The ASCII-armored detached signature(s).</param>
-        /// <param name="keyRing">The trusted keys.</param>
-        public static VerificationResult VerifyDetached(Stream data, string signature, OpenPgpKeyRing keyRing)
+        /// <param name="publicKeys">The trusted ASCII-armored public key(s).</param>
+        /// <param name="verificationTime">The moment expiration, revocation and future-dated signatures are judged against; the current time when <c>null</c>.</param>
+        public static VerificationResult VerifyDetached(Stream data, string signature, string publicKeys, DateTimeOffset? verificationTime = null)
         {
-            return VerifyDetached(data, ParseSignatures(signature), Keys(keyRing), DateTimeOffset.UtcNow);
+            return VerifyDetached(data, ParseSignatures(signature), ParseKeys(publicKeys), verificationTime);
         }
 
-        /// <summary>Verifies detached signature(s) over data read from <paramref name="data"/>, which is read to its end once and never buffered whole.</summary>
+        /// <inheritdoc cref="VerifyDetached(Stream, string, string, DateTimeOffset?)"/>
+        /// <param name="data">The signed data. Not disposed.</param>
+        /// <param name="signature">The detached signature(s), ASCII-armored (.asc) or binary (.sig).</param>
+        /// <param name="publicKeys">The trusted public key(s), ASCII-armored or binary.</param>
+        /// <param name="verificationTime">The moment expiration, revocation and future-dated signatures are judged against; the current time when <c>null</c>.</param>
+        public static VerificationResult VerifyDetached(Stream data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> publicKeys, DateTimeOffset? verificationTime = null)
+        {
+            return VerifyDetached(data, ParseSignatures(signature), ParseKeys(publicKeys), verificationTime);
+        }
+
+        /// <inheritdoc cref="VerifyDetached(Stream, string, string, DateTimeOffset?)"/>
+        /// <param name="data">The signed data. Not disposed.</param>
+        /// <param name="signature">The ASCII-armored detached signature(s).</param>
+        /// <param name="keyRing">The trusted keys.</param>
+        /// <param name="verificationTime">The moment expiration, revocation and future-dated signatures are judged against; the current time when <c>null</c>.</param>
+        public static VerificationResult VerifyDetached(Stream data, string signature, OpenPgpKeyRing keyRing, DateTimeOffset? verificationTime = null)
+        {
+            return VerifyDetached(data, ParseSignatures(signature), Keys(keyRing), verificationTime);
+        }
+
+        /// <inheritdoc cref="VerifyDetached(Stream, string, string, DateTimeOffset?)"/>
         /// <param name="data">The signed data. Not disposed.</param>
         /// <param name="signature">The detached signature(s), ASCII-armored (.asc) or binary (.sig).</param>
         /// <param name="keyRing">The trusted keys.</param>
-        public static VerificationResult VerifyDetached(Stream data, ReadOnlySpan<byte> signature, OpenPgpKeyRing keyRing)
+        /// <param name="verificationTime">The moment expiration, revocation and future-dated signatures are judged against; the current time when <c>null</c>.</param>
+        public static VerificationResult VerifyDetached(Stream data, ReadOnlySpan<byte> signature, OpenPgpKeyRing keyRing, DateTimeOffset? verificationTime = null)
         {
-            return VerifyDetached(data, ParseSignatures(signature), Keys(keyRing), DateTimeOffset.UtcNow);
+            return VerifyDetached(data, ParseSignatures(signature), Keys(keyRing), verificationTime);
         }
 
         /// <summary>Asynchronously verifies detached signature(s) over data read from <paramref name="data"/>, which is read to its end once and never buffered whole.</summary>
         /// <param name="data">The signed data. Not disposed.</param>
+        /// <param name="signature">The ASCII-armored detached signature(s).</param>
+        /// <param name="publicKeys">The trusted ASCII-armored public key(s).</param>
+        /// <param name="verificationTime">The moment expiration, revocation and future-dated signatures are judged against; the current time when <c>null</c>.</param>
+        /// <param name="cancellationToken">Cancels reading <paramref name="data"/>.</param>
+        public static Task<VerificationResult> VerifyDetachedAsync(Stream data, string signature, string publicKeys, DateTimeOffset? verificationTime = null, CancellationToken cancellationToken = default)
+        {
+            return VerifyDetachedAsync(data, ParseSignatures(signature), ParseKeys(publicKeys), verificationTime, cancellationToken);
+        }
+
+        /// <inheritdoc cref="VerifyDetachedAsync(Stream, string, string, DateTimeOffset?, CancellationToken)"/>
+        /// <param name="data">The signed data. Not disposed.</param>
+        /// <param name="signature">The detached signature(s), ASCII-armored (.asc) or binary (.sig).</param>
+        /// <param name="publicKeys">The trusted public key(s), ASCII-armored or binary.</param>
+        /// <param name="verificationTime">The moment expiration, revocation and future-dated signatures are judged against; the current time when <c>null</c>.</param>
+        /// <param name="cancellationToken">Cancels reading <paramref name="data"/>.</param>
+        public static Task<VerificationResult> VerifyDetachedAsync(Stream data, ReadOnlyMemory<byte> signature, ReadOnlyMemory<byte> publicKeys, DateTimeOffset? verificationTime = null, CancellationToken cancellationToken = default)
+        {
+            return VerifyDetachedAsync(data, ParseSignatures(signature.Span), ParseKeys(publicKeys.Span), verificationTime, cancellationToken);
+        }
+
+        /// <inheritdoc cref="VerifyDetachedAsync(Stream, string, string, DateTimeOffset?, CancellationToken)"/>
+        /// <param name="data">The signed data. Not disposed.</param>
+        /// <param name="signature">The ASCII-armored detached signature(s).</param>
+        /// <param name="keyRing">The trusted keys.</param>
+        /// <param name="verificationTime">The moment expiration, revocation and future-dated signatures are judged against; the current time when <c>null</c>.</param>
+        /// <param name="cancellationToken">Cancels reading <paramref name="data"/>.</param>
+        public static Task<VerificationResult> VerifyDetachedAsync(Stream data, string signature, OpenPgpKeyRing keyRing, DateTimeOffset? verificationTime = null, CancellationToken cancellationToken = default)
+        {
+            return VerifyDetachedAsync(data, ParseSignatures(signature), Keys(keyRing), verificationTime, cancellationToken);
+        }
+
+        /// <inheritdoc cref="VerifyDetachedAsync(Stream, string, string, DateTimeOffset?, CancellationToken)"/>
+        /// <param name="data">The signed data. Not disposed.</param>
         /// <param name="signature">The detached signature(s), ASCII-armored (.asc) or binary (.sig).</param>
         /// <param name="keyRing">The trusted keys.</param>
+        /// <param name="verificationTime">The moment expiration, revocation and future-dated signatures are judged against; the current time when <c>null</c>.</param>
         /// <param name="cancellationToken">Cancels reading <paramref name="data"/>.</param>
-        public static Task<VerificationResult> VerifyDetachedAsync(Stream data, ReadOnlyMemory<byte> signature, OpenPgpKeyRing keyRing, CancellationToken cancellationToken = default)
+        public static Task<VerificationResult> VerifyDetachedAsync(Stream data, ReadOnlyMemory<byte> signature, OpenPgpKeyRing keyRing, DateTimeOffset? verificationTime = null, CancellationToken cancellationToken = default)
         {
-            return VerifyDetachedAsync(data, ParseSignatures(signature.Span), Keys(keyRing), DateTimeOffset.UtcNow, cancellationToken);
+            return VerifyDetachedAsync(data, ParseSignatures(signature.Span), Keys(keyRing), verificationTime, cancellationToken);
         }
 
-        /// <summary>The clearsign check against an explicit clock, so tests can pin "now".</summary>
-        internal static VerificationResult VerifyClearsign(string clearsignedMessage, OpenPgpKeyRing keyRing, DateTimeOffset now)
+        private static VerificationResult VerifyClearsign(string clearsignedMessage, ParsedInput<KeyRing> keys, DateTimeOffset? verificationTime)
         {
-            return VerifyClearsign(clearsignedMessage, Keys(keyRing), now);
-        }
+            DateTimeOffset now = verificationTime ?? DateTimeOffset.UtcNow;
 
-        /// <summary>The detached check against an explicit clock, so tests can pin "now".</summary>
-        internal static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, OpenPgpKeyRing keyRing, DateTimeOffset now)
-        {
-            return VerifyDetached(data, ParseSignatures(signature), Keys(keyRing), now);
-        }
-
-        /// <summary>The clearsign check against an explicit clock, so tests can pin "now".</summary>
-        internal static VerificationResult VerifyClearsign(string clearsignedMessage, string publicKeys, DateTimeOffset now)
-        {
-            return VerifyClearsign(clearsignedMessage, ParseKeys(publicKeys), now);
-        }
-
-        /// <summary>The clearsign check against an explicit clock, so tests can pin "now".</summary>
-        internal static VerificationResult VerifyClearsign(string clearsignedMessage, ReadOnlySpan<byte> publicKeys, DateTimeOffset now)
-        {
-            return VerifyClearsign(clearsignedMessage, ParseKeys(publicKeys), now);
-        }
-
-        /// <summary>The streaming detached check against an explicit clock, so tests can pin "now".</summary>
-        internal static VerificationResult VerifyDetached(Stream data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> publicKeys, DateTimeOffset now)
-        {
-            return VerifyDetached(data, ParseSignatures(signature), ParseKeys(publicKeys), now);
-        }
-
-        /// <summary>The detached check against an explicit clock, so tests can pin "now".</summary>
-        internal static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, string signature, string publicKeys, DateTimeOffset now)
-        {
-            return VerifyDetached(data, ParseSignatures(signature), ParseKeys(publicKeys), now);
-        }
-
-        /// <summary>The detached check against an explicit clock, so tests can pin "now".</summary>
-        internal static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> publicKeys, DateTimeOffset now)
-        {
-            return VerifyDetached(data, ParseSignatures(signature), ParseKeys(publicKeys), now);
-        }
-
-        internal static VerificationResult VerifyClearsign(string clearsignedMessage, ParsedInput<KeyRing> keys, DateTimeOffset now)
-        {
             if (clearsignedMessage is null)
             {
                 throw new ArgumentNullException(nameof(clearsignedMessage));
@@ -228,8 +223,10 @@ namespace Scarlet.OpenPgp
             return verification.Complete(now, signedText);
         }
 
-        internal static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, ParsedInput<byte[]> signatures, ParsedInput<KeyRing> keys, DateTimeOffset now)
+        private static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, ParsedInput<byte[]> signatures, ParsedInput<KeyRing> keys, DateTimeOffset? verificationTime)
         {
+            DateTimeOffset now = verificationTime ?? DateTimeOffset.UtcNow;
+
             using DocumentVerification verification = StartDetached(signatures, keys);
 
             // Fed through one bounded buffer, like the stream overload, rather than copying the
@@ -258,8 +255,10 @@ namespace Scarlet.OpenPgp
             return verification.Complete(now, signedText: null);
         }
 
-        internal static VerificationResult VerifyDetached(Stream data, ParsedInput<byte[]> signatures, ParsedInput<KeyRing> keys, DateTimeOffset now)
+        private static VerificationResult VerifyDetached(Stream data, ParsedInput<byte[]> signatures, ParsedInput<KeyRing> keys, DateTimeOffset? verificationTime)
         {
+            DateTimeOffset now = verificationTime ?? DateTimeOffset.UtcNow;
+
             if (data is null)
             {
                 throw new ArgumentNullException(nameof(data));
@@ -283,8 +282,10 @@ namespace Scarlet.OpenPgp
             return verification.Complete(now, signedText: null);
         }
 
-        internal static async Task<VerificationResult> VerifyDetachedAsync(Stream data, ParsedInput<byte[]> signatures, ParsedInput<KeyRing> keys, DateTimeOffset now, CancellationToken cancellationToken)
+        private static async Task<VerificationResult> VerifyDetachedAsync(Stream data, ParsedInput<byte[]> signatures, ParsedInput<KeyRing> keys, DateTimeOffset? verificationTime, CancellationToken cancellationToken)
         {
+            DateTimeOffset now = verificationTime ?? DateTimeOffset.UtcNow;
+
             if (data is null)
             {
                 throw new ArgumentNullException(nameof(data));
@@ -308,7 +309,7 @@ namespace Scarlet.OpenPgp
             return verification.Complete(now, signedText: null);
         }
 
-        internal static ParsedInput<KeyRing> ParseKeys(string publicKeys)
+        private static ParsedInput<KeyRing> ParseKeys(string publicKeys)
         {
             if (publicKeys is null)
             {
@@ -318,13 +319,13 @@ namespace Scarlet.OpenPgp
             return ParseKeys(() => PacketInput.Decode(publicKeys, PublicKeyLabel));
         }
 
-        internal static ParsedInput<KeyRing> ParseKeys(ReadOnlySpan<byte> publicKeys)
+        private static ParsedInput<KeyRing> ParseKeys(ReadOnlySpan<byte> publicKeys)
         {
             byte[] copy = publicKeys.ToArray();
             return ParseKeys(() => PacketInput.Decode(copy, PublicKeyLabel));
         }
 
-        internal static ParsedInput<byte[]> ParseSignatures(string signature)
+        private static ParsedInput<byte[]> ParseSignatures(string signature)
         {
             if (signature is null)
             {
@@ -334,7 +335,7 @@ namespace Scarlet.OpenPgp
             return ParseSignatures(() => PacketInput.Decode(signature, SignatureLabel));
         }
 
-        internal static ParsedInput<byte[]> ParseSignatures(ReadOnlySpan<byte> signature)
+        private static ParsedInput<byte[]> ParseSignatures(ReadOnlySpan<byte> signature)
         {
             byte[] copy = signature.ToArray();
             return ParseSignatures(() => PacketInput.Decode(copy, SignatureLabel));
@@ -390,7 +391,7 @@ namespace Scarlet.OpenPgp
         }
 
         /// <summary>Parsed signature or key input, or the result to report because it couldn't be parsed.</summary>
-        internal sealed class ParsedInput<T>
+        private sealed class ParsedInput<T>
             where T : class
         {
             public ParsedInput(T value)

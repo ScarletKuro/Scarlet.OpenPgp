@@ -95,6 +95,18 @@ namespace Scarlet.OpenPgp.Tests
         }
 
         [Fact]
+        public void TryParse_WithNull_ShouldReturnFalseRatherThanThrow()
+        {
+            // Act
+            bool parsed = OpenPgpKeyRing.TryParse((string?)null, out OpenPgpKeyRing? keyRing, out string? error);
+
+            // Assert
+            Assert.False(parsed);
+            Assert.Null(keyRing);
+            Assert.NotNull(error);
+        }
+
+        [Fact]
         public void KeyRing_ParsedOnce_ShouldVerifyDetachedAndClearsignedSignaturesRepeatedly()
         {
             // Arrange
@@ -166,7 +178,7 @@ namespace Scarlet.OpenPgp.Tests
             VerificationResult asyncResult;
             using (var data = new MemoryStream(Bytes("gnupg-generated/v4-ecdsa-nistp384/data.txt")))
             {
-                asyncResult = await OpenPgpVerifier.VerifyDetachedAsync(data, signature, keyRing, TestContext.Current.CancellationToken);
+                asyncResult = await OpenPgpVerifier.VerifyDetachedAsync(data, signature, keyRing, cancellationToken: TestContext.Current.CancellationToken);
             }
 
             // Assert

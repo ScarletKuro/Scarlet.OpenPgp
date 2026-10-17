@@ -185,19 +185,23 @@ namespace Scarlet.OpenPgp;
 
 public static class OpenPgpVerifier
 {
+    // Every overload takes an optional `DateTimeOffset? verificationTime = null`: the moment expiry,
+    // revocation and future-dated signatures are judged against (default: the current time).
+
     // Clearsigned message; on success result.SignedText is exactly the authenticated text - the only
     // part of the input callers may use. Keys: armored string, or armored/binary bytes.
-    public static VerificationResult VerifyClearsign(string clearsignedMessage, string publicKeys);
-    public static VerificationResult VerifyClearsign(string clearsignedMessage, ReadOnlySpan<byte> publicKeys);
+    public static VerificationResult VerifyClearsign(string clearsignedMessage, string publicKeys, DateTimeOffset? verificationTime = null);
+    public static VerificationResult VerifyClearsign(string clearsignedMessage, ReadOnlySpan<byte> publicKeys, DateTimeOffset? verificationTime = null);
 
     // Detached signature(s), armored or binary, over in-memory or streamed data.
-    public static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, string signature, string publicKeys);
-    public static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> publicKeys);
-    public static VerificationResult VerifyDetached(Stream data, string signature, string publicKeys);
-    public static VerificationResult VerifyDetached(Stream data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> publicKeys);
-    public static Task<VerificationResult> VerifyDetachedAsync(Stream data, ReadOnlyMemory<byte> signature, ReadOnlyMemory<byte> publicKeys, CancellationToken cancellationToken = default);
+    public static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, string signature, string publicKeys, DateTimeOffset? verificationTime = null);
+    public static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> publicKeys, DateTimeOffset? verificationTime = null);
+    public static VerificationResult VerifyDetached(Stream data, string signature, string publicKeys, DateTimeOffset? verificationTime = null);
+    public static VerificationResult VerifyDetached(Stream data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> publicKeys, DateTimeOffset? verificationTime = null);
+    public static Task<VerificationResult> VerifyDetachedAsync(Stream data, string signature, string publicKeys, DateTimeOffset? verificationTime = null, CancellationToken cancellationToken = default);
+    public static Task<VerificationResult> VerifyDetachedAsync(Stream data, ReadOnlyMemory<byte> signature, ReadOnlyMemory<byte> publicKeys, DateTimeOffset? verificationTime = null, CancellationToken cancellationToken = default);
 
-    // Every overload also comes in an OpenPgpKeyRing flavor (e.g. VerifyDetached(Stream, ReadOnlySpan<byte>, OpenPgpKeyRing)).
+    // Every overload also comes in an OpenPgpKeyRing flavor (e.g. VerifyDetached(Stream, ReadOnlySpan<byte>, OpenPgpKeyRing, DateTimeOffset?)).
 }
 
 // Trusted keys parsed once: self-signatures are checked at parse time, a broken key file throws
@@ -207,6 +211,7 @@ public sealed class OpenPgpKeyRing
 {
     public static OpenPgpKeyRing Parse(string armoredKeys);
     public static OpenPgpKeyRing Parse(ReadOnlySpan<byte> keys);          // armored or binary
+    public static bool TryParse(string? armoredKeys, out OpenPgpKeyRing? keyRing, out string? error);
     public static bool TryParse(ReadOnlySpan<byte> keys, out OpenPgpKeyRing? keyRing, out string? error);
     public IReadOnlyList<OpenPgpCertificate> Certificates { get; }        // PrimaryKey, Subkeys, UserIds
 }                                                                          // keys: Fingerprint, KeyId, Version, Algorithm, CreatedAt, ExpiresAt, IsRevoked

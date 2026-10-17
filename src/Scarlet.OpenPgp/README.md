@@ -34,6 +34,8 @@ VerificationResult result = OpenPgpVerifier.VerifyDetached(data, signature, keyR
 
 The key ring is immutable and thread-safe. Expiration, revocation timing and key flags are still
 judged at each verification, so a key that expires while your application runs stops verifying.
+Every `Verify*` overload takes an optional `verificationTime` to judge them at a different moment
+instead, e.g. to pin the clock in tests or check what a signature's status was when you received it.
 
 Only use `SignedText` from a clearsigned message. The input also contains unsigned text, such as
 dash-escaping and the signature block's own armor headers, so reading data straight out of the

@@ -165,6 +165,32 @@ namespace Scarlet.OpenPgp.Tests
         }
 
         [Fact]
+        public async Task VerifyDetachedAsync_WithArmoredStringsAndAVerificationTime_ShouldJudgeAtThatTime()
+        {
+            // Arrange: the signature was made on 2015-09-16, so as of 2015-01-01 it is from the future.
+            var before = new DateTimeOffset(2015, 1, 1, 0, 0, 0, TimeSpan.Zero);
+            CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+            // Act
+            VerificationResult now;
+            VerificationResult then;
+            using (var data = new MemoryStream("OpenPGP"u8.ToArray()))
+            {
+                now = await OpenPgpVerifier.VerifyDetachedAsync(data, SignatureArmor, PublicKeyArmor, cancellationToken: cancellationToken);
+            }
+
+            using (var data = new MemoryStream("OpenPGP"u8.ToArray()))
+            {
+                then = await OpenPgpVerifier.VerifyDetachedAsync(data, SignatureArmor, OpenPgpKeyRing.Parse(PublicKeyArmor), before, cancellationToken);
+            }
+
+            // Assert
+            Assert.True(now.IsValid, now.ToString());
+            Assert.False(then.IsValid);
+            Assert.Equal(VerificationStatus.InvalidSignatureTime, then.Status);
+        }
+
+        [Fact]
         public void VerifyDetached_WithTamperedData_ShouldReturnFalse()
         {
             // Arrange
