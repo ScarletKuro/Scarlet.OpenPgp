@@ -6,9 +6,9 @@ namespace Scarlet.OpenPgp.Tests.Hashing
 {
     public class Sha224Tests
     {
-        private static byte[] Compute(byte[] data, int chunkSize)
+        private static byte[] Compute(byte[] data, int chunkSize, bool allowHardware = true)
         {
-            var sha224 = new Sha224();
+            var sha224 = new Sha224(allowHardware);
             for (int offset = 0; offset < data.Length; offset += chunkSize)
             {
                 sha224.Update(data, offset, Math.Min(chunkSize, data.Length - offset));
@@ -33,9 +33,10 @@ namespace Scarlet.OpenPgp.Tests.Hashing
         [Fact]
         public void Finish_AcrossBlockBoundariesAndChunkSizes_ShouldMatchBouncyCastle()
         {
-            // Arrange
+            // Arrange: both the portable compression and, where the CPU has it (ARM64), the
+            // hardware one - so each CI runner checks whichever paths it can run.
             var random = new Random(224);
-            for (int length = 0; length <= 300; length++)
+            foreach (int length in Enumerable.Range(0, 301).Concat([1000, 4096, 10007]))
             {
                 byte[] data = new byte[length];
                 random.NextBytes(data);
@@ -44,15 +45,30 @@ namespace Scarlet.OpenPgp.Tests.Hashing
                 byte[] expected = new byte[28];
                 reference.DoFinal(expected, 0);
 
-                foreach (int chunkSize in new[] { 1, 7, 55, 56, 63, 64, 65, 300 })
+                foreach (int chunkSize in new[] { 1, 7, 55, 56, 63, 64, 65, 300, 4096 })
                 {
-                    // Act
-                    byte[] actual = Compute(data, chunkSize);
+                    foreach (bool allowHardware in new[] { false, true })
+                    {
+                        // Act
+                        byte[] actual = Compute(data, chunkSize, allowHardware);
 
-                    // Assert
-                    Assert.Equal(expected, actual);
+                        // Assert
+                        Assert.Equal(expected, actual);
+                    }
                 }
             }
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void Finish_WithFips1804VectorsOnEachPath_ShouldMatch(bool allowHardware)
+        {
+            // Act
+            byte[] digest = Compute(Encoding.ASCII.GetBytes("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"), 64, allowHardware);
+
+            // Assert
+            Assert.Equal("75388b16512776cc5dba5da1fd890150b0c6455cb4f58b1952522525", Convert.ToHexString(digest).ToLowerInvariant());
         }
 
         [Fact]

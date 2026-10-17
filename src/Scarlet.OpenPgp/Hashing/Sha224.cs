@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Numerics;
 
 namespace Scarlet.OpenPgp.Hashing
@@ -17,7 +18,7 @@ namespace Scarlet.OpenPgp.Hashing
         /// first 64 primes (FIPS 180-4 §4.2.2), derived exactly with integer arithmetic rather than
         /// copied, so they can't carry a transcription error.
         /// </summary>
-        private static readonly uint[] K = DeriveRoundConstants();
+        internal static readonly uint[] K = DeriveRoundConstants();
 
         /// <summary>
         /// SHA-224's initial hash value (FIPS 180-4 §5.3.2): the *second* 32 bits of the fractional
@@ -31,9 +32,19 @@ namespace Scarlet.OpenPgp.Hashing
         private readonly uint[] _state = (uint[])InitialState.Clone();
         private readonly byte[] _buffer = new byte[BlockSize];
         private readonly uint[] _schedule = new uint[64];
+        private readonly bool _useHardware;
         private int _bufferLength;
         private long _totalLength;
         private bool _finished;
+
+        /// <param name="allowHardware">
+        /// Use the CPU's SHA-256 instructions where .NET exposes them (ARM64); <c>false</c> forces the
+        /// portable implementation, so tests can compare the two on the same machine.
+        /// </param>
+        public Sha224(bool allowHardware = true)
+        {
+            _useHardware = allowHardware && Sha256Hardware.IsSupported;
+        }
 
         public void Update(byte[] data, int offset, int count)
         {
@@ -43,19 +54,35 @@ namespace Scarlet.OpenPgp.Hashing
             }
 
             _totalLength += count;
-            while (count > 0)
+
+            // Top up a partially filled block first; whole blocks after that are compressed straight
+            // from the input, and only the tail is buffered.
+            if (_bufferLength > 0)
             {
                 int take = Math.Min(count, BlockSize - _bufferLength);
                 Array.Copy(data, offset, _buffer, _bufferLength, take);
                 _bufferLength += take;
                 offset += take;
                 count -= take;
-                if (_bufferLength == BlockSize)
+                if (_bufferLength < BlockSize)
                 {
-                    Compress(_buffer);
-                    _bufferLength = 0;
+                    return;
                 }
+
+                Compress(_buffer, 0, 1);
+                _bufferLength = 0;
             }
+
+            int blocks = count / BlockSize;
+            if (blocks > 0)
+            {
+                Compress(data, offset, blocks);
+                offset += blocks * BlockSize;
+                count -= blocks * BlockSize;
+            }
+
+            Array.Copy(data, offset, _buffer, 0, count);
+            _bufferLength = count;
         }
 
         public byte[] Finish()
@@ -90,12 +117,26 @@ namespace Scarlet.OpenPgp.Hashing
             return digest;
         }
 
-        private void Compress(byte[] block)
+        private void Compress(byte[] data, int offset, int blocks)
+        {
+            if (_useHardware)
+            {
+                Sha256Hardware.Compress(_state, data, offset, blocks);
+                return;
+            }
+
+            for (int i = 0; i < blocks; i++)
+            {
+                CompressBlock(data.AsSpan(offset + (i * BlockSize), BlockSize));
+            }
+        }
+
+        private void CompressBlock(ReadOnlySpan<byte> block)
         {
             uint[] w = _schedule;
             for (int t = 0; t < 16; t++)
             {
-                w[t] = ((uint)block[4 * t] << 24) | ((uint)block[(4 * t) + 1] << 16) | ((uint)block[(4 * t) + 2] << 8) | block[(4 * t) + 3];
+                w[t] = BinaryPrimitives.ReadUInt32BigEndian(block.Slice(4 * t));
             }
 
             for (int t = 16; t < 64; t++)
