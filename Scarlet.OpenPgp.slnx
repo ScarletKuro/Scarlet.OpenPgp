@@ -3,6 +3,9 @@
     <Project Path="src/Scarlet.OpenPgp/Scarlet.OpenPgp.csproj" />
     <Project Path="src/Scarlet.OpenPgp.Cli/Scarlet.OpenPgp.Cli.csproj" />
   </Folder>
+  <Folder Name="/fuzz/">
+    <Project Path="fuzz/Scarlet.OpenPgp.Fuzz/Scarlet.OpenPgp.Fuzz.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Scarlet.OpenPgp.Tests/Scarlet.OpenPgp.Tests.csproj" />
   </Folder>

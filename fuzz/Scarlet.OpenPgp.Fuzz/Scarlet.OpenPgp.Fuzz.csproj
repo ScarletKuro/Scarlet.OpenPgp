@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Coverage-guided fuzzing harness (SharpFuzz + libFuzzer). Not shipped and not AOT-published:
+       SharpFuzz instruments the built Scarlet.OpenPgp.dll in place before libFuzzer drives it.
+       See README.md in this folder. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SharpFuzz" Version="2.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Scarlet.OpenPgp\Scarlet.OpenPgp.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The fixed counterpart inputs for each target: one RSA and one Ed25519 signer, both signatures. -->
+    <None Include="..\..\tests\Scarlet.OpenPgp.Tests\TestAssets\gnupg-generated\v4-multi-signer\data.txt" Link="Seeds\data.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\tests\Scarlet.OpenPgp.Tests\TestAssets\gnupg-generated\v4-multi-signer\data.txt.sig" Link="Seeds\data.txt.sig" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\tests\Scarlet.OpenPgp.Tests\TestAssets\gnupg-generated\v4-multi-signer\keyring-both.gpg" Link="Seeds\keyring-both.gpg" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

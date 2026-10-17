@@ -1,0 +1,83 @@
+name: Fuzz
+
+# Coverage-guided fuzzing of the public API's attacker-facing inputs with SharpFuzz + libFuzzer.
+# Short runs on pull requests; longer weekly and on demand. Crash reproducers are uploaded as
+# artifacts and can be replayed locally with:
+#   dotnet run --project fuzz/Scarlet.OpenPgp.Fuzz -c Release -- replay <target> <crash-file>
+
+on:
+  pull_request:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: Minutes to fuzz each target
+        default: "30"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  LIBFUZZER_DOTNET_URL: https://github.com/Metalnem/libfuzzer-dotnet/releases/download/v2025.05.02.0904/libfuzzer-dotnet-ubuntu
+  LIBFUZZER_DOTNET_SHA256: c2c2a90d94c409a4af339a0d4f244e0442c5a5d249be0f1252ba07871f285958
+
+jobs:
+  fuzz:
+    name: Fuzz (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [signature, keys, clearsign, data]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install SharpFuzz and libFuzzer
+        run: |
+          dotnet tool install --global SharpFuzz.CommandLine --version 2.3.0
+          curl -sSL -o libfuzzer-dotnet "$LIBFUZZER_DOTNET_URL"
+          echo "$LIBFUZZER_DOTNET_SHA256  libfuzzer-dotnet" | sha256sum --check
+          chmod +x libfuzzer-dotnet
+
+      - name: Build and instrument
+        run: |
+          dotnet publish fuzz/Scarlet.OpenPgp.Fuzz -c Release -o out/fuzz
+          sharpfuzz out/fuzz/Scarlet.OpenPgp.dll
+
+      - name: Seed corpus from the test fixtures
+        run: |
+          mkdir -p corpus artifacts
+          assets=tests/Scarlet.OpenPgp.Tests/TestAssets
+          case "${{ matrix.target }}" in
+            signature) find "$assets" -name '*.sig' -o -name '*.asc' ! -name '*clearsign*' | head -200 | xargs -I{} cp {} corpus/ ;;
+            keys)      find "$assets" -name '*.gpg' -o -name 'public-key*.asc' | xargs -I{} cp {} corpus/ ;;
+            clearsign) find "$assets" -name '*clearsign*.asc' -o -name 'InRelease' -o -name 'SHASUMS256.txt.asc' -o -name 'a6-*' | xargs -I{} cp {} corpus/ ;;
+            data)      cp "$assets/gnupg-generated/v4-multi-signer/data.txt" corpus/ ;;
+          esac
+          ls corpus | wc -l
+
+      - name: Fuzz
+        env:
+          SCARLET_FUZZ_TARGET: ${{ matrix.target }}
+        run: |
+          minutes="${{ github.event.inputs.minutes || (github.event_name == 'pull_request' && '3' || '30') }}"
+          ./libfuzzer-dotnet -timeout=10 -rss_limit_mb=4096 -max_total_time=$((minutes * 60)) \
+            -artifact_prefix=artifacts/ --target_path=dotnet --target_arg=out/fuzz/Scarlet.OpenPgp.Fuzz.dll corpus
+
+      - name: Upload crash reproducers
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: artifacts/
