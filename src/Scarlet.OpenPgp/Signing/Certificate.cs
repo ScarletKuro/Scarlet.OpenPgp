@@ -26,6 +26,7 @@ namespace Scarlet.OpenPgp.Signing
         private readonly List<SignaturePacket> _selfSignatures = new List<SignaturePacket>();
         private readonly List<SignaturePacket> _revocations = new List<SignaturePacket>();
         private readonly List<Subkey> _subkeys = new List<Subkey>();
+        private readonly List<string> _userIds = new List<string>();
 
         private Certificate(PublicKeyPacket primary)
         {
@@ -38,6 +39,40 @@ namespace Scarlet.OpenPgp.Signing
         /// <summary>The primary key followed by every subkey, in order.</summary>
         public IEnumerable<PublicKeyPacket> Keys => new[] { Primary }.Concat(_subkeys.Select(s => s.Key));
 
+        /// <summary>The User IDs carrying a valid self-certification, in certificate order.</summary>
+        public IReadOnlyList<string> UserIds => _userIds;
+
+        /// <summary>Whether <paramref name="key"/> (the primary or a subkey) has a valid revocation, hard or soft.</summary>
+        public bool IsRevoked(PublicKeyPacket key)
+        {
+            if (ReferenceEquals(key, Primary))
+            {
+                return _revocations.Count > 0;
+            }
+
+            return _subkeys.Any(s => ReferenceEquals(s.Key, key) && s.IsRevoked);
+        }
+
+        /// <summary>
+        /// When <paramref name="key"/> expires according to its newest valid self-signature (binding
+        /// signature, for a subkey) as of <paramref name="now"/>; <c>null</c> if it never does or no
+        /// valid self-signature says so.
+        /// </summary>
+        public DateTimeOffset? GetExpiration(PublicKeyPacket key, DateTimeOffset now)
+        {
+            try
+            {
+                SignaturePacket? selfSignature = ReferenceEquals(key, Primary)
+                    ? LatestPrimarySelfSignature(now)
+                    : _subkeys.FirstOrDefault(s => ReferenceEquals(s.Key, key))?.LatestBinding(now);
+                return ExpirationOf(selfSignature, key.CreatedAt);
+            }
+            catch (FailClosedException)
+            {
+                return null;
+            }
+        }
+
         /// <summary>
         /// Builds a certificate from <paramref name="packets"/>[<paramref name="start"/>] (a Public-Key
         /// packet) up to, not including, <paramref name="end"/>.
@@ -48,6 +83,7 @@ namespace Scarlet.OpenPgp.Signing
 
             // What the signatures currently being read are attached to.
             byte[]? userIdPrefix = null;
+            string? userId = null;
             bool inUserIdSection = false;
             Subkey? currentSubkey = null;
             bool inSubkeySection = false;
@@ -66,6 +102,10 @@ namespace Scarlet.OpenPgp.Signing
 
                         inUserIdSection = true;
                         userIdPrefix = BuildUserIdHashPrefix(packet.Header.Tag, packet.Body);
+
+                        // User IDs are UTF-8 by convention (RFC 9580 §5.11); invalid bytes become U+FFFD,
+                        // which is fine for a display-only value. User Attributes (photos) have no text.
+                        userId = packet.Header.Tag == PacketTag.UserId ? System.Text.Encoding.UTF8.GetString(packet.Body) : null;
                         break;
 
                     case PacketTag.PublicSubkey:
@@ -91,7 +131,7 @@ namespace Scarlet.OpenPgp.Signing
                         }
                         else if (inUserIdSection)
                         {
-                            certificate.AddUserIdSignature(signature, userIdPrefix!);
+                            certificate.AddUserIdSignature(signature, userIdPrefix!, userId);
                         }
                         else
                         {
@@ -163,18 +203,7 @@ namespace Scarlet.OpenPgp.Signing
                 return revocation;
             }
 
-            // RFC 9580 §5.2.3.10: the most recent valid self-signature wins. For a v6 key that must be
-            // a Direct Key signature, and one must exist (§5.2.3.10, §10.1.1) - otherwise an attacker
-            // could strip it to drop an expiration. A v4 key may carry its information on a User ID
-            // self-signature instead, and a bare v4 key with no self-signature at all is accepted as
-            // having no flags and no expiration.
-            IEnumerable<SignaturePacket> candidates = _selfSignatures.Where(s => IsCurrent(s, Primary, now));
-            if (Primary.Version == 6)
-            {
-                candidates = candidates.Where(s => s.SignatureTypeRaw == (byte)SignatureType.DirectKey);
-            }
-
-            latestSelfSignature = Latest(candidates);
+            latestSelfSignature = LatestPrimarySelfSignature(now);
             if (Primary.Version == 6 && latestSelfSignature is null)
             {
                 return (VerificationStatus.KeyNotValidForSigning, "The v6 primary key has no valid Direct Key self-signature.");
@@ -186,6 +215,24 @@ namespace Scarlet.OpenPgp.Signing
             }
 
             return CheckExpiration(latestSelfSignature, Primary.CreatedAt, signatureCreatedAt, now, "primary key");
+        }
+
+        /// <summary>
+        /// The self-signature that describes the primary key at <paramref name="now"/>. RFC 9580
+        /// §5.2.3.10: the most recent valid self-signature wins. For a v6 key that must be a Direct Key
+        /// signature, and one must exist (§5.2.3.10, §10.1.1) - otherwise an attacker could strip it to
+        /// drop an expiration. A v4 key may carry its information on a User ID self-signature instead,
+        /// and a bare v4 key with no self-signature at all has no flags and no expiration.
+        /// </summary>
+        private SignaturePacket? LatestPrimarySelfSignature(DateTimeOffset now)
+        {
+            IEnumerable<SignaturePacket> candidates = _selfSignatures.Where(s => IsCurrent(s, Primary, now));
+            if (Primary.Version == 6)
+            {
+                candidates = candidates.Where(s => s.SignatureTypeRaw == (byte)SignatureType.DirectKey);
+            }
+
+            return Latest(candidates);
         }
 
         private void AddDirectSignature(SignaturePacket signature)
@@ -210,7 +257,7 @@ namespace Scarlet.OpenPgp.Signing
             }
         }
 
-        private void AddUserIdSignature(SignaturePacket signature, byte[] userIdPrefix)
+        private void AddUserIdSignature(SignaturePacket signature, byte[] userIdPrefix, string? userId)
         {
             if (signature.SignatureTypeRaw < (byte)SignatureType.GenericCertification
                 || signature.SignatureTypeRaw > (byte)SignatureType.PositiveCertification)
@@ -221,6 +268,10 @@ namespace Scarlet.OpenPgp.Signing
             if (IsValidKeySignature(Primary, signature, Concat(_primaryHashPrefix, userIdPrefix)))
             {
                 _selfSignatures.Add(signature);
+                if (userId is not null && !_userIds.Contains(userId))
+                {
+                    _userIds.Add(userId);
+                }
             }
         }
 
@@ -322,11 +373,8 @@ namespace Scarlet.OpenPgp.Signing
         /// <summary>The key must be unexpired both now and when it made the signature (RFC 9580 §5.2.3.13).</summary>
         private static (VerificationStatus Status, string Message) CheckExpiration(SignaturePacket? selfSignature, DateTimeOffset keyCreatedAt, DateTimeOffset signatureCreatedAt, DateTimeOffset now, string what)
         {
-            if (selfSignature is not null
-                && selfSignature.TryGetHashedTime(SignatureSubpacketType.KeyExpirationTime, out uint lifetimeSeconds)
-                && lifetimeSeconds != 0)
+            if (ExpirationOf(selfSignature, keyCreatedAt) is DateTimeOffset expiresAt)
             {
-                DateTimeOffset expiresAt = keyCreatedAt.AddSeconds(lifetimeSeconds);
                 if (now >= expiresAt)
                 {
                     return (VerificationStatus.KeyExpired, "The " + what + " expired at " + expiresAt.ToString("u", System.Globalization.CultureInfo.InvariantCulture) + ".");
@@ -339,6 +387,19 @@ namespace Scarlet.OpenPgp.Signing
             }
 
             return (VerificationStatus.Valid, "Valid.");
+        }
+
+        /// <summary>The key's expiration according to <paramref name="selfSignature"/>'s key-expiration subpacket (a lifetime from <paramref name="keyCreatedAt"/>; absent or zero means never).</summary>
+        private static DateTimeOffset? ExpirationOf(SignaturePacket? selfSignature, DateTimeOffset keyCreatedAt)
+        {
+            if (selfSignature is not null
+                && selfSignature.TryGetHashedTime(SignatureSubpacketType.KeyExpirationTime, out uint lifetimeSeconds)
+                && lifetimeSeconds != 0)
+            {
+                return keyCreatedAt.AddSeconds(lifetimeSeconds);
+            }
+
+            return null;
         }
 
         private static bool HasSignFlag(byte[] flags) => flags.Length > 0 && (flags[0] & SignDataFlag) != 0;
@@ -443,6 +504,11 @@ namespace Scarlet.OpenPgp.Signing
                 }
             }
 
+            public bool IsRevoked => _revocations.Count > 0;
+
+            /// <summary>The newest binding signature that is valid at <paramref name="now"/> - the one that describes the subkey.</summary>
+            public SignaturePacket? LatestBinding(DateTimeOffset now) => Latest(_bindings.Select(b => b.Binding).Where(b => IsCurrent(b, Key, now)));
+
             public (VerificationStatus Status, string Message) Check(DateTimeOffset signatureCreatedAt, DateTimeOffset now)
             {
                 var revocation = CheckRevocations(_revocations, signatureCreatedAt, "signing subkey");
@@ -451,8 +517,7 @@ namespace Scarlet.OpenPgp.Signing
                     return revocation;
                 }
 
-                var current = _bindings.Where(b => IsCurrent(b.Binding, Key, now)).ToList();
-                SignaturePacket? latest = Latest(current.Select(b => b.Binding));
+                SignaturePacket? latest = LatestBinding(now);
                 if (latest is null)
                 {
                     return (VerificationStatus.KeyNotValidForSigning, "The subkey has no valid binding signature from its primary key.");
@@ -467,7 +532,7 @@ namespace Scarlet.OpenPgp.Signing
                     return (VerificationStatus.KeyNotValidForSigning, "The subkey's binding signature does not allow it to sign data.");
                 }
 
-                List<SignaturePacket> backSignatures = current.First(b => ReferenceEquals(b.Binding, latest)).BackSignatures;
+                List<SignaturePacket> backSignatures = _bindings.First(b => ReferenceEquals(b.Binding, latest)).BackSignatures;
                 if (!backSignatures.Any(s => IsCurrent(s, Key, now)))
                 {
                     return (VerificationStatus.KeyNotValidForSigning, "The signing subkey has no valid primary-key binding (back-)signature.");

@@ -19,6 +19,22 @@ Console.WriteLine(detached);                    // e.g. "KeyExpired: The signing
 Console.WriteLine(detached.SignerFingerprint);  // the (sub)key that signed
 ```
 
+To verify several signatures against the same keys, parse them once. That checks the certificates'
+self-signatures a single time, reports a broken key file up front, and lets you inspect the keys:
+
+```csharp
+OpenPgpKeyRing keyRing = OpenPgpKeyRing.Parse(File.ReadAllBytes("keys.gpg")); // throws OpenPgpFormatException if unusable
+foreach (OpenPgpCertificate certificate in keyRing.Certificates)
+{
+    Console.WriteLine($"{certificate.PrimaryKey.Fingerprint} {certificate.PrimaryKey.Algorithm} expires {certificate.PrimaryKey.ExpiresAt?.ToString() ?? "never"}");
+}
+
+VerificationResult result = OpenPgpVerifier.VerifyDetached(data, signature, keyRing);
+```
+
+The key ring is immutable and thread-safe. Expiration, revocation timing and key flags are still
+judged at each verification, so a key that expires while your application runs stops verifying.
+
 Only use `SignedText` from a clearsigned message. The input also contains unsigned text, such as
 dash-escaping and the signature block's own armor headers, so reading data straight out of the
 `.asc` file means trusting text nobody signed.

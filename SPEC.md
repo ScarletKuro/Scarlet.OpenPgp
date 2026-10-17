@@ -196,7 +196,20 @@ public static class OpenPgpVerifier
     public static VerificationResult VerifyDetached(Stream data, string signature, string publicKeys);
     public static VerificationResult VerifyDetached(Stream data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> publicKeys);
     public static Task<VerificationResult> VerifyDetachedAsync(Stream data, ReadOnlyMemory<byte> signature, ReadOnlyMemory<byte> publicKeys, CancellationToken cancellationToken = default);
+
+    // Every overload also comes in an OpenPgpKeyRing flavor (e.g. VerifyDetached(Stream, ReadOnlySpan<byte>, OpenPgpKeyRing)).
 }
+
+// Trusted keys parsed once: self-signatures are checked at parse time, a broken key file throws
+// OpenPgpFormatException (or TryParse returns the reason), and the keys can be inspected. Immutable,
+// thread-safe; time-dependent validity (expiry, revocation timing, flags) is still judged per call.
+public sealed class OpenPgpKeyRing
+{
+    public static OpenPgpKeyRing Parse(string armoredKeys);
+    public static OpenPgpKeyRing Parse(ReadOnlySpan<byte> keys);          // armored or binary
+    public static bool TryParse(ReadOnlySpan<byte> keys, out OpenPgpKeyRing? keyRing, out string? error);
+    public IReadOnlyList<OpenPgpCertificate> Certificates { get; }        // PrimaryKey, Subkeys, UserIds
+}                                                                          // keys: Fingerprint, KeyId, Version, Algorithm, CreatedAt, ExpiresAt, IsRevoked
 
 public sealed class VerificationResult
 {

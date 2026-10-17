@@ -59,6 +59,42 @@ namespace Scarlet.OpenPgp.Packets
         /// <summary>The raw 57-octet Ed448 public key.</summary>
         public byte[]? Ed448 { get; private set; }
 
+        /// <summary>A human-readable algorithm description, e.g. "RSA 4096", "ECDSA NIST P-256", "Ed25519".</summary>
+        public string AlgorithmDescription
+        {
+            get
+            {
+                switch (Algorithm)
+                {
+                    case PublicKeyAlgorithm.RsaEncryptOrSign:
+                    case PublicKeyAlgorithm.RsaSignOnly:
+                        return Rsa is null ? "RSA" : "RSA " + Crypto.BigIntegerMath.BitLength(Rsa.Modulus).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    case PublicKeyAlgorithm.Dsa:
+                        return Dsa is null ? "DSA" : "DSA " + Crypto.BigIntegerMath.BitLength(Dsa.P).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    case PublicKeyAlgorithm.Ecdsa:
+                        return EcdsaCurve is null ? "ECDSA (unsupported curve)" : "ECDSA " + EcdsaCurve.Name;
+                    case PublicKeyAlgorithm.EdDsaLegacy:
+                        return "EdDSA Ed25519 (legacy)";
+                    case PublicKeyAlgorithm.Ed25519:
+                        return "Ed25519";
+                    case PublicKeyAlgorithm.Ed448:
+                        return "Ed448";
+                    case PublicKeyAlgorithm.RsaEncryptOnly:
+                        return "RSA (encrypt only)";
+                    case PublicKeyAlgorithm.ElGamalEncryptOnly:
+                        return "Elgamal";
+                    case PublicKeyAlgorithm.Ecdh:
+                        return "ECDH";
+                    case PublicKeyAlgorithm.X25519:
+                        return "X25519";
+                    case PublicKeyAlgorithm.X448:
+                        return "X448";
+                    default:
+                        return "Unknown (" + ((byte)Algorithm).ToString(System.Globalization.CultureInfo.InvariantCulture) + ")";
+                }
+            }
+        }
+
         /// <summary>Whether this key has material this library can verify signatures with.</summary>
         public bool CanVerify => Rsa is not null || Dsa is not null || EcdsaPoint is not null || Ed25519 is not null || Ed448 is not null;
 

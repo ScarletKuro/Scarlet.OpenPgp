@@ -98,6 +98,72 @@ namespace Scarlet.OpenPgp
             return VerifyDetachedAsync(data, ParseSignatures(signature.Span), ParseKeys(publicKeys.Span), DateTimeOffset.UtcNow, cancellationToken);
         }
 
+        /// <inheritdoc cref="VerifyClearsign(string, string)"/>
+        /// <param name="clearsignedMessage">The complete clearsigned message.</param>
+        /// <param name="keyRing">The trusted keys, parsed once with <see cref="OpenPgpKeyRing.Parse(string)"/>.</param>
+        public static VerificationResult VerifyClearsign(string clearsignedMessage, OpenPgpKeyRing keyRing)
+        {
+            return VerifyClearsign(clearsignedMessage, Keys(keyRing), DateTimeOffset.UtcNow);
+        }
+
+        /// <summary>Verifies detached signature(s) over in-memory data.</summary>
+        /// <param name="data">The signed data.</param>
+        /// <param name="signature">The ASCII-armored detached signature(s).</param>
+        /// <param name="keyRing">The trusted keys.</param>
+        public static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, string signature, OpenPgpKeyRing keyRing)
+        {
+            return VerifyDetached(data, ParseSignatures(signature), Keys(keyRing), DateTimeOffset.UtcNow);
+        }
+
+        /// <summary>Verifies detached signature(s) over in-memory data.</summary>
+        /// <param name="data">The signed data.</param>
+        /// <param name="signature">The detached signature(s), ASCII-armored (.asc) or binary (.sig).</param>
+        /// <param name="keyRing">The trusted keys.</param>
+        public static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, OpenPgpKeyRing keyRing)
+        {
+            return VerifyDetached(data, ParseSignatures(signature), Keys(keyRing), DateTimeOffset.UtcNow);
+        }
+
+        /// <summary>Verifies detached signature(s) over data read from <paramref name="data"/>, which is read to its end once and never buffered whole.</summary>
+        /// <param name="data">The signed data. Not disposed.</param>
+        /// <param name="signature">The ASCII-armored detached signature(s).</param>
+        /// <param name="keyRing">The trusted keys.</param>
+        public static VerificationResult VerifyDetached(Stream data, string signature, OpenPgpKeyRing keyRing)
+        {
+            return VerifyDetached(data, ParseSignatures(signature), Keys(keyRing), DateTimeOffset.UtcNow);
+        }
+
+        /// <summary>Verifies detached signature(s) over data read from <paramref name="data"/>, which is read to its end once and never buffered whole.</summary>
+        /// <param name="data">The signed data. Not disposed.</param>
+        /// <param name="signature">The detached signature(s), ASCII-armored (.asc) or binary (.sig).</param>
+        /// <param name="keyRing">The trusted keys.</param>
+        public static VerificationResult VerifyDetached(Stream data, ReadOnlySpan<byte> signature, OpenPgpKeyRing keyRing)
+        {
+            return VerifyDetached(data, ParseSignatures(signature), Keys(keyRing), DateTimeOffset.UtcNow);
+        }
+
+        /// <summary>Asynchronously verifies detached signature(s) over data read from <paramref name="data"/>, which is read to its end once and never buffered whole.</summary>
+        /// <param name="data">The signed data. Not disposed.</param>
+        /// <param name="signature">The detached signature(s), ASCII-armored (.asc) or binary (.sig).</param>
+        /// <param name="keyRing">The trusted keys.</param>
+        /// <param name="cancellationToken">Cancels reading <paramref name="data"/>.</param>
+        public static Task<VerificationResult> VerifyDetachedAsync(Stream data, ReadOnlyMemory<byte> signature, OpenPgpKeyRing keyRing, CancellationToken cancellationToken = default)
+        {
+            return VerifyDetachedAsync(data, ParseSignatures(signature.Span), Keys(keyRing), DateTimeOffset.UtcNow, cancellationToken);
+        }
+
+        /// <summary>The clearsign check against an explicit clock, so tests can pin "now".</summary>
+        internal static VerificationResult VerifyClearsign(string clearsignedMessage, OpenPgpKeyRing keyRing, DateTimeOffset now)
+        {
+            return VerifyClearsign(clearsignedMessage, Keys(keyRing), now);
+        }
+
+        /// <summary>The detached check against an explicit clock, so tests can pin "now".</summary>
+        internal static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, OpenPgpKeyRing keyRing, DateTimeOffset now)
+        {
+            return VerifyDetached(data, ParseSignatures(signature), Keys(keyRing), now);
+        }
+
         /// <summary>The clearsign check against an explicit clock, so tests can pin "now".</summary>
         internal static VerificationResult VerifyClearsign(string clearsignedMessage, string publicKeys, DateTimeOffset now)
         {
@@ -242,6 +308,16 @@ namespace Scarlet.OpenPgp
         {
             byte[] copy = signature.ToArray();
             return ParseSignatures(() => PacketInput.Decode(copy, SignatureLabel));
+        }
+
+        private static ParsedInput<KeyRing> Keys(OpenPgpKeyRing keyRing)
+        {
+            if (keyRing is null)
+            {
+                throw new ArgumentNullException(nameof(keyRing));
+            }
+
+            return new ParsedInput<KeyRing>(keyRing.Inner, null);
         }
 
         private static ParsedInput<KeyRing> ParseKeys(Func<byte[]> decode)
