@@ -173,5 +173,29 @@ namespace Scarlet.OpenPgp.Tests
             Assert.True(streamed.IsValid, streamed.ToString());
             Assert.True(asyncResult.IsValid, asyncResult.ToString());
         }
+
+        [Theory]
+        [InlineData("v4-revoked-key-hard", true)]
+        [InlineData("v4-revoked-key-hard", false)]
+        [InlineData("v4-revoked-subkey-hard", true)]
+        [InlineData("v4-revoked-subkey-hard", false)]
+        public void Parse_WithAStaleCopyOfARevokedCertificate_ShouldStillHonorTheRevocation(string folder, bool staleCopyFirst)
+        {
+            // Arrange: regression - an old export (no revocation) concatenated with the current one
+            // (revoked) used to be a separate candidate, and verified. Both orders must merge.
+            byte[] revoked = Bytes("gnupg-generated/" + folder + "/public-key.gpg");
+            byte[] stale = Bytes("gnupg-generated/" + folder + "/public-key-unrevoked.gpg");
+            byte[] combined = staleCopyFirst ? [.. stale, .. revoked] : [.. revoked, .. stale];
+            byte[] data = Bytes("gnupg-generated/" + folder + "/data.txt");
+            byte[] signature = Bytes("gnupg-generated/" + folder + "/data.txt.before-revocation.sig");
+
+            // Act
+            OpenPgpKeyRing keyRing = OpenPgpKeyRing.Parse(combined);
+            VerificationResult result = OpenPgpVerifier.VerifyDetached(data, signature, keyRing, AssembledOn);
+
+            // Assert
+            Assert.Single(keyRing.Certificates);
+            Assert.Equal(VerificationStatus.KeyRevoked, result.Status);
+        }
     }
 }

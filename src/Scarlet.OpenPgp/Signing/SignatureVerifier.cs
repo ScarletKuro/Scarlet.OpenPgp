@@ -117,6 +117,17 @@ namespace Scarlet.OpenPgp.Signing
         }
 
         /// <summary>
+        /// How far into the future a document signature's creation time may lie and still count:
+        /// tolerance for a signer's or verifier's clock being slightly off. Anything beyond it is
+        /// rejected - a signature isn't valid before it was made, and accepting future times would
+        /// let a signer push an expiration (counted from creation) arbitrarily far out.
+        /// </summary>
+        public static readonly TimeSpan MaxClockSkew = TimeSpan.FromMinutes(5);
+
+        /// <summary>Whether <paramref name="createdAt"/> lies further in the future than <see cref="MaxClockSkew"/> allows.</summary>
+        public static bool IsFromTheFuture(DateTimeOffset createdAt, DateTimeOffset now) => createdAt > now + MaxClockSkew;
+
+        /// <summary>
         /// Whether the signature is within its own validity period at <paramref name="now"/>: not
         /// past its hashed signature-expiration time (RFC 9580 §5.2.3.18; zero means it never
         /// expires).

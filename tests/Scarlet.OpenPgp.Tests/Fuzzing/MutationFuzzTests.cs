@@ -25,6 +25,25 @@ namespace Scarlet.OpenPgp.Tests.Fuzzing
 
         private static readonly DateTimeOffset Now = new DateTimeOffset(2026, 10, 17, 0, 0, 0, TimeSpan.Zero);
 
+        /// <summary>
+        /// A per-test seed from <see cref="Seed"/> and the test's inputs, via 32-bit FNV-1a. Unlike
+        /// string.GetHashCode (randomized per process in modern .NET), this is the same in every
+        /// process, so a given SCARLET_FUZZ_SEED replays exactly the same mutations.
+        /// </summary>
+        private static int StableSeed(params string[] parts)
+        {
+            unchecked
+            {
+                uint hash = 2166136261u ^ (uint)Seed;
+                foreach (char c in string.Join("|", parts))
+                {
+                    hash = (hash ^ c) * 16777619u;
+                }
+
+                return (int)hash;
+            }
+        }
+
         private static int ReadEnvironment(string name, int fallback) =>
             int.TryParse(Environment.GetEnvironmentVariable(name), out int value) && value > 0 ? value : fallback;
 
@@ -49,7 +68,7 @@ namespace Scarlet.OpenPgp.Tests.Fuzzing
             byte[] data = Asset(folder + "/" + DataFileFor(folder));
             byte[] signature = Asset(folder + "/" + signatureFile);
             byte[] keys = Asset(folder + "/" + keyFile);
-            var mutator = new Mutator(Seed ^ signatureFile.GetHashCode() ^ folder.Length);
+            var mutator = new Mutator(StableSeed(folder, signatureFile, "signature"));
 
             for (int i = 0; i < Iterations; i++)
             {
@@ -65,7 +84,7 @@ namespace Scarlet.OpenPgp.Tests.Fuzzing
             byte[] data = Asset(folder + "/" + DataFileFor(folder));
             byte[] signature = Asset(folder + "/" + signatureFile);
             byte[] keys = Asset(folder + "/" + keyFile);
-            var mutator = new Mutator(Seed ^ keyFile.GetHashCode() ^ (folder.Length * 31));
+            var mutator = new Mutator(StableSeed(folder, keyFile, "keys"));
 
             for (int i = 0; i < Iterations; i++)
             {
@@ -81,8 +100,12 @@ namespace Scarlet.OpenPgp.Tests.Fuzzing
             byte[] data = Asset(folder + "/" + DataFileFor(folder));
             byte[] signature = Asset(folder + "/" + signatureFile);
             byte[] keys = Asset(folder + "/" + keyFile);
-            var mutator = new Mutator(Seed ^ data.Length);
+            var mutator = new Mutator(StableSeed(folder, signatureFile, "data"));
             bool textMode = signatureFile.Contains("textmode", StringComparison.Ordinal);
+
+            // Baseline: the unaltered data must verify, or "altered data never verifies" proves nothing.
+            VerificationResult baseline = OpenPgpVerifier.VerifyDetached(data, signature, keys, Now);
+            Assert.True(baseline.IsValid, baseline.ToString());
 
             for (int i = 0; i < Math.Max(1, Iterations / 3); i++)
             {
@@ -108,7 +131,7 @@ namespace Scarlet.OpenPgp.Tests.Fuzzing
             byte[] keys = Asset(keyFile);
             string originalSignedText = OpenPgpVerifier.VerifyClearsign(message, keys, Now).SignedText!;
             Assert.NotNull(originalSignedText);
-            var mutator = new Mutator(Seed ^ messageFile.Length);
+            var mutator = new Mutator(StableSeed(messageFile, "clearsign"));
 
             for (int i = 0; i < Iterations; i++)
             {
@@ -134,7 +157,7 @@ namespace Scarlet.OpenPgp.Tests.Fuzzing
         public void Parsers_WithMutatedPackets_ShouldOnlyFailClosed(string seedFile)
         {
             byte[] seed = Asset(seedFile);
-            var mutator = new Mutator(Seed ^ seedFile.Length);
+            var mutator = new Mutator(StableSeed(seedFile, "packets"));
 
             for (int i = 0; i < Iterations * 3; i++)
             {
@@ -164,7 +187,7 @@ namespace Scarlet.OpenPgp.Tests.Fuzzing
         public void ArmorAndClearsignParsers_WithMutatedText_ShouldOnlyFailClosed(string seedFile)
         {
             string seed = Encoding.UTF8.GetString(Asset(seedFile));
-            var mutator = new Mutator(Seed ^ seedFile.Length ^ 0x5A5A);
+            var mutator = new Mutator(StableSeed(seedFile, "text"));
 
             for (int i = 0; i < Iterations; i++)
             {
@@ -206,7 +229,7 @@ namespace Scarlet.OpenPgp.Tests.Fuzzing
             }
             catch (Exception ex)
             {
-                throw new Xunit.Sdk.XunitException("The public API threw " + ex.GetType().Name + " (" + ex.Message + ") for input: " + Convert.ToBase64String(input), ex);
+                throw new Xunit.Sdk.XunitException("The public API threw " + ex.GetType().Name + " (" + ex.Message + ") for input (SCARLET_FUZZ_SEED=" + Seed + "): " + Convert.ToBase64String(input), ex);
             }
 
             Assert.True(stopwatch.Elapsed < SlowCallLimit, "Pathologically slow (" + stopwatch.Elapsed + ") for input: " + Convert.ToBase64String(input));
@@ -226,7 +249,7 @@ namespace Scarlet.OpenPgp.Tests.Fuzzing
             }
             catch (Exception ex)
             {
-                throw new Xunit.Sdk.XunitException("A parser threw " + ex.GetType().Name + " (" + ex.Message + ") instead of failing closed, for input: " + Convert.ToBase64String(input), ex);
+                throw new Xunit.Sdk.XunitException("A parser threw " + ex.GetType().Name + " (" + ex.Message + ") instead of failing closed, for input (SCARLET_FUZZ_SEED=" + Seed + "): " + Convert.ToBase64String(input), ex);
             }
         }
 

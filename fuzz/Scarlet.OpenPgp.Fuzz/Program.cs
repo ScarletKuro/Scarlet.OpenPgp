@@ -20,16 +20,26 @@ internal static class Program
     private static readonly string SeedDirectory = Path.Combine(AppContext.BaseDirectory, "Seeds");
     private static readonly byte[] Data = File.ReadAllBytes(Path.Combine(SeedDirectory, "data.txt"));
     private static readonly byte[] Signature = File.ReadAllBytes(Path.Combine(SeedDirectory, "data.txt.sig"));
-    private static readonly byte[] Keys = File.ReadAllBytes(Path.Combine(SeedDirectory, "keyring-both.gpg"));
+    // Every fixture certificate, parsed once: signature and clearsign seeds from any fixture then
+    // find their signer and reach the cryptographic checks (the data won't match theirs, but the
+    // parsing and verification paths still run).
+    // Not every *.gpg fixture is a key (Debian's Release.gpg is a signature), so keep the ones that parse.
+    private static readonly OpenPgpKeyRing AllKeys = OpenPgpKeyRing.Parse(
+        Directory.EnumerateFiles(Path.Combine(SeedDirectory, "keys"), "*.gpg", SearchOption.AllDirectories)
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .Select(File.ReadAllBytes)
+            .Where(bytes => OpenPgpKeyRing.TryParse(bytes, out _, out _))
+            .SelectMany(bytes => bytes)
+            .ToArray());
 
     private static readonly Dictionary<string, Action<ReadOnlySpan<byte>>> Targets = new(StringComparer.Ordinal)
     {
-        ["signature"] = input => OpenPgpVerifier.VerifyDetached(Data, input, Keys),
+        ["signature"] = input => OpenPgpVerifier.VerifyDetached(Data, input, AllKeys),
         ["keys"] = input => OpenPgpVerifier.VerifyDetached(Data, Signature, input),
-        ["clearsign"] = input => OpenPgpVerifier.VerifyClearsign(Encoding.UTF8.GetString(input), Keys),
+        ["clearsign"] = input => OpenPgpVerifier.VerifyClearsign(Encoding.UTF8.GetString(input), AllKeys),
         ["data"] = input =>
         {
-            VerificationResult result = OpenPgpVerifier.VerifyDetached(input, Signature, Keys);
+            VerificationResult result = OpenPgpVerifier.VerifyDetached(input, Signature, AllKeys);
             if (result.IsValid && !input.SequenceEqual(Data))
             {
                 throw new InvalidOperationException("Data that differs from the signed data verified.");

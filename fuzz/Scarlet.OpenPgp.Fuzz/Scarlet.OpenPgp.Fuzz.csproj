@@ -27,4 +27,10 @@
     <None Include="..\..\tests\Scarlet.OpenPgp.Tests\TestAssets\gnupg-generated\v4-multi-signer\keyring-both.gpg" Link="Seeds\keyring-both.gpg" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Every binary fixture keyring, so seeds from any fixture reach real signature verification
+         instead of stopping at "no matching key". RecursiveDir keeps same-named files apart. -->
+    <None Include="..\..\tests\Scarlet.OpenPgp.Tests\TestAssets\**\*.gpg" Link="Seeds\keys\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

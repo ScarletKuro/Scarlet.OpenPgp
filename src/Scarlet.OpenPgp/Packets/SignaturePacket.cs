@@ -9,9 +9,20 @@ namespace Scarlet.OpenPgp.Packets
     /// <summary>A parsed v4 or v6 Signature packet (tag 2, RFC 9580 §5.2.3).</summary>
     internal sealed class SignaturePacket
     {
-        private SignaturePacket(byte[] body)
+        /// <summary>
+        /// How deep signatures may be embedded in each other. A primary-key binding (back-)signature
+        /// embedded in a subkey binding signature is the only legitimate use (RFC 9580 §5.2.3.34),
+        /// so one level suffices. Without a limit, a hostile signature nesting thousands of levels
+        /// overflows the stack - which kills the process rather than failing closed.
+        /// </summary>
+        private const int MaxEmbeddingDepth = 1;
+
+        private readonly int _depth;
+
+        private SignaturePacket(byte[] body, int depth)
         {
             Body = body;
+            _depth = depth;
         }
 
         /// <summary>The packet body exactly as received.</summary>
@@ -155,7 +166,7 @@ namespace Scarlet.OpenPgp.Packets
                     SignaturePacket? embedded = null;
                     try
                     {
-                        embedded = Parse(subpacket.Data);
+                        embedded = Parse(subpacket.Data, _depth + 1);
                     }
                     catch (FailClosedException)
                     {
@@ -194,14 +205,21 @@ namespace Scarlet.OpenPgp.Packets
             return true;
         }
 
-        public static SignaturePacket Parse(byte[] body)
+        public static SignaturePacket Parse(byte[] body) => Parse(body, 0);
+
+        private static SignaturePacket Parse(byte[] body, int depth)
         {
+            if (depth > MaxEmbeddingDepth)
+            {
+                throw new FailClosedException("Signature is embedded more than " + MaxEmbeddingDepth + " level deep.");
+            }
+
             if (body.Length < 4)
             {
                 throw new FailClosedException("Signature packet body is too short to contain a signature header.");
             }
 
-            var signature = new SignaturePacket(body);
+            var signature = new SignaturePacket(body, depth);
             byte version = body[0];
             if (version != 4 && version != 6)
             {
@@ -377,7 +395,7 @@ namespace Scarlet.OpenPgp.Packets
                         break;
 
                     case SignatureSubpacketType.EmbeddedSignature:
-                        Parse(subpacket.Data); // throws if malformed
+                        Parse(subpacket.Data, _depth + 1); // throws if malformed or nested too deep
                         break;
 
                     case SignatureSubpacketType.ExportableCertification:

@@ -441,5 +441,94 @@ namespace Scarlet.OpenPgp.Tests.Packets
             // Act & Assert
             Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(body.ToArray()));
         }
+
+        /// <summary>
+        /// A v6 signature body whose hashed area holds one critical Embedded Signature subpacket
+        /// containing the previous body, <paramref name="depth"/> levels deep.
+        /// </summary>
+        private static byte[] NestedEmbeddedSignatures(int depth)
+        {
+            byte[] body = [0x04, 0x00, 27, 8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+            for (int i = 0; i < depth; i++)
+            {
+                var subpacket = new List<byte> { 0xFF };
+                subpacket.AddRange(BigEndian(body.Length + 1));
+                subpacket.Add(0x80 | 32); // critical Embedded Signature
+                subpacket.AddRange(body);
+
+                var outer = new List<byte> { 0x06, 0x00, 27, 8 };
+                outer.AddRange(BigEndian(subpacket.Count));
+                outer.AddRange(subpacket);
+                outer.AddRange(new byte[83]);
+                body = outer.ToArray();
+            }
+
+            return body;
+        }
+
+        private static byte[] BigEndian(int value) => [(byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value];
+
+        /// <summary>A well-formed v4 signature body carrying <paramref name="inner"/> as a critical Embedded Signature.</summary>
+        private static byte[] EmbedCritically(byte[] inner)
+        {
+            var subpacket = new List<byte> { 0xFF };
+            subpacket.AddRange(BigEndian(inner.Length + 1));
+            subpacket.Add(0x80 | 32);
+            subpacket.AddRange(inner);
+            return V4Body(subpacket.ToArray());
+        }
+
+        [Fact]
+        public void Parse_WithOneLevelOfEmbedding_ShouldSucceed()
+        {
+            // Arrange: a back-signature inside a binding signature is the legitimate use.
+            byte[] valid = PacketReader.ReadAll(Ed25519SignaturePacketBytes)[0].Body;
+
+            // Act
+            SignaturePacket signature = SignaturePacket.Parse(EmbedCritically(valid));
+
+            // Assert
+            Assert.Single(signature.EmbeddedSignatures);
+        }
+
+        [Fact]
+        public void Parse_WithTwoLevelsOfEmbedding_ShouldFailClosed()
+        {
+            // Arrange: every layer is well-formed, so only the nesting itself is wrong. Regression
+            // for unbounded recursion, which let a ~300 KB signature overflow the stack and kill
+            // the process.
+            byte[] valid = PacketReader.ReadAll(Ed25519SignaturePacketBytes)[0].Body;
+            byte[] twoDeep = EmbedCritically(EmbedCritically(valid));
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(twoDeep));
+        }
+
+        [Fact]
+        public void Parse_WithThousandsOfNestedEmbeddedSignatures_ShouldFailClosedImmediately()
+        {
+            // Arrange: the shape that crashed the process (3,000 levels, about 300 KB).
+            byte[] body = NestedEmbeddedSignatures(3000);
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(body));
+        }
+
+        [Fact]
+        public void PublicApi_WithDeeplyNestedEmbeddedSignatures_ShouldReturnMalformedInput()
+        {
+            // Arrange
+            byte[] body = NestedEmbeddedSignatures(3000);
+            var packet = new List<byte> { 0xC2, 0xFF };
+            packet.AddRange(BigEndian(body.Length));
+            packet.AddRange(body);
+            byte[] keys = System.IO.File.ReadAllBytes("TestAssets/gnupg-generated/v4-eddsa-ed25519-legacy/public-key.gpg");
+
+            // Act
+            VerificationResult result = OpenPgpVerifier.VerifyDetached("data"u8, packet.ToArray(), keys);
+
+            // Assert
+            Assert.Equal(VerificationStatus.MalformedInput, result.Status);
+        }
     }
 }

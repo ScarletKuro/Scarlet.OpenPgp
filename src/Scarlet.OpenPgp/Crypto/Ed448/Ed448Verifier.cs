@@ -49,6 +49,14 @@ namespace Scarlet.OpenPgp.Crypto.Ed448
                 return false;
             }
 
+            // Reject small-order public keys ([4]A = identity, which includes the identity itself).
+            // No real key is one, and with such an A the verification equation no longer depends on
+            // the message - e.g. A = R = identity, S = 0 "verifies" anything.
+            if (a.Double().Double().Equals(Ed448Point.Identity))
+            {
+                return false;
+            }
+
             var rBytes = new byte[Ed448PointDecoder.EncodedLength];
             var sBytes = new byte[ScalarLength];
             Array.Copy(signature, 0, rBytes, 0, rBytes.Length);

@@ -42,6 +42,39 @@ namespace Scarlet.OpenPgp.Signing
         /// <summary>The User IDs carrying a valid self-certification, in certificate order.</summary>
         public IReadOnlyList<string> UserIds => _userIds;
 
+        /// <summary>
+        /// Folds another copy of this same certificate (same primary key fingerprint) into this one:
+        /// e.g. an old export and a newer one concatenated into one key file. Everything either copy
+        /// verifiably says is kept - in particular every revocation - so a stale copy can't mask a
+        /// newer revocation by being a separate candidate. The newest valid self-signature still
+        /// wins, so the result is the same whichever copy came first.
+        /// </summary>
+        public void MergeFrom(Certificate other)
+        {
+            _selfSignatures.AddRange(other._selfSignatures);
+            _revocations.AddRange(other._revocations);
+            foreach (string userId in other._userIds)
+            {
+                if (!_userIds.Contains(userId))
+                {
+                    _userIds.Add(userId);
+                }
+            }
+
+            foreach (Subkey subkey in other._subkeys)
+            {
+                Subkey? existing = _subkeys.FirstOrDefault(s => s.Key.Fingerprint.Matches(subkey.Key.Fingerprint.Bytes));
+                if (existing is null)
+                {
+                    _subkeys.Add(subkey);
+                }
+                else
+                {
+                    existing.MergeFrom(subkey);
+                }
+            }
+        }
+
         /// <summary>Whether <paramref name="key"/> (the primary or a subkey) has a valid revocation, hard or soft.</summary>
         public bool IsRevoked(PublicKeyPacket key)
         {
@@ -55,15 +88,15 @@ namespace Scarlet.OpenPgp.Signing
 
         /// <summary>
         /// When <paramref name="key"/> expires according to its newest valid self-signature (binding
-        /// signature, for a subkey) as of <paramref name="now"/>; <c>null</c> if it never does or no
-        /// valid self-signature says so.
+        /// signature, for a subkey) as of <paramref name="now"/> - or, if none is valid any more, its
+        /// newest self-signature at all; <c>null</c> if it never expires.
         /// </summary>
         public DateTimeOffset? GetExpiration(PublicKeyPacket key, DateTimeOffset now)
         {
             try
             {
                 SignaturePacket? selfSignature = ReferenceEquals(key, Primary)
-                    ? LatestPrimarySelfSignature(now)
+                    ? LatestPrimarySelfSignature(now) ?? Latest(_selfSignatures)
                     : _subkeys.FirstOrDefault(s => ReferenceEquals(s.Key, key))?.LatestBinding(now);
                 return ExpirationOf(selfSignature, key.CreatedAt);
             }
@@ -205,6 +238,14 @@ namespace Scarlet.OpenPgp.Signing
             if (Primary.Version == 6 && latestSelfSignature is null)
             {
                 return (VerificationStatus.KeyNotValidForSigning, "The v6 primary key has no valid Direct Key self-signature.");
+            }
+
+            // Only a v4 key that never had a self-signature counts as a bare, unrestricted key. If it
+            // has self-signatures but none is valid now (all expired, say), the restrictions and the
+            // expiration they carried must not silently disappear - the key is simply not usable.
+            if (latestSelfSignature is null && _selfSignatures.Count > 0)
+            {
+                return (VerificationStatus.KeyNotValidForSigning, "None of the primary key's self-signatures is currently valid (they have expired).");
             }
 
             if (signatureCreatedAt < Primary.CreatedAt)
@@ -503,6 +544,13 @@ namespace Scarlet.OpenPgp.Signing
             }
 
             public bool IsRevoked => _revocations.Count > 0;
+
+            /// <summary>Takes another copy of this subkey's verified bindings and revocations (see <see cref="Certificate.MergeFrom"/>).</summary>
+            public void MergeFrom(Subkey other)
+            {
+                _bindings.AddRange(other._bindings);
+                _revocations.AddRange(other._revocations);
+            }
 
             /// <summary>The newest binding signature that is valid at <paramref name="now"/> - the one that describes the subkey.</summary>
             public SignaturePacket? LatestBinding(DateTimeOffset now) => Latest(_bindings.Select(b => b.Binding).Where(b => IsCurrent(b, Key, now)));

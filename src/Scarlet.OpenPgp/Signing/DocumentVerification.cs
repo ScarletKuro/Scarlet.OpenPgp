@@ -277,6 +277,11 @@ namespace Scarlet.OpenPgp.Signing
                     return Failure(VerificationStatus.BadSignature, "The signature does not match the data and key.", certificate, key, createdAt);
                 }
 
+                if (SignatureVerifier.IsFromTheFuture(createdAt, now))
+                {
+                    return Failure(VerificationStatus.InvalidSignatureTime, "The signature is dated in the future.", certificate, key, createdAt);
+                }
+
                 try
                 {
                     if (!SignatureVerifier.IsUnexpired(signature, now))

@@ -50,7 +50,19 @@ namespace Scarlet.OpenPgp.Signing
 
                 try
                 {
-                    certificates.Add(Certificate.Build(packets, i, end));
+                    Certificate certificate = Certificate.Build(packets, i, end);
+
+                    // Several copies of one certificate (an old and a new export, say) become one, so
+                    // a stale copy without a revocation can't be picked instead of the revoked one.
+                    Certificate? existing = certificates.Find(c => c.Primary.Fingerprint.Matches(certificate.Primary.Fingerprint.Bytes));
+                    if (existing is null)
+                    {
+                        certificates.Add(certificate);
+                    }
+                    else
+                    {
+                        existing.MergeFrom(certificate);
+                    }
                 }
                 catch (FailClosedException ex)
                 {
