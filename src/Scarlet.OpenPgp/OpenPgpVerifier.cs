@@ -1,179 +1,289 @@
 using System;
-using System.Collections.Generic;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using Scarlet.OpenPgp.Armor;
 using Scarlet.OpenPgp.Clearsign;
 using Scarlet.OpenPgp.Internal;
-using Scarlet.OpenPgp.Packets;
 using Scarlet.OpenPgp.Signing;
 
 namespace Scarlet.OpenPgp
 {
     /// <summary>
-    /// Verifies OpenPGP signatures (RFC 4880 v4, Ed25519 and RSA-PKCS#1 v1.5 only). The caller
-    /// supplies exactly the public key they already trust; this type does no key management,
-    /// trust-chain evaluation, or revocation checking - see SPEC.md's non-goals.
+    /// Verifies OpenPGP signatures (RFC 9580 and RFC 4880; v4 and v6 keys and signatures; RSA, DSA,
+    /// ECDSA, Ed25519 and Ed448). The caller supplies exactly the public keys they already trust;
+    /// this type does no trust-chain evaluation.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Every parsing ambiguity, unknown-but-critical subpacket, or malformed input fails closed:
-    /// the public methods catch <see cref="FailClosedException"/> at this boundary and turn it
-    /// into <c>false</c> rather than letting it escape as an unhandled exception.
+    /// Signatures and keys may be ASCII-armored or binary; key input may hold several certificates
+    /// and signature input several signatures. The result is valid when any signature verifies
+    /// against any supplied key. Signing subkeys are supported (binding and back-signatures are
+    /// checked), and so are key flags, key and signature expiration, and revocations contained in
+    /// the supplied certificates.
     /// </para>
     /// <para>
-    /// Time is checked as well as the signature itself: verification fails for a signature past its
-    /// own expiration time, a signature older than the key, and a key past the expiration time set
-    /// by its most recent valid self-signature.
+    /// Nothing here throws on bad input: every parsing ambiguity, unknown-but-critical subpacket, or
+    /// malformed input yields a failed <see cref="VerificationResult"/> with a reason.
     /// </para>
     /// </remarks>
     public static class OpenPgpVerifier
     {
+        private const string SignatureLabel = "SIGNATURE";
+        private const string PublicKeyLabel = "PUBLIC KEY BLOCK";
+        private const int StreamBufferSize = 81920;
+
         /// <summary>
-        /// Verifies a clearsigned message block against an ASCII-armored public key and, on success,
-        /// returns the text the signature actually covers.
+        /// Verifies a clearsigned message. On success, <see cref="VerificationResult.SignedText"/>
+        /// holds exactly the signed text - the only part of the message that is authenticated.
         /// </summary>
-        /// <remarks>
-        /// Consume <paramref name="signedText"/>, never <paramref name="clearsignedMessage"/>: lines
-        /// in the input differ from the signed text (dash-escaping, trailing whitespace), and the
-        /// signature block's own armor headers (e.g. "Comment:") are never signed.
-        /// </remarks>
         /// <param name="clearsignedMessage">The complete clearsigned message. Nothing but blank lines may precede its BEGIN line or follow its END line.</param>
-        /// <param name="publicKeyArmor">The trusted ASCII-armored public key block.</param>
-        /// <param name="signedText">
-        /// On success, exactly the signed text: dash-unescaped, trailing spaces and tabs removed,
-        /// lines separated by CRLF, with no line break after the last line. Empty on failure.
-        /// This is the only part of the message that is authenticated - consume this, never the
-        /// original input.
-        /// </param>
-        public static bool VerifyClearsign(string clearsignedMessage, string publicKeyArmor, out string signedText)
+        /// <param name="publicKeys">The trusted ASCII-armored public key(s).</param>
+        public static VerificationResult VerifyClearsign(string clearsignedMessage, string publicKeys)
         {
-            return VerifyClearsign(clearsignedMessage, publicKeyArmor, DateTimeOffset.UtcNow, out signedText);
+            return VerifyClearsign(clearsignedMessage, ParseKeys(publicKeys), DateTimeOffset.UtcNow);
         }
 
-        /// <summary>Verifies a detached signature (ASCII-armored) over arbitrary bytes.</summary>
-        public static bool VerifyDetached(ReadOnlySpan<byte> data, string signatureArmor, string publicKeyArmor)
+        /// <inheritdoc cref="VerifyClearsign(string, string)"/>
+        /// <param name="clearsignedMessage">The complete clearsigned message.</param>
+        /// <param name="publicKeys">The trusted public key(s), ASCII-armored or binary.</param>
+        public static VerificationResult VerifyClearsign(string clearsignedMessage, ReadOnlySpan<byte> publicKeys)
         {
-            return VerifyDetached(data, signatureArmor, publicKeyArmor, DateTimeOffset.UtcNow);
+            return VerifyClearsign(clearsignedMessage, ParseKeys(publicKeys), DateTimeOffset.UtcNow);
+        }
+
+        /// <summary>Verifies detached signature(s) over in-memory data.</summary>
+        /// <param name="data">The signed data.</param>
+        /// <param name="signature">The ASCII-armored detached signature(s).</param>
+        /// <param name="publicKeys">The trusted ASCII-armored public key(s).</param>
+        public static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, string signature, string publicKeys)
+        {
+            return VerifyDetached(data, ParseSignatures(signature), ParseKeys(publicKeys), DateTimeOffset.UtcNow);
+        }
+
+        /// <summary>Verifies detached signature(s) over in-memory data.</summary>
+        /// <param name="data">The signed data.</param>
+        /// <param name="signature">The detached signature(s), ASCII-armored (.asc) or binary (.sig).</param>
+        /// <param name="publicKeys">The trusted public key(s), ASCII-armored or binary.</param>
+        public static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> publicKeys)
+        {
+            return VerifyDetached(data, ParseSignatures(signature), ParseKeys(publicKeys), DateTimeOffset.UtcNow);
+        }
+
+        /// <summary>Verifies detached signature(s) over data read from <paramref name="data"/>, which is read to its end once and never buffered whole.</summary>
+        /// <param name="data">The signed data. Not disposed.</param>
+        /// <param name="signature">The ASCII-armored detached signature(s).</param>
+        /// <param name="publicKeys">The trusted ASCII-armored public key(s).</param>
+        public static VerificationResult VerifyDetached(Stream data, string signature, string publicKeys)
+        {
+            return VerifyDetached(data, ParseSignatures(signature), ParseKeys(publicKeys), DateTimeOffset.UtcNow);
+        }
+
+        /// <inheritdoc cref="VerifyDetached(Stream, string, string)"/>
+        /// <param name="data">The signed data. Not disposed.</param>
+        /// <param name="signature">The detached signature(s), ASCII-armored (.asc) or binary (.sig).</param>
+        /// <param name="publicKeys">The trusted public key(s), ASCII-armored or binary.</param>
+        public static VerificationResult VerifyDetached(Stream data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> publicKeys)
+        {
+            return VerifyDetached(data, ParseSignatures(signature), ParseKeys(publicKeys), DateTimeOffset.UtcNow);
+        }
+
+        /// <summary>Asynchronously verifies detached signature(s) over data read from <paramref name="data"/>, which is read to its end once and never buffered whole.</summary>
+        /// <param name="data">The signed data. Not disposed.</param>
+        /// <param name="signature">The detached signature(s), ASCII-armored (.asc) or binary (.sig).</param>
+        /// <param name="publicKeys">The trusted public key(s), ASCII-armored or binary.</param>
+        /// <param name="cancellationToken">Cancels reading <paramref name="data"/>.</param>
+        public static Task<VerificationResult> VerifyDetachedAsync(Stream data, ReadOnlyMemory<byte> signature, ReadOnlyMemory<byte> publicKeys, CancellationToken cancellationToken = default)
+        {
+            return VerifyDetachedAsync(data, ParseSignatures(signature.Span), ParseKeys(publicKeys.Span), DateTimeOffset.UtcNow, cancellationToken);
         }
 
         /// <summary>The clearsign check against an explicit clock, so tests can pin "now".</summary>
-        internal static bool VerifyClearsign(string clearsignedMessage, string publicKeyArmor, DateTimeOffset now, out string signedText)
+        internal static VerificationResult VerifyClearsign(string clearsignedMessage, string publicKeys, DateTimeOffset now)
         {
-            signedText = string.Empty;
+            return VerifyClearsign(clearsignedMessage, ParseKeys(publicKeys), now);
+        }
+
+        /// <summary>The detached check against an explicit clock, so tests can pin "now".</summary>
+        internal static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, string signature, string publicKeys, DateTimeOffset now)
+        {
+            return VerifyDetached(data, ParseSignatures(signature), ParseKeys(publicKeys), now);
+        }
+
+        /// <summary>The detached check against an explicit clock, so tests can pin "now".</summary>
+        internal static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> publicKeys, DateTimeOffset now)
+        {
+            return VerifyDetached(data, ParseSignatures(signature), ParseKeys(publicKeys), now);
+        }
+
+        internal static VerificationResult VerifyClearsign(string clearsignedMessage, ParsedInput<KeyRing> keys, DateTimeOffset now)
+        {
+            if (clearsignedMessage is null)
+            {
+                throw new ArgumentNullException(nameof(clearsignedMessage));
+            }
+
+            if (keys.Failure is not null)
+            {
+                return keys.Failure;
+            }
+
+            string signedText;
+            byte[] content;
+            byte[] signaturePackets;
             try
             {
                 ClearsignMessage clearsign = ClearsignParser.Parse(clearsignedMessage);
-                SignaturePacket signature = ParseSignaturePacket(clearsign.SignatureArmor.Body);
-
-                if (!signature.IsCanonicalTextDocument)
-                {
-                    return false;
-                }
-
-                // A "Hash" header that doesn't name the signature's actual algorithm means the
-                // message isn't what it claims to be - GnuPG rejects this too.
-                if (clearsign.HashHeaderAlgorithms.Count > 0 && !Contains(clearsign.HashHeaderAlgorithms, signature.HashAlgorithm))
-                {
-                    return false;
-                }
-
-                string canonicalText = ClearsignCanonicalizer.CanonicalizeText(clearsign.DashEscapedBodyLines);
-                byte[] content = ClearsignCanonicalizer.Encode(canonicalText);
-                PublicKeyBlock publicKey = PublicKeyBlock.Parse(publicKeyArmor, now);
-                if (!VerifySignature(publicKey, signature, content, now))
-                {
-                    return false;
-                }
-
-                signedText = canonicalText;
-                return true;
+                signedText = ClearsignCanonicalizer.CanonicalizeText(clearsign.DashEscapedBodyLines);
+                content = ClearsignCanonicalizer.Encode(signedText);
+                signaturePackets = clearsign.SignatureArmor.Body;
             }
-            catch (FailClosedException)
+            catch (FailClosedException ex)
             {
-                return false;
+                return new VerificationResult(VerificationStatus.MalformedInput, "The clearsigned message is malformed: " + ex.Message);
+            }
+
+            using (DocumentVerification verification = DocumentVerification.Start(signaturePackets, keys.Value!, isClearsign: true))
+            {
+                verification.Update(content, 0, content.Length);
+                return verification.Complete(now, signedText);
             }
         }
 
-        /// <summary>The detached-signature check against an explicit clock, so tests can pin "now".</summary>
-        internal static bool VerifyDetached(ReadOnlySpan<byte> data, string signatureArmor, string publicKeyArmor, DateTimeOffset now)
+        internal static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, ParsedInput<byte[]> signatures, ParsedInput<KeyRing> keys, DateTimeOffset now)
         {
-            byte[] content = data.ToArray();
+            using (DocumentVerification verification = StartDetached(signatures, keys))
+            {
+                byte[] content = data.ToArray();
+                verification.Update(content, 0, content.Length);
+                return verification.Complete(now, signedText: null);
+            }
+        }
+
+        internal static VerificationResult VerifyDetached(Stream data, ParsedInput<byte[]> signatures, ParsedInput<KeyRing> keys, DateTimeOffset now)
+        {
+            if (data is null)
+            {
+                throw new ArgumentNullException(nameof(data));
+            }
+
+            using (DocumentVerification verification = StartDetached(signatures, keys))
+            {
+                var buffer = new byte[StreamBufferSize];
+                int read;
+                while (verification.NeedsContent && (read = data.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    verification.Update(buffer, 0, read);
+                }
+
+                return verification.Complete(now, signedText: null);
+            }
+        }
+
+        internal static async Task<VerificationResult> VerifyDetachedAsync(Stream data, ParsedInput<byte[]> signatures, ParsedInput<KeyRing> keys, DateTimeOffset now, CancellationToken cancellationToken)
+        {
+            if (data is null)
+            {
+                throw new ArgumentNullException(nameof(data));
+            }
+
+            using (DocumentVerification verification = StartDetached(signatures, keys))
+            {
+                var buffer = new byte[StreamBufferSize];
+                int read;
+                while (verification.NeedsContent && (read = await data.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
+                {
+                    verification.Update(buffer, 0, read);
+                }
+
+                return verification.Complete(now, signedText: null);
+            }
+        }
+
+        internal static ParsedInput<KeyRing> ParseKeys(string publicKeys)
+        {
+            if (publicKeys is null)
+            {
+                throw new ArgumentNullException(nameof(publicKeys));
+            }
+
+            return ParseKeys(() => PacketInput.Decode(publicKeys, PublicKeyLabel));
+        }
+
+        internal static ParsedInput<KeyRing> ParseKeys(ReadOnlySpan<byte> publicKeys)
+        {
+            byte[] copy = publicKeys.ToArray();
+            return ParseKeys(() => PacketInput.Decode(copy, PublicKeyLabel));
+        }
+
+        internal static ParsedInput<byte[]> ParseSignatures(string signature)
+        {
+            if (signature is null)
+            {
+                throw new ArgumentNullException(nameof(signature));
+            }
+
+            return ParseSignatures(() => PacketInput.Decode(signature, SignatureLabel));
+        }
+
+        internal static ParsedInput<byte[]> ParseSignatures(ReadOnlySpan<byte> signature)
+        {
+            byte[] copy = signature.ToArray();
+            return ParseSignatures(() => PacketInput.Decode(copy, SignatureLabel));
+        }
+
+        private static ParsedInput<KeyRing> ParseKeys(Func<byte[]> decode)
+        {
             try
             {
-                AsciiArmorBlock signatureBlock = AsciiArmorReader.Read(signatureArmor);
-                if (!string.Equals(signatureBlock.Label, "SIGNATURE", StringComparison.Ordinal))
-                {
-                    return false;
-                }
-
-                SignaturePacket signature = ParseSignaturePacket(signatureBlock.Body);
-                if (!signature.IsBinaryDocument)
-                {
-                    return false;
-                }
-
-                PublicKeyBlock publicKey = PublicKeyBlock.Parse(publicKeyArmor, now);
-                return VerifySignature(publicKey, signature, content, now);
+                return new ParsedInput<KeyRing>(KeyRing.Parse(decode()), null);
             }
-            catch (FailClosedException)
+            catch (FailClosedException ex)
             {
-                return false;
+                return new ParsedInput<KeyRing>(null, new VerificationResult(VerificationStatus.InvalidPublicKey, "The public key input is unusable: " + ex.Message));
             }
         }
 
-        private static SignaturePacket ParseSignaturePacket(byte[] armorBody)
+        private static ParsedInput<byte[]> ParseSignatures(Func<byte[]> decode)
         {
-            // A signature armor block (a detached .sig/.asc, or a clearsigned message's trailing
-            // block) is exactly one Signature packet by construction - RFC 4880 has no notion of
-            // "extra" packets belonging there. Anything other than exactly one Signature-tagged
-            // packet is treated as malformed rather than silently picking the first match, since
-            // silently ignoring extra/duplicate packets is exactly the kind of parsing ambiguity
-            // SPEC.md's fail-closed rule is meant to catch. Contrast with PublicKeyBlock.Parse,
-            // which is deliberately permissive because a real public key block legitimately
-            // contains several other packet types by design (User ID, self-signatures, subkeys).
-            List<Packet> packets = PacketReader.ReadAll(armorBody);
-            if (packets.Count != 1 || packets[0].Header.Tag != PacketTag.Signature)
+            try
             {
-                throw new FailClosedException("Expected exactly one Signature packet in the signature armor block.");
+                return new ParsedInput<byte[]>(decode(), null);
             }
-
-            return SignaturePacket.Parse(packets[0].Body);
+            catch (FailClosedException ex)
+            {
+                return new ParsedInput<byte[]>(null, new VerificationResult(VerificationStatus.MalformedInput, "The signature is malformed: " + ex.Message));
+            }
         }
 
-        private static bool VerifySignature(PublicKeyBlock publicKey, SignaturePacket signature, byte[] content, DateTimeOffset now)
+        private static DocumentVerification StartDetached(ParsedInput<byte[]> signatures, ParsedInput<KeyRing> keys)
         {
-            DateTimeOffset createdAt = SignatureVerifier.GetCreationTime(signature);
-
-            // A signature can't predate the key that made it.
-            if (createdAt < publicKey.PrimaryKey.CreatedAt)
+            if (signatures.Failure is not null)
             {
-                return false;
+                return DocumentVerification.Failed(signatures.Failure.Status, signatures.Failure.Message);
             }
 
-            if (!SignatureVerifier.IsUnexpired(signature, now))
+            if (keys.Failure is not null)
             {
-                return false;
+                return DocumentVerification.Failed(keys.Failure.Status, keys.Failure.Message);
             }
 
-            // The key must be valid both now and when it made the signature.
-            if (publicKey.ExpiresAt.HasValue && (now >= publicKey.ExpiresAt.Value || createdAt >= publicKey.ExpiresAt.Value))
-            {
-                return false;
-            }
-
-            return SignatureVerifier.VerifyCryptographic(publicKey.PrimaryKey, signature, content);
+            return DocumentVerification.Start(signatures.Value!, keys.Value!, isClearsign: false);
         }
 
-        private static bool Contains<T>(IReadOnlyList<T> list, T value)
+        /// <summary>Parsed signature or key input, or the result to report because it couldn't be parsed.</summary>
+        internal sealed class ParsedInput<T>
+            where T : class
         {
-            foreach (T item in list)
+            public ParsedInput(T? value, VerificationResult? failure)
             {
-                if (EqualityComparer<T>.Default.Equals(item, value))
-                {
-                    return true;
-                }
+                Value = value;
+                Failure = failure;
             }
 
-            return false;
+            public T? Value { get; }
+
+            public VerificationResult? Failure { get; }
         }
     }
 }

@@ -95,8 +95,8 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
             string publicKeyArmor = ArmorPublicKey(key.PublicKey);
 
             // Act
-            bool validNow = OpenPgpVerifier.VerifyDetached(Data, signatureArmor, publicKeyArmor, now.AddMinutes(1));
-            bool validLater = OpenPgpVerifier.VerifyDetached(Data, signatureArmor, publicKeyArmor, now.AddHours(2));
+            bool validNow = OpenPgpVerifier.VerifyDetached(Data, signatureArmor, publicKeyArmor, now.AddMinutes(1)).IsValid;
+            bool validLater = OpenPgpVerifier.VerifyDetached(Data, signatureArmor, publicKeyArmor, now.AddHours(2)).IsValid;
 
             // Assert
             Assert.True(validNow);
@@ -114,8 +114,8 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
             string publicKeyArmor = ArmorPublicKey(certified);
 
             // Act
-            bool validNow = OpenPgpVerifier.VerifyDetached(Data, signatureArmor, publicKeyArmor, now.AddMinutes(1));
-            bool validLater = OpenPgpVerifier.VerifyDetached(Data, signatureArmor, publicKeyArmor, now.AddHours(2));
+            bool validNow = OpenPgpVerifier.VerifyDetached(Data, signatureArmor, publicKeyArmor, now.AddMinutes(1)).IsValid;
+            bool validLater = OpenPgpVerifier.VerifyDetached(Data, signatureArmor, publicKeyArmor, now.AddHours(2)).IsValid;
 
             // Assert
             Assert.True(validNow);
@@ -133,7 +133,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
             string publicKeyArmor = ArmorPublicKey(certified);
 
             // Act: even with a clock still inside the key's lifetime.
-            bool result = OpenPgpVerifier.VerifyDetached(Data, signatureArmor, publicKeyArmor, keyCreated.AddMinutes(1));
+            bool result = OpenPgpVerifier.VerifyDetached(Data, signatureArmor, publicKeyArmor, keyCreated.AddMinutes(1)).IsValid;
 
             // Assert
             Assert.False(result);
@@ -152,7 +152,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
             string publicKeyArmor = ArmorPublicKey(certified);
 
             // Act
-            bool result = OpenPgpVerifier.VerifyDetached(Data, signatureArmor, publicKeyArmor, now.AddHours(2));
+            bool result = OpenPgpVerifier.VerifyDetached(Data, signatureArmor, publicKeyArmor, now.AddHours(2)).IsValid;
 
             // Assert
             Assert.True(result);
@@ -171,7 +171,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
             string publicKeyArmor = ArmorPublicKey(certified);
 
             // Act
-            bool result = OpenPgpVerifier.VerifyDetached(Data, signatureArmor, publicKeyArmor, now.AddHours(2));
+            bool result = OpenPgpVerifier.VerifyDetached(Data, signatureArmor, publicKeyArmor, now.AddHours(2)).IsValid;
 
             // Assert
             Assert.True(result);
@@ -187,7 +187,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
             string publicKeyArmor = ArmorPublicKey(key.PublicKey);
 
             // Act
-            bool result = OpenPgpVerifier.VerifyDetached(Data, signatureArmor, publicKeyArmor, now);
+            bool result = OpenPgpVerifier.VerifyDetached(Data, signatureArmor, publicKeyArmor, now).IsValid;
 
             // Assert
             Assert.False(result);

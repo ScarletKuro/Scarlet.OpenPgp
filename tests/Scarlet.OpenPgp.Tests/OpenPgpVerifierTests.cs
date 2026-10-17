@@ -28,12 +28,15 @@ namespace Scarlet.OpenPgp.Tests
             string expectedSignedText = System.IO.File.ReadAllText("TestAssets/bun-release/SHASUMS256.txt");
 
             // Act
-            bool result = OpenPgpVerifier.VerifyClearsign(clearsignedMessage, publicKeyArmor, out string signedText);
+            VerificationResult result = OpenPgpVerifier.VerifyClearsign(clearsignedMessage, publicKeyArmor);
 
             // Assert: the returned text is exactly the original SHASUMS256.txt, CRLF-separated.
-            Assert.True(result);
-            Assert.Equal(expectedSignedText.Replace("\r\n", "\n"), signedText.Replace("\r\n", "\n"));
-            Assert.DoesNotContain("PGP", signedText);
+            Assert.True(result.IsValid, result.ToString());
+            Assert.Equal(VerificationStatus.Valid, result.Status);
+            Assert.Equal("F3DCC08A8572C0749B3E18888EAB4D40A7B22B59", result.PrimaryKeyFingerprint);
+            Assert.NotNull(result.SignedText);
+            Assert.Equal(expectedSignedText.Replace("\r\n", "\n"), result.SignedText!.Replace("\r\n", "\n"));
+            Assert.DoesNotContain("PGP", result.SignedText);
         }
 
         private const string InjectedLine = "deadbeef00000000000000000000000000000000000000000000000000000000  bun-linux-x64.zip";
@@ -60,26 +63,43 @@ namespace Scarlet.OpenPgp.Tests
             Assert.NotEqual(original, tampered);
 
             // Act
-            bool result = OpenPgpVerifier.VerifyClearsign(tampered, publicKeyArmor, out string signedText);
+            VerificationResult result = OpenPgpVerifier.VerifyClearsign(tampered, publicKeyArmor);
 
             // Assert
-            Assert.False(result);
-            Assert.Equal(string.Empty, signedText);
+            Assert.False(result.IsValid);
+            Assert.Equal(VerificationStatus.MalformedInput, result.Status);
+            Assert.Null(result.SignedText);
         }
 
         [Fact]
-        public void VerifyClearsign_WithAHashHeaderThatDoesNotNameTheSignaturesAlgorithm_ShouldReturnFalse()
+        public void VerifyClearsign_WithAWellFormedHashHeaderNamingADifferentAlgorithm_ShouldIgnoreIt()
         {
-            // Arrange: Bun's signature uses SHA-512.
+            // Arrange: Bun's signature uses SHA-512. RFC 9580 §6.2.2.3: a conformant Hash header's
+            // contents MUST be ignored in favor of the signature's own hash algorithm.
             string original = System.IO.File.ReadAllText("TestAssets/bun-release/SHASUMS256.txt.asc").Replace("\r\n", "\n");
             string publicKeyArmor = System.IO.File.ReadAllText("TestAssets/bun-release/bun-public-key.asc");
-            string tampered = original.Replace("Hash: SHA512\n", "Hash: SHA256\n");
+            string relabeled = original.Replace("Hash: SHA512\n", "Hash: SHA256\n");
 
             // Act
-            bool result = OpenPgpVerifier.VerifyClearsign(tampered, publicKeyArmor, out _);
+            VerificationResult result = OpenPgpVerifier.VerifyClearsign(relabeled, publicKeyArmor);
 
             // Assert
-            Assert.False(result);
+            Assert.True(result.IsValid, result.ToString());
+        }
+
+        [Fact]
+        public void VerifyClearsign_WithANonConformantHashHeader_ShouldReturnMalformedInput()
+        {
+            // Arrange: RFC 9580 §6.2.2.3 - decline anything but a list of known hash names.
+            string original = System.IO.File.ReadAllText("TestAssets/bun-release/SHASUMS256.txt.asc").Replace("\r\n", "\n");
+            string publicKeyArmor = System.IO.File.ReadAllText("TestAssets/bun-release/bun-public-key.asc");
+            string tampered = original.Replace("Hash: SHA512\n", "Hash: SHA512 bun-linux-x64.zip\n");
+
+            // Act
+            VerificationResult result = OpenPgpVerifier.VerifyClearsign(tampered, publicKeyArmor);
+
+            // Assert
+            Assert.Equal(VerificationStatus.MalformedInput, result.Status);
         }
 
         [Fact]
@@ -90,7 +110,7 @@ namespace Scarlet.OpenPgp.Tests
             byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
 
             // Act
-            bool result = OpenPgpVerifier.VerifyDetached(data, SignatureArmor, PublicKeyArmor, new DateTimeOffset(2100, 1, 1, 0, 0, 0, TimeSpan.Zero));
+            bool result = OpenPgpVerifier.VerifyDetached(data, SignatureArmor, PublicKeyArmor, new DateTimeOffset(2100, 1, 1, 0, 0, 0, TimeSpan.Zero)).IsValid;
 
             // Assert
             Assert.True(result);
@@ -139,7 +159,7 @@ namespace Scarlet.OpenPgp.Tests
             byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
 
             // Act
-            bool result = OpenPgpVerifier.VerifyDetached(data, SignatureArmor, PublicKeyArmor);
+            bool result = OpenPgpVerifier.VerifyDetached(data, SignatureArmor, PublicKeyArmor).IsValid;
 
             // Assert
             Assert.True(result);
@@ -152,7 +172,7 @@ namespace Scarlet.OpenPgp.Tests
             byte[] data = Encoding.ASCII.GetBytes("OpenPGX");
 
             // Act
-            bool result = OpenPgpVerifier.VerifyDetached(data, SignatureArmor, PublicKeyArmor);
+            bool result = OpenPgpVerifier.VerifyDetached(data, SignatureArmor, PublicKeyArmor).IsValid;
 
             // Assert
             Assert.False(result);
@@ -170,18 +190,17 @@ namespace Scarlet.OpenPgp.Tests
             byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
 
             // Act
-            bool result = OpenPgpVerifier.VerifyDetached(data, tamperedSignatureArmor, PublicKeyArmor);
+            bool result = OpenPgpVerifier.VerifyDetached(data, tamperedSignatureArmor, PublicKeyArmor).IsValid;
 
             // Assert
             Assert.False(result);
         }
 
         [Fact]
-        public void VerifyDetached_WithTwoSignaturePacketsInTheArmorBlock_ShouldReturnFalse()
+        public void VerifyDetached_WithTwoSignaturePacketsInTheArmorBlock_ShouldVerifyEither()
         {
-            // Arrange: a signature armor block is expected to contain exactly one packet. Smuggling
-            // in a second (even an otherwise-valid, duplicate) Signature packet must not be silently
-            // resolved by picking the first one.
+            // Arrange: a detached signature may hold several signatures (e.g. several release
+            // managers signing the same file); any one valid signature by a supplied key suffices.
             byte[] doubled = new byte[Ed25519SignaturePacketBytes.Length * 2];
             Array.Copy(Ed25519SignaturePacketBytes, 0, doubled, 0, Ed25519SignaturePacketBytes.Length);
             Array.Copy(Ed25519SignaturePacketBytes, 0, doubled, Ed25519SignaturePacketBytes.Length, Ed25519SignaturePacketBytes.Length);
@@ -189,10 +208,27 @@ namespace Scarlet.OpenPgp.Tests
             byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
 
             // Act
-            bool result = OpenPgpVerifier.VerifyDetached(data, doubledSignatureArmor, PublicKeyArmor);
+            bool result = OpenPgpVerifier.VerifyDetached(data, doubledSignatureArmor, PublicKeyArmor).IsValid;
 
             // Assert
-            Assert.False(result);
+            Assert.True(result);
+        }
+
+        [Fact]
+        public void VerifyDetached_WithANonSignaturePacketInTheSignatureInput_ShouldReturnMalformedInput()
+        {
+            // Arrange: the signature followed by the public key packet - signature input holds
+            // signatures only.
+            byte[] mixed = new byte[Ed25519SignaturePacketBytes.Length + Ed25519PublicKeyPacketBytes.Length];
+            Array.Copy(Ed25519SignaturePacketBytes, 0, mixed, 0, Ed25519SignaturePacketBytes.Length);
+            Array.Copy(Ed25519PublicKeyPacketBytes, 0, mixed, Ed25519SignaturePacketBytes.Length, Ed25519PublicKeyPacketBytes.Length);
+            byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
+
+            // Act
+            VerificationResult result = OpenPgpVerifier.VerifyDetached(data, Armor("SIGNATURE", mixed), PublicKeyArmor);
+
+            // Assert
+            Assert.Equal(VerificationStatus.MalformedInput, result.Status);
         }
 
         [Fact]
@@ -205,7 +241,7 @@ namespace Scarlet.OpenPgp.Tests
             byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
 
             // Act
-            bool result = OpenPgpVerifier.VerifyDetached(data, SignatureArmor, wrongKeyArmor);
+            bool result = OpenPgpVerifier.VerifyDetached(data, SignatureArmor, wrongKeyArmor).IsValid;
 
             // Assert
             Assert.False(result);
@@ -221,7 +257,7 @@ namespace Scarlet.OpenPgp.Tests
             byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
 
             // Act
-            bool result = OpenPgpVerifier.VerifyDetached(data, SignatureArmor, mislabeledKeyArmor);
+            bool result = OpenPgpVerifier.VerifyDetached(data, SignatureArmor, mislabeledKeyArmor).IsValid;
 
             // Assert
             Assert.False(result);
@@ -234,7 +270,7 @@ namespace Scarlet.OpenPgp.Tests
             byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
 
             // Act
-            bool result = OpenPgpVerifier.VerifyDetached(data, "not armor at all", PublicKeyArmor);
+            bool result = OpenPgpVerifier.VerifyDetached(data, "not armor at all", PublicKeyArmor).IsValid;
 
             // Assert
             Assert.False(result);
@@ -247,7 +283,7 @@ namespace Scarlet.OpenPgp.Tests
             byte[] data = Encoding.ASCII.GetBytes("OpenPGP");
 
             // Act
-            bool result = OpenPgpVerifier.VerifyDetached(data, SignatureArmor, "not armor at all");
+            bool result = OpenPgpVerifier.VerifyDetached(data, SignatureArmor, "not armor at all").IsValid;
 
             // Assert
             Assert.False(result);
@@ -257,7 +293,7 @@ namespace Scarlet.OpenPgp.Tests
         public void VerifyDetached_WithEmptyStrings_ShouldReturnFalseNotThrow()
         {
             // Act
-            bool result = OpenPgpVerifier.VerifyDetached(Array.Empty<byte>(), string.Empty, string.Empty);
+            bool result = OpenPgpVerifier.VerifyDetached(Array.Empty<byte>(), string.Empty, string.Empty).IsValid;
 
             // Assert
             Assert.False(result);
@@ -267,7 +303,7 @@ namespace Scarlet.OpenPgp.Tests
         public void VerifyClearsign_WithGarbageInput_ShouldReturnFalseNotThrow()
         {
             // Act
-            bool result = OpenPgpVerifier.VerifyClearsign("not a clearsigned message", PublicKeyArmor, out _);
+            bool result = OpenPgpVerifier.VerifyClearsign("not a clearsigned message", PublicKeyArmor).IsValid;
 
             // Assert
             Assert.False(result);

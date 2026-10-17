@@ -74,14 +74,18 @@ namespace Scarlet.OpenPgp.Tests.Armor
         }
 
         [Fact]
-        public void Read_WithMismatchedCrc24_ShouldFailClosed()
+        public void Read_WithMismatchedCrc24_ShouldStillSucceed()
         {
-            // Arrange
+            // Arrange: RFC 9580 §6.1 - an implementation MUST NOT reject armor whose CRC24 is
+            // missing, malformed, or wrong. Tampering is the signature check's job.
             byte[] body = Encoding.ASCII.GetBytes("abc");
             string armor = BuildArmor("SIGNATURE", "", body, corruptCrc: true);
 
-            // Act & Assert
-            Assert.Throws<FailClosedException>(() => AsciiArmorReader.Read(armor));
+            // Act
+            AsciiArmorBlock block = AsciiArmorReader.Read(armor);
+
+            // Assert
+            Assert.Equal(body, block.Body);
         }
 
         [Fact]

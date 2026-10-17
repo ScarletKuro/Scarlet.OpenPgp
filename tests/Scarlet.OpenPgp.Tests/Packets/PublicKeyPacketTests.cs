@@ -42,8 +42,8 @@ namespace Scarlet.OpenPgp.Tests.Packets
 
             // Assert
             Assert.Equal(PublicKeyAlgorithm.EdDsaLegacy, key.Algorithm);
-            Assert.NotNull(key.EdDsa);
-            Assert.Equal(Ed25519ExpectedPoint, key.EdDsa.CompressedPoint);
+            Assert.NotNull(key.Ed25519);
+            Assert.Equal(Ed25519ExpectedPoint, key.Ed25519.CompressedPoint);
         }
 
         [Fact]

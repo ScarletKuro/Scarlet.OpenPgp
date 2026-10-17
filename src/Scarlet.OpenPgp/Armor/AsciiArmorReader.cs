@@ -6,10 +6,14 @@ using Scarlet.OpenPgp.Internal;
 namespace Scarlet.OpenPgp.Armor
 {
     /// <summary>
-    /// Parses a single OpenPGP ASCII armor block (RFC 4880 §6.2): the "-----BEGIN PGP ...-----" /
-    /// "-----END PGP ...-----" envelope, its headers, and its base64 body, then verifies the
-    /// trailing CRC24 checksum line against the decoded bytes.
+    /// Parses OpenPGP ASCII armor blocks (RFC 9580 §6.2): the "-----BEGIN PGP ...-----" /
+    /// "-----END PGP ...-----" envelope, its headers, and its base64 body.
     /// </summary>
+    /// <remarks>
+    /// The CRC24 checksum line is optional and is not checked: RFC 9580 §6.1 says an implementation
+    /// MUST NOT reject armor whose checksum is missing, malformed, or wrong. It only ever guarded
+    /// against transmission damage, never tampering - the signature check covers that.
+    /// </remarks>
     internal static class AsciiArmorReader
     {
         private const string BeginPrefix = "-----BEGIN PGP ";
@@ -18,21 +22,51 @@ namespace Scarlet.OpenPgp.Armor
 
         /// <summary>
         /// Reads the first armor block found in <paramref name="armorText"/>. Any framing problem
-        /// within that block (missing BEGIN/END, malformed base64, missing or mismatched CRC24)
-        /// fails closed via <see cref="FailClosedException"/> rather than returning a partial
-        /// result. Content before the BEGIN line or after the matching END line - a mail/commentary
-        /// preamble, unrelated trailing text, even a second concatenated block - is intentionally
-        /// ignored: confirmed against real GnuPG 2.4.9, which tolerates exactly this (leading text
-        /// before the armor, trailing text after it, and even multiple detached-signature packets
-        /// concatenated in the same file) for both detached and clearsigned verification. This
-        /// library's single-bool API only ever reports on the *first* block found, matching "take
-        /// the first match" rather than gpg's fuller multi-signature handling - see SPEC.md.
+        /// within that block (missing BEGIN/END, mismatched labels, malformed base64) fails closed via
+        /// <see cref="FailClosedException"/> rather than returning a partial result. Content before
+        /// the BEGIN line or after the matching END line is not inspected; callers that must reject
+        /// it (clearsigned messages) check for it themselves.
         /// </summary>
         public static AsciiArmorBlock Read(string armorText)
         {
             string[] lines = SplitLines(armorText);
-
             int i = 0;
+            AsciiArmorBlock? block = ReadNext(lines, ref i);
+            if (block is null)
+            {
+                throw new FailClosedException("No ASCII armor BEGIN line found.");
+            }
+
+            return block;
+        }
+
+        /// <summary>
+        /// Reads every armor block in <paramref name="armorText"/>, in order - e.g. several key
+        /// blocks concatenated into one file. Text between and around blocks is ignored. Fails
+        /// closed if there is no block at all or any block is malformed.
+        /// </summary>
+        public static List<AsciiArmorBlock> ReadAll(string armorText)
+        {
+            string[] lines = SplitLines(armorText);
+            var blocks = new List<AsciiArmorBlock>();
+            int i = 0;
+            AsciiArmorBlock? block;
+            while ((block = ReadNext(lines, ref i)) is not null)
+            {
+                blocks.Add(block);
+            }
+
+            if (blocks.Count == 0)
+            {
+                throw new FailClosedException("No ASCII armor BEGIN line found.");
+            }
+
+            return blocks;
+        }
+
+        /// <summary>Reads the next block at or after line <paramref name="i"/>, leaving <paramref name="i"/> just past its END line; <c>null</c> when there are no more BEGIN lines.</summary>
+        private static AsciiArmorBlock? ReadNext(string[] lines, ref int i)
+        {
             while (i < lines.Length && !lines[i].StartsWith(BeginPrefix, StringComparison.Ordinal))
             {
                 i++;
@@ -40,7 +74,7 @@ namespace Scarlet.OpenPgp.Armor
 
             if (i == lines.Length)
             {
-                throw new FailClosedException("No ASCII armor BEGIN line found.");
+                return null;
             }
 
             string label = ExtractLabel(lines[i], BeginPrefix);
@@ -52,7 +86,8 @@ namespace Scarlet.OpenPgp.Armor
                 int colon = lines[i].IndexOf(':');
                 if (colon < 0)
                 {
-                    throw new FailClosedException("Malformed armor header line: " + lines[i]);
+                    // No header block: the body starts right away (tolerated for robustness).
+                    break;
                 }
 
                 string key = lines[i].Substring(0, colon).Trim();
@@ -61,26 +96,22 @@ namespace Scarlet.OpenPgp.Armor
                 i++;
             }
 
-            // Skip the single blank line separating headers from the body. Its absence (body
-            // starting immediately) is tolerated for robustness, but headers must be terminated
-            // by *something* recognizable - we already stopped at the first non-header-shaped line.
+            // Skip the blank line separating headers from the body.
             if (i < lines.Length && lines[i].Length == 0)
             {
                 i++;
             }
 
             var bodyBuilder = new StringBuilder();
-            string? crcLine = null;
             while (i < lines.Length && !lines[i].StartsWith(EndPrefix, StringComparison.Ordinal))
             {
-                if (lines[i].StartsWith("=", StringComparison.Ordinal) && lines[i].Length == 5)
+                // A line starting with '=' is the optional CRC24 checksum - base64 data lines can
+                // only end with '=' padding, never start with it.
+                if (!lines[i].StartsWith("=", StringComparison.Ordinal))
                 {
-                    crcLine = lines[i];
-                    i++;
-                    continue;
+                    bodyBuilder.Append(lines[i]);
                 }
 
-                bodyBuilder.Append(lines[i]);
                 i++;
             }
 
@@ -96,10 +127,7 @@ namespace Scarlet.OpenPgp.Armor
                     "ASCII armor END label \"" + endLabel + "\" does not match BEGIN label \"" + label + "\".");
             }
 
-            if (crcLine is null)
-            {
-                throw new FailClosedException("ASCII armor block is missing its CRC24 checksum line.");
-            }
+            i++;
 
             byte[] body;
             try
@@ -111,47 +139,18 @@ namespace Scarlet.OpenPgp.Armor
                 throw new FailClosedException("ASCII armor body is not valid base64.", ex);
             }
 
-            int expectedCrc = DecodeCrcLine(crcLine);
-            int actualCrc = Crc24.Compute(body);
-            if (expectedCrc != actualCrc)
-            {
-                throw new FailClosedException("ASCII armor CRC24 checksum does not match the decoded body.");
-            }
-
-            // Anything after this point (more text, a second armor block) is deliberately not
-            // inspected - see this method's doc comment.
             return new AsciiArmorBlock(label, headers, body);
         }
 
         private static string ExtractLabel(string line, string prefix)
         {
-            if (!line.EndsWith(TailMarker, StringComparison.Ordinal) || line.Length < prefix.Length + TailMarker.Length)
+            string trimmed = line.TrimEnd(' ', '\t');
+            if (!trimmed.EndsWith(TailMarker, StringComparison.Ordinal) || trimmed.Length < prefix.Length + TailMarker.Length)
             {
                 throw new FailClosedException("Malformed armor boundary line: " + line);
             }
 
-            return line.Substring(prefix.Length, line.Length - prefix.Length - TailMarker.Length);
-        }
-
-        private static int DecodeCrcLine(string crcLine)
-        {
-            // "=XXXX" where XXXX is the base64 encoding of the 3-byte (24-bit) CRC.
-            byte[] crcBytes;
-            try
-            {
-                crcBytes = Convert.FromBase64String(crcLine.Substring(1));
-            }
-            catch (FormatException ex)
-            {
-                throw new FailClosedException("ASCII armor CRC24 line is not valid base64.", ex);
-            }
-
-            if (crcBytes.Length != 3)
-            {
-                throw new FailClosedException("ASCII armor CRC24 line did not decode to 3 bytes.");
-            }
-
-            return (crcBytes[0] << 16) | (crcBytes[1] << 8) | crcBytes[2];
+            return trimmed.Substring(prefix.Length, trimmed.Length - prefix.Length - TailMarker.Length);
         }
 
         private static string[] SplitLines(string text)

@@ -17,5 +17,10 @@ namespace Scarlet.OpenPgp.Internal
         public FailClosedException(string message, Exception innerException) : base(message, innerException)
         {
         }
+
+        /// <summary>The input is well-formed but uses a version, algorithm, or feature this library doesn't support (as opposed to being malformed).</summary>
+        public bool IsUnsupported { get; private set; }
+
+        public static FailClosedException Unsupported(string message) => new FailClosedException(message) { IsUnsupported = true };
     }
 }

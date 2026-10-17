@@ -7,7 +7,7 @@ using Scarlet.OpenPgp.Internal;
 namespace Scarlet.OpenPgp.Clearsign
 {
     /// <summary>
-    /// Splits a clearsigned message (RFC 4880 §7) into its dash-escaped body lines, its "Hash"
+    /// Splits a clearsigned message (RFC 9580 §7) into its dash-escaped body lines, its "Hash"
     /// armor headers, and its trailing signature armor block.
     /// </summary>
     /// <remarks>
@@ -15,9 +15,10 @@ namespace Scarlet.OpenPgp.Clearsign
     /// in the same text as everything else, so any text the parser tolerates but doesn't sign is
     /// text a caller can mistake for signed content. The parser is therefore strict about
     /// everything outside the signed lines: only blank lines may precede the BEGIN line or follow
-    /// the END line, only "Hash" armor headers are accepted (the same rule GnuPG applies), every
-    /// body line starting with '-' must be dash-escaped, and a bare CR is rejected rather than
-    /// being guessed at as a line break.
+    /// the END line, only well-formed "Hash" armor headers are accepted (RFC 9580 §7.1 requires
+    /// declining anything else; their contents are otherwise ignored, §6.2.2.3), every body line
+    /// starting with '-' must be dash-escaped, and a bare CR is rejected rather than being guessed
+    /// at as a line break.
     /// </remarks>
     internal static class ClearsignParser
     {
@@ -137,6 +138,10 @@ namespace Scarlet.OpenPgp.Clearsign
                     return HashAlgorithmId.Sha384;
                 case "SHA512":
                     return HashAlgorithmId.Sha512;
+                case "SHA3-256":
+                    return HashAlgorithmId.Sha3_256;
+                case "SHA3-512":
+                    return HashAlgorithmId.Sha3_512;
                 default:
                     throw new FailClosedException("Unrecognized hash algorithm name in clearsign \"Hash\" header.");
             }

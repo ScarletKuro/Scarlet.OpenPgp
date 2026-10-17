@@ -1,73 +1,172 @@
+using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using Scarlet.OpenPgp.Hashing;
 using Scarlet.OpenPgp.Internal;
 
 namespace Scarlet.OpenPgp.Packets
 {
-    /// <summary>A parsed v4 Signature packet (tag 2, RFC 4880 §5.2).</summary>
+    /// <summary>A parsed v4 or v6 Signature packet (tag 2, RFC 9580 §5.2.3).</summary>
     internal sealed class SignaturePacket
     {
-        private SignaturePacket(
-            byte version,
-            byte signatureTypeRaw,
-            PublicKeyAlgorithm publicKeyAlgorithm,
-            HashAlgorithmId hashAlgorithm,
-            byte[] hashedSubpacketData,
-            IReadOnlyList<SignatureSubpacket> hashedSubpackets,
-            IReadOnlyList<SignatureSubpacket> unhashedSubpackets,
-            byte[] leftHashBytes16,
-            BigInteger? rsaSignatureValue,
-            byte[]? edDsaSignatureValue)
+        private SignaturePacket(byte[] body)
         {
-            Version = version;
-            SignatureTypeRaw = signatureTypeRaw;
-            PublicKeyAlgorithm = publicKeyAlgorithm;
-            HashAlgorithm = hashAlgorithm;
-            HashedSubpacketData = hashedSubpacketData;
-            HashedSubpackets = hashedSubpackets;
-            UnhashedSubpackets = unhashedSubpackets;
-            LeftHashBytes16 = leftHashBytes16;
-            RsaSignatureValue = rsaSignatureValue;
-            EdDsaSignatureValue = edDsaSignatureValue;
+            Body = body;
         }
 
-        public byte Version { get; }
+        /// <summary>The packet body exactly as received.</summary>
+        public byte[] Body { get; }
 
-        public byte SignatureTypeRaw { get; }
+        public byte Version { get; private set; }
+
+        public byte SignatureTypeRaw { get; private set; }
 
         public bool IsBinaryDocument => SignatureTypeRaw == (byte)SignatureType.BinaryDocument;
 
         public bool IsCanonicalTextDocument => SignatureTypeRaw == (byte)SignatureType.CanonicalTextDocument;
 
-        public PublicKeyAlgorithm PublicKeyAlgorithm { get; }
+        public PublicKeyAlgorithm PublicKeyAlgorithm { get; private set; }
 
-        public HashAlgorithmId HashAlgorithm { get; }
+        public HashAlgorithmId HashAlgorithm { get; private set; }
 
-        /// <summary>The raw hashed-subpacket region bytes, needed verbatim by <see cref="Signing.SignatureHashBuilder"/>.</summary>
-        public byte[] HashedSubpacketData { get; }
+        /// <summary>
+        /// The packet body from the version octet through the end of the hashed subpackets - the part
+        /// of the signature that is itself hashed, before the trailer (RFC 9580 §5.2.4).
+        /// </summary>
+        public byte[] HashedPortion { get; private set; } = Array.Empty<byte>();
 
-        public IReadOnlyList<SignatureSubpacket> HashedSubpackets { get; }
+        /// <summary>The raw hashed-subpacket area bytes.</summary>
+        public byte[] HashedSubpacketData { get; private set; } = Array.Empty<byte>();
 
-        public IReadOnlyList<SignatureSubpacket> UnhashedSubpackets { get; }
+        public IReadOnlyList<SignatureSubpacket> HashedSubpackets { get; private set; } = Array.Empty<SignatureSubpacket>();
 
-        /// <summary>The 2-byte quick-check prefix of the expected hash (RFC 4880 §5.2.3), immediately preceding the signature MPIs.</summary>
-        public byte[] LeftHashBytes16 { get; }
+        public IReadOnlyList<SignatureSubpacket> UnhashedSubpackets { get; private set; } = Array.Empty<SignatureSubpacket>();
 
-        public BigInteger? RsaSignatureValue { get; }
+        /// <summary>The 2-byte quick-check prefix of the expected hash (RFC 9580 §5.2.3), immediately preceding the salt/signature values.</summary>
+        public byte[] LeftHashBytes16 { get; private set; } = Array.Empty<byte>();
 
-        /// <summary>The 64-byte native Ed25519 signature (R || S), reconstructed verbatim from its two MPI-wrapped halves.</summary>
-        public byte[]? EdDsaSignatureValue { get; }
+        /// <summary>The v6 signature salt, hashed before any other data (RFC 9580 §5.2.4). Empty for v4.</summary>
+        public byte[] Salt { get; private set; } = Array.Empty<byte>();
 
-        /// <summary>The issuer key ID (8 bytes), from a type-16 subpacket in either area (searched hashed-first, matching how GnuPG places it in the unhashed area for legacy v4 signatures).</summary>
+        public BigInteger? RsaSignatureValue { get; private set; }
+
+        /// <summary>The DSA or ECDSA signature value r.</summary>
+        public BigInteger? R { get; private set; }
+
+        /// <summary>The DSA or ECDSA signature value s.</summary>
+        public BigInteger? S { get; private set; }
+
+        /// <summary>The 64-byte native Ed25519 signature (R || S), for both EdDSALegacy (reconstructed from its two MPI-wrapped halves) and native Ed25519.</summary>
+        public byte[]? EdDsaSignatureValue { get; private set; }
+
+        /// <summary>The 114-byte native Ed448 signature.</summary>
+        public byte[]? Ed448SignatureValue { get; private set; }
+
+        /// <summary>The first issuer key ID (8 bytes) from a type-16 subpacket in either area (searched hashed-first, matching how GnuPG places it in the unhashed area for legacy v4 signatures).</summary>
         public byte[]? IssuerKeyId
         {
             get
             {
-                SignatureSubpacket? subpacket = HashedSubpackets.Concat(UnhashedSubpackets)
-                    .FirstOrDefault(s => s.Is(SignatureSubpacketType.IssuerKeyId));
-                return subpacket?.Data;
+                foreach (SignatureSubpacket subpacket in AllSubpackets())
+                {
+                    if (subpacket.Is(SignatureSubpacketType.IssuerKeyId) && subpacket.Data.Length == 8)
+                    {
+                        return subpacket.Data;
+                    }
+                }
+
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Every issuer key ID and fingerprint the signature names, from either area. They are only
+        /// hints for finding the right key - the unhashed area is unauthenticated - so a wrong hint
+        /// can make verification fail, never succeed.
+        /// </summary>
+        public IEnumerable<byte[]> IssuerFingerprints
+        {
+            get
+            {
+                foreach (SignatureSubpacket subpacket in AllSubpackets())
+                {
+                    if (subpacket.Is(SignatureSubpacketType.IssuerFingerprint) && subpacket.Data.Length > 1)
+                    {
+                        yield return subpacket.Data.AsSpan(1).ToArray();
+                    }
+                }
+            }
+        }
+
+        public IEnumerable<byte[]> IssuerKeyIds
+        {
+            get
+            {
+                foreach (SignatureSubpacket subpacket in AllSubpackets())
+                {
+                    if (subpacket.Is(SignatureSubpacketType.IssuerKeyId) && subpacket.Data.Length == 8)
+                    {
+                        yield return subpacket.Data;
+                    }
+                }
+            }
+        }
+
+        /// <summary>The key flags (RFC 9580 §5.2.3.29) from the hashed area, or <c>null</c> when absent.</summary>
+        public byte[]? KeyFlags => FindUniqueHashed(SignatureSubpacketType.KeyFlags)?.Data;
+
+        /// <summary>The machine-readable reason for revocation code (RFC 9580 §5.2.3.31) from the hashed area, or <c>null</c> when absent.</summary>
+        public byte? RevocationReason
+        {
+            get
+            {
+                SignatureSubpacket? subpacket = FindUniqueHashed(SignatureSubpacketType.ReasonForRevocation);
+                if (subpacket is null)
+                {
+                    return null;
+                }
+
+                if (subpacket.Data.Length < 1)
+                {
+                    throw new FailClosedException("Reason for Revocation subpacket is empty.");
+                }
+
+                return subpacket.Data[0];
+            }
+        }
+
+        /// <summary>
+        /// The embedded signatures (RFC 9580 §5.2.3.34) from either area - a signing subkey's
+        /// primary-key binding "back-signature" lives here. Location doesn't matter for security: an
+        /// embedded signature is only ever trusted after it verifies cryptographically on its own.
+        /// Malformed ones are skipped.
+        /// </summary>
+        public IEnumerable<SignaturePacket> EmbeddedSignatures
+        {
+            get
+            {
+                foreach (SignatureSubpacket subpacket in AllSubpackets())
+                {
+                    if (!subpacket.Is(SignatureSubpacketType.EmbeddedSignature))
+                    {
+                        continue;
+                    }
+
+                    SignaturePacket? embedded = null;
+                    try
+                    {
+                        embedded = Parse(subpacket.Data);
+                    }
+                    catch (FailClosedException)
+                    {
+                        // A malformed embedded signature can't be a valid back-signature.
+                    }
+
+                    if (embedded is not null)
+                    {
+                        yield return embedded;
+                    }
+                }
             }
         }
 
@@ -80,7 +179,247 @@ namespace Scarlet.OpenPgp.Packets
         public bool TryGetHashedTime(SignatureSubpacketType type, out uint value)
         {
             value = 0;
-            bool found = false;
+            SignatureSubpacket? subpacket = FindUniqueHashed(type);
+            if (subpacket is null)
+            {
+                return false;
+            }
+
+            if (subpacket.Data.Length != 4)
+            {
+                throw new FailClosedException("Hashed time subpacket (type " + (byte)type + ") must be exactly 4 bytes.");
+            }
+
+            value = ((uint)subpacket.Data[0] << 24) | ((uint)subpacket.Data[1] << 16) | ((uint)subpacket.Data[2] << 8) | subpacket.Data[3];
+            return true;
+        }
+
+        public static SignaturePacket Parse(byte[] body)
+        {
+            if (body.Length < 4)
+            {
+                throw new FailClosedException("Signature packet body is too short to contain a signature header.");
+            }
+
+            var signature = new SignaturePacket(body);
+            byte version = body[0];
+            if (version != 4 && version != 6)
+            {
+                throw FailClosedException.Unsupported("Only v4 and v6 signature packets are supported (got version " + version + ").");
+            }
+
+            signature.Version = version;
+            signature.SignatureTypeRaw = body[1];
+            signature.PublicKeyAlgorithm = (PublicKeyAlgorithm)body[2];
+            signature.HashAlgorithm = (HashAlgorithmId)body[3];
+
+            // v4 subpacket areas have 2-octet lengths, v6 4-octet ones (RFC 9580 §5.2.3).
+            int lengthFieldSize = version == 6 ? 4 : 2;
+            int offset = 4;
+            signature.HashedSubpacketData = ReadSubpacketRegion(body, ref offset, lengthFieldSize, "hashed");
+            signature.HashedPortion = body.AsSpan(0, offset).ToArray();
+            List<SignatureSubpacket> hashedSubpackets = SubpacketReader.ReadAll(signature.HashedSubpacketData);
+            signature.HashedSubpackets = hashedSubpackets;
+
+            byte[] unhashedSubpacketData = ReadSubpacketRegion(body, ref offset, lengthFieldSize, "unhashed");
+            List<SignatureSubpacket> unhashedSubpackets = SubpacketReader.ReadAll(unhashedSubpacketData);
+            signature.UnhashedSubpackets = unhashedSubpackets;
+
+            signature.ValidateSubpackets(hashedSubpackets);
+            signature.ValidateSubpackets(unhashedSubpackets);
+
+            signature.LeftHashBytes16 = ReadFixed(body, ref offset, 2, "left-hash-bits field");
+
+            if (version == 6)
+            {
+                int saltSize = ReadFixed(body, ref offset, 1, "salt size")[0];
+                if (saltSize != HashContext.V6SaltSize(signature.HashAlgorithm))
+                {
+                    throw new FailClosedException("v6 signature salt size does not match its hash algorithm (RFC 9580 Table 23).");
+                }
+
+                signature.Salt = ReadFixed(body, ref offset, saltSize, "salt");
+            }
+
+            signature.ParseSignatureValues(body, ref offset);
+
+            if (offset != body.Length)
+            {
+                throw new FailClosedException("Signature packet body has unexpected trailing data after its signature value.");
+            }
+
+            return signature;
+        }
+
+        private void ParseSignatureValues(byte[] body, ref int offset)
+        {
+            switch (PublicKeyAlgorithm)
+            {
+                case PublicKeyAlgorithm.RsaEncryptOrSign:
+                case PublicKeyAlgorithm.RsaSignOnly:
+                    RsaSignatureValue = ReadCanonicalMpi(body, ref offset);
+                    break;
+
+                case PublicKeyAlgorithm.Dsa:
+                case PublicKeyAlgorithm.Ecdsa:
+                    // Canonical, like RSA's: these are true integers, so a second encoding of the
+                    // same value would only be a way to make a different-looking copy of a signature.
+                    R = ReadCanonicalMpi(body, ref offset);
+                    S = ReadCanonicalMpi(body, ref offset);
+                    break;
+
+                case PublicKeyAlgorithm.EdDsaLegacy:
+                    if (Version == 6)
+                    {
+                        throw new FailClosedException("EdDSALegacy must not be used in v6 signatures (RFC 9580 §5.2.3.3).");
+                    }
+
+                    EdDsaSignatureValue = ParseEdDsaLegacySignature(body, ref offset);
+                    break;
+
+                case PublicKeyAlgorithm.Ed25519:
+                    EdDsaSignatureValue = ReadFixed(body, ref offset, 64, "Ed25519 signature");
+                    break;
+
+                case PublicKeyAlgorithm.Ed448:
+                    Ed448SignatureValue = ReadFixed(body, ref offset, 114, "Ed448 signature");
+                    break;
+
+                default:
+                    throw FailClosedException.Unsupported("Unsupported signature public-key algorithm: " + (byte)PublicKeyAlgorithm + ".");
+            }
+        }
+
+        private static byte[] ReadSubpacketRegion(byte[] body, ref int offset, int lengthFieldSize, string which)
+        {
+            byte[] lengthField = ReadFixed(body, ref offset, lengthFieldSize, which + " subpacket count");
+            long length = 0;
+            foreach (byte b in lengthField)
+            {
+                length = (length << 8) | b;
+            }
+
+            // Widened to long: a v6 4-octet count can be up to 2^32 - 1.
+            if (offset + length > body.Length)
+            {
+                throw new FailClosedException("Unexpected end of input while reading the " + which + " subpacket data (truncated).");
+            }
+
+            return ReadFixed(body, ref offset, (int)length, which + " subpacket data");
+        }
+
+        private static byte[] ReadFixed(byte[] body, ref int offset, int length, string what)
+        {
+            if ((long)offset + length > body.Length)
+            {
+                throw new FailClosedException("Unexpected end of input while reading the " + what + ".");
+            }
+
+            var result = new byte[length];
+            Array.Copy(body, offset, result, 0, length);
+            offset += length;
+            return result;
+        }
+
+        private static BigInteger ReadCanonicalMpi(byte[] body, ref int offset)
+        {
+            (BigInteger value, int consumed) = Mpi.ReadFrom(body, offset, requireCanonical: true);
+            offset += consumed;
+            return value;
+        }
+
+        /// <summary>
+        /// Rejects malformed subpackets that affect verification, and any critical subpacket whose
+        /// meaning this library doesn't implement (RFC 9580 §5.2.3.7: "critical" means the verifier
+        /// must understand it). The informational types (preferences, policy URI, features, ...) count
+        /// as understood: they carry no meaning for whether a signature is valid. Malformed
+        /// *non-critical* instances of the time/issuer types are left for the code that reads them,
+        /// which fails closed if it ever needs one.
+        /// </summary>
+        private void ValidateSubpackets(List<SignatureSubpacket> subpackets)
+        {
+            foreach (SignatureSubpacket subpacket in subpackets)
+            {
+                // RFC 9580 §5.2.3.35: an Issuer Fingerprint whose version doesn't match the
+                // signature's makes the whole signature malformed, critical or not.
+                if (subpacket.Is(SignatureSubpacketType.IssuerFingerprint) && subpacket.Data.Length > 0 && subpacket.Data[0] != Version)
+                {
+                    throw new FailClosedException("Issuer Fingerprint version does not match the signature version.");
+                }
+
+                if (!subpacket.Critical)
+                {
+                    continue;
+                }
+
+                switch ((SignatureSubpacketType)subpacket.RawType)
+                {
+                    case SignatureSubpacketType.SignatureCreationTime:
+                    case SignatureSubpacketType.SignatureExpirationTime:
+                    case SignatureSubpacketType.KeyExpirationTime:
+                        RequireLength(subpacket, 4);
+                        break;
+
+                    case SignatureSubpacketType.IssuerKeyId:
+                        RequireLength(subpacket, 8);
+                        break;
+
+                    case SignatureSubpacketType.IssuerFingerprint:
+                        RequireLength(subpacket, Version == 6 ? 33 : 21);
+                        break;
+
+                    case SignatureSubpacketType.ReasonForRevocation:
+                        if (subpacket.Data.Length < 1)
+                        {
+                            throw new FailClosedException("Critical Reason for Revocation subpacket is empty.");
+                        }
+
+                        break;
+
+                    case SignatureSubpacketType.EmbeddedSignature:
+                        Parse(subpacket.Data); // throws if malformed
+                        break;
+
+                    case SignatureSubpacketType.ExportableCertification:
+                    case SignatureSubpacketType.TrustSignature:
+                    case SignatureSubpacketType.Revocable:
+                    case SignatureSubpacketType.PreferredSymmetricCiphers:
+                    case SignatureSubpacketType.RevocationKey:
+                    case SignatureSubpacketType.PreferredHashAlgorithms:
+                    case SignatureSubpacketType.PreferredCompressionAlgorithms:
+                    case SignatureSubpacketType.KeyServerPreferences:
+                    case SignatureSubpacketType.PreferredKeyServer:
+                    case SignatureSubpacketType.PrimaryUserId:
+                    case SignatureSubpacketType.PolicyUri:
+                    case SignatureSubpacketType.KeyFlags:
+                    case SignatureSubpacketType.SignersUserId:
+                    case SignatureSubpacketType.Features:
+                    case SignatureSubpacketType.PreferredAeadAlgorithms:
+                    case SignatureSubpacketType.PreferredAeadCiphersuites:
+                        break;
+
+                    default:
+                        // Includes Regular Expression, Notation Data, Signature Target and Intended
+                        // Recipient Fingerprint: each changes what the signature means in ways this
+                        // verifier doesn't evaluate.
+                        throw new FailClosedException(
+                            "Signature contains an unrecognized critical subpacket (type " + subpacket.RawType + "); failing closed per RFC 9580.");
+                }
+            }
+        }
+
+        private static void RequireLength(SignatureSubpacket subpacket, int length)
+        {
+            if (subpacket.Data.Length != length)
+            {
+                throw new FailClosedException("Critical subpacket (type " + subpacket.RawType + ") must be exactly " + length + " bytes.");
+            }
+        }
+
+        /// <summary>A hashed subpacket of <paramref name="type"/>, or <c>null</c>; fails closed if there is more than one.</summary>
+        private SignatureSubpacket? FindUniqueHashed(SignatureSubpacketType type)
+        {
+            SignatureSubpacket? found = null;
             foreach (SignatureSubpacket subpacket in HashedSubpackets)
             {
                 if (!subpacket.Is(type))
@@ -88,179 +427,31 @@ namespace Scarlet.OpenPgp.Packets
                     continue;
                 }
 
-                if (found)
+                if (found is not null)
                 {
                     throw new FailClosedException("Signature has more than one hashed subpacket of type " + (byte)type + ".");
                 }
 
-                if (subpacket.Data.Length != 4)
-                {
-                    throw new FailClosedException("Hashed time subpacket (type " + (byte)type + ") must be exactly 4 bytes.");
-                }
-
-                value = ((uint)subpacket.Data[0] << 24) | ((uint)subpacket.Data[1] << 16) | ((uint)subpacket.Data[2] << 8) | subpacket.Data[3];
-                found = true;
+                found = subpacket;
             }
 
             return found;
         }
 
-        public static SignaturePacket Parse(byte[] body)
+        private IEnumerable<SignatureSubpacket> AllSubpackets()
         {
-            if (body.Length < 6)
+            foreach (SignatureSubpacket subpacket in HashedSubpackets)
             {
-                throw new FailClosedException("Signature packet body is too short to contain a v4 header.");
+                yield return subpacket;
             }
 
-            byte version = body[0];
-            if (version != 4)
+            foreach (SignatureSubpacket subpacket in UnhashedSubpackets)
             {
-                throw new FailClosedException("Only v4 signature packets are supported (got version " + version + ").");
-            }
-
-            byte signatureTypeRaw = body[1];
-            var publicKeyAlgorithm = (PublicKeyAlgorithm)body[2];
-            byte hashAlgorithmByte = body[3];
-            var hashAlgorithm = (HashAlgorithmId)hashAlgorithmByte;
-
-            int offset = 4;
-            byte[] hashedSubpacketData = ReadSubpacketRegion(body, ref offset, "hashed");
-            List<SignatureSubpacket> hashedSubpackets = SubpacketReader.ReadAll(hashedSubpacketData);
-            RejectUnknownCritical(hashedSubpackets);
-
-            byte[] unhashedSubpacketData = ReadSubpacketRegion(body, ref offset, "unhashed");
-            List<SignatureSubpacket> unhashedSubpackets = SubpacketReader.ReadAll(unhashedSubpacketData);
-            RejectUnknownCritical(unhashedSubpackets);
-
-            if (offset + 2 > body.Length)
-            {
-                throw new FailClosedException("Unexpected end of input while reading the left-hash-bits field.");
-            }
-
-            var leftHashBytes16 = new byte[2];
-            System.Array.Copy(body, offset, leftHashBytes16, 0, 2);
-            offset += 2;
-
-            BigInteger? rsaSignatureValue = null;
-            byte[]? edDsaSignatureValue = null;
-
-            switch (publicKeyAlgorithm)
-            {
-                case PublicKeyAlgorithm.RsaEncryptOrSign:
-                case PublicKeyAlgorithm.RsaSignOnly:
-                    (BigInteger s, int consumed) = Mpi.ReadFrom(body, offset, requireCanonical: true);
-                    offset += consumed;
-                    rsaSignatureValue = s;
-                    break;
-
-                case PublicKeyAlgorithm.EdDsaLegacy:
-                    edDsaSignatureValue = ParseEdDsaSignature(body, ref offset);
-                    break;
-
-                default:
-                    throw new FailClosedException("Unsupported signature public-key algorithm: " + (byte)publicKeyAlgorithm + ".");
-            }
-
-            if (offset != body.Length)
-            {
-                throw new FailClosedException("Signature packet body has unexpected trailing data after its signature value.");
-            }
-
-            return new SignaturePacket(
-                version,
-                signatureTypeRaw,
-                publicKeyAlgorithm,
-                hashAlgorithm,
-                hashedSubpacketData,
-                hashedSubpackets,
-                unhashedSubpackets,
-                leftHashBytes16,
-                rsaSignatureValue,
-                edDsaSignatureValue);
-        }
-
-        private static byte[] ReadSubpacketRegion(byte[] body, ref int offset, string which)
-        {
-            if (offset + 2 > body.Length)
-            {
-                throw new FailClosedException("Unexpected end of input while reading the " + which + " subpacket count.");
-            }
-
-            int length = (body[offset] << 8) | body[offset + 1];
-            offset += 2;
-
-            // length is at most 0xFFFF here (a 2-byte field), so this can only overflow int if
-            // offset is already within 64K of int.MaxValue - i.e. body is itself close to 2GB.
-            // Widened to long anyway for the same reason as the other length checks in this
-            // codebase: the overflow-safety pattern should not depend on how wide the length field
-            // happens to be.
-            if ((long)offset + length > body.Length)
-            {
-                throw new FailClosedException("Unexpected end of input while reading the " + which + " subpacket data (truncated).");
-            }
-
-            var region = new byte[length];
-            System.Array.Copy(body, offset, region, 0, length);
-            offset += length;
-            return region;
-        }
-
-        /// <summary>
-        /// Fails closed on a critical subpacket of a type we don't recognize (per RFC 4880), and
-        /// also on a critical subpacket of a type we *do* recognize but whose payload doesn't match
-        /// that type's fixed structure - "critical" means the verifier must understand the
-        /// subpacket, and a malformed payload for a known type is exactly as unusable as an
-        /// unknown type would be. Malformed *non-critical* instances of these same types are left
-        /// alone: RFC 4880 makes them safe to ignore regardless of validity.
-        /// </summary>
-        private static void RejectUnknownCritical(List<SignatureSubpacket> subpackets)
-        {
-            foreach (SignatureSubpacket subpacket in subpackets)
-            {
-                if (!subpacket.Critical)
-                {
-                    continue;
-                }
-
-                switch (subpacket.RawType)
-                {
-                    case (byte)SignatureSubpacketType.SignatureCreationTime:
-                    case (byte)SignatureSubpacketType.SignatureExpirationTime:
-                    case (byte)SignatureSubpacketType.KeyExpirationTime:
-                        if (subpacket.Data.Length != 4)
-                        {
-                            throw new FailClosedException("Critical time subpacket (type " + subpacket.RawType + ") must be exactly 4 bytes.");
-                        }
-
-                        break;
-
-                    case (byte)SignatureSubpacketType.IssuerKeyId:
-                        if (subpacket.Data.Length != 8)
-                        {
-                            throw new FailClosedException("Critical IssuerKeyId subpacket must be exactly 8 bytes.");
-                        }
-
-                        break;
-
-                    case (byte)SignatureSubpacketType.IssuerFingerprint:
-                        // version(1) + a v4 SHA-1 fingerprint (20 bytes) = 21 bytes. This library
-                        // only supports v4 signatures/keys (SignaturePacket.Parse/PublicKeyPacket.Parse
-                        // both reject any other version), so the fingerprint version must be 4 too.
-                        if (subpacket.Data.Length != 21 || subpacket.Data[0] != 4)
-                        {
-                            throw new FailClosedException("Critical IssuerFingerprint subpacket must be a 21-byte v4 fingerprint.");
-                        }
-
-                        break;
-
-                    default:
-                        throw new FailClosedException(
-                            "Signature contains an unrecognized critical subpacket (type " + subpacket.RawType + "); failing closed per RFC 4880.");
-                }
+                yield return subpacket;
             }
         }
 
-        private static byte[] ParseEdDsaSignature(byte[] body, ref int offset)
+        private static byte[] ParseEdDsaLegacySignature(byte[] body, ref int offset)
         {
             (BigInteger r, int rConsumed) = Mpi.ReadFrom(body, offset);
             offset += rConsumed;
@@ -281,8 +472,8 @@ namespace Scarlet.OpenPgp.Packets
             byte[] s32 = Mpi.ToFixedLengthUnsignedBytes(s, 32);
 
             var signature = new byte[64];
-            System.Array.Copy(r32, 0, signature, 0, 32);
-            System.Array.Copy(s32, 0, signature, 32, 32);
+            Array.Copy(r32, 0, signature, 0, 32);
+            Array.Copy(s32, 0, signature, 32, 32);
             return signature;
         }
     }

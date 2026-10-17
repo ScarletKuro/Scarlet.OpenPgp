@@ -20,5 +20,6 @@ namespace Scarlet.OpenPgp.Packets
         UserAttribute = 17,
         SymmetricallyEncryptedIntegrityProtectedData = 18,
         ModificationDetectionCode = 19,
+        Padding = 21,
     }
 }

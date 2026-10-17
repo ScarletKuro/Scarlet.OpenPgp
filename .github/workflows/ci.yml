@@ -94,13 +94,13 @@ jobs:
           "$cli" verify --key "$assets/bun-public-key.asc" --signature "$assets/SHASUMS256.txt.asc" --output out/signed.txt
           diff <(tr -d '\r' < out/signed.txt) <(tr -d '\r' < "$assets/SHASUMS256.txt")
 
-          # Unsigned text injected before the clearsigned block must fail verification (exit 1).
+          # Unsigned text injected before the clearsigned block must be rejected as malformed (exit 65).
           { echo "deadbeef  bun-linux-x64.zip"; cat "$assets/SHASUMS256.txt.asc"; } > out/tampered.asc
           set +e
           "$cli" verify --key "$assets/bun-public-key.asc" --signature out/tampered.asc
           code=$?
           set -e
-          if [ "$code" -ne 1 ]; then
-            echo "Expected exit code 1 for a tampered message, got $code"
+          if [ "$code" -ne 65 ]; then
+            echo "Expected exit code 65 for a tampered message, got $code"
             exit 1
           fi

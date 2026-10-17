@@ -1,0 +1,306 @@
+using System;
+using System.Collections.Generic;
+using Scarlet.OpenPgp.Internal;
+using Scarlet.OpenPgp.Packets;
+
+namespace Scarlet.OpenPgp.Signing
+{
+    /// <summary>
+    /// Verifies one or more document signatures over content that is streamed in once. Phases:
+    /// <see cref="Start"/> parses the signatures and keys and opens one digest per signature;
+    /// <see cref="Update"/> feeds content to every digest; <see cref="Complete"/> checks each
+    /// signature against each key that may have made it and reports the first valid one.
+    /// </summary>
+    /// <remarks>
+    /// The verdict is "valid" if any signature is valid by any supplied key - the same question
+    /// "did someone I trust sign this?" that a single signature answers. Signatures by keys the
+    /// caller didn't supply are ignored. When nothing verifies, the most informative failure is
+    /// reported (e.g. "key expired" beats "no matching key" from another signature).
+    /// </remarks>
+    internal sealed class DocumentVerification : IDisposable
+    {
+        private readonly List<Entry> _entries;
+        private readonly VerificationResult? _earlyResult;
+
+        private DocumentVerification(List<Entry> entries, VerificationResult? earlyResult)
+        {
+            _entries = entries;
+            _earlyResult = earlyResult;
+        }
+
+        /// <param name="signaturePackets">The raw signature packets (already de-armored).</param>
+        /// <param name="keyRing">The caller's trusted keys.</param>
+        /// <param name="isClearsign">
+        /// The content is a clearsigned message's canonical text: signatures must be text signatures
+        /// (type 0x01), and the content is already canonical so it's hashed as-is. Otherwise both
+        /// binary and text signatures are accepted, and text signatures get their line endings
+        /// canonicalized while hashing.
+        /// </param>
+        public static DocumentVerification Start(byte[] signaturePackets, KeyRing keyRing, bool isClearsign)
+        {
+            List<Packet> packets;
+            try
+            {
+                packets = PacketReader.ReadAll(signaturePackets);
+            }
+            catch (FailClosedException ex)
+            {
+                return Failed(VerificationStatus.MalformedInput, "The signature is malformed: " + ex.Message);
+            }
+
+            var entries = new List<Entry>();
+            foreach (Packet packet in packets)
+            {
+                if (packet.Header.Tag == PacketTag.Marker || packet.Header.Tag == PacketTag.Padding)
+                {
+                    continue;
+                }
+
+                if (packet.Header.Tag != PacketTag.Signature)
+                {
+                    // A detached signature or clearsign signature block holds signatures only;
+                    // anything else means this isn't what the caller thinks it is.
+                    return Failed(VerificationStatus.MalformedInput, "The signature input contains a non-signature packet (tag " + packet.Header.RawTag + ").");
+                }
+
+                entries.Add(Entry.Create(packet.Body, keyRing, isClearsign));
+            }
+
+            if (entries.Count == 0)
+            {
+                return Failed(VerificationStatus.MalformedInput, "The signature input contains no signature.");
+            }
+
+            return new DocumentVerification(entries, null);
+        }
+
+        public static DocumentVerification Failed(VerificationStatus status, string message)
+        {
+            return new DocumentVerification(new List<Entry>(), new VerificationResult(status, message));
+        }
+
+        /// <summary>Whether the outcome is already known without reading any content (every signature failed before hashing, or the input was unusable).</summary>
+        public bool NeedsContent => _earlyResult is null && _entries.Exists(e => e.Digest is not null);
+
+        public void Update(byte[] buffer, int offset, int count)
+        {
+            foreach (Entry entry in _entries)
+            {
+                entry.Digest?.Update(buffer, offset, count);
+            }
+        }
+
+        public VerificationResult Complete(DateTimeOffset now, string? signedText)
+        {
+            if (_earlyResult is not null)
+            {
+                return _earlyResult;
+            }
+
+            VerificationResult? best = null;
+            foreach (Entry entry in _entries)
+            {
+                VerificationResult result = entry.Evaluate(now, signedText);
+                if (result.IsValid)
+                {
+                    return result;
+                }
+
+                if (best is null || Rank(result.Status) > Rank(best.Status))
+                {
+                    best = result;
+                }
+            }
+
+            return best!;
+        }
+
+        public void Dispose()
+        {
+            foreach (Entry entry in _entries)
+            {
+                entry.Digest?.Dispose();
+            }
+        }
+
+        /// <summary>How much a failure tells the caller: one that got as far as a matching key and a good signature beats one that didn't.</summary>
+        private static int Rank(VerificationStatus status)
+        {
+            switch (status)
+            {
+                case VerificationStatus.MalformedInput:
+                    return 1;
+                case VerificationStatus.NoMatchingKey:
+                    return 2;
+                case VerificationStatus.WrongSignatureType:
+                    return 3;
+                case VerificationStatus.UnsupportedAlgorithm:
+                    return 4;
+                case VerificationStatus.BadSignature:
+                    return 5;
+                default:
+                    return 6; // a cryptographically valid signature rejected on key/time grounds
+            }
+        }
+
+        private static VerificationResult Failure(VerificationStatus status, string message, Certificate? certificate = null, PublicKeyPacket? key = null, DateTimeOffset? createdAt = null)
+        {
+            return new VerificationResult(status, message, key?.Fingerprint.ToString(), certificate?.Primary.Fingerprint.ToString(), createdAt);
+        }
+
+        /// <summary>One signature: either an early failure, or its digest-in-progress and the keys that may have made it.</summary>
+        private sealed class Entry
+        {
+            private VerificationResult? _failure;
+            private SignaturePacket? _signature;
+            private readonly List<(Certificate Certificate, PublicKeyPacket Key)> _candidates = new List<(Certificate, PublicKeyPacket)>();
+
+            public SignatureDigest? Digest { get; private set; }
+
+            public static Entry Create(byte[] body, KeyRing keyRing, bool isClearsign)
+            {
+                var entry = new Entry();
+                SignaturePacket signature;
+                try
+                {
+                    signature = SignaturePacket.Parse(body);
+                }
+                catch (FailClosedException ex)
+                {
+                    entry._failure = Failure(ex.IsUnsupported ? VerificationStatus.UnsupportedAlgorithm : VerificationStatus.MalformedInput, "Signature cannot be used: " + ex.Message);
+                    return entry;
+                }
+
+                entry._signature = signature;
+                bool typeAllowed = isClearsign ? signature.IsCanonicalTextDocument : signature.IsBinaryDocument || signature.IsCanonicalTextDocument;
+                if (!typeAllowed)
+                {
+                    entry._failure = Failure(
+                        VerificationStatus.WrongSignatureType,
+                        "Signature type 0x" + signature.SignatureTypeRaw.ToString("X2", System.Globalization.CultureInfo.InvariantCulture)
+                        + (isClearsign ? " is not a text signature, as a clearsigned message requires." : " is not a document signature."));
+                    return entry;
+                }
+
+                foreach (Certificate certificate in keyRing.Certificates)
+                {
+                    foreach (PublicKeyPacket key in certificate.Keys)
+                    {
+                        if (Certificate.IsIssuedBy(signature, key))
+                        {
+                            entry._candidates.Add((certificate, key));
+                        }
+                    }
+                }
+
+                if (entry._candidates.Count == 0)
+                {
+                    entry._failure = Failure(VerificationStatus.NoMatchingKey, "None of the supplied keys made this signature.");
+                    return entry;
+                }
+
+                try
+                {
+                    entry.Digest = SignatureDigest.Begin(signature, canonicalizeText: !isClearsign && signature.IsCanonicalTextDocument);
+                }
+                catch (FailClosedException ex)
+                {
+                    entry._failure = Failure(VerificationStatus.UnsupportedAlgorithm, "Signature cannot be used: " + ex.Message);
+                }
+
+                return entry;
+            }
+
+            public VerificationResult Evaluate(DateTimeOffset now, string? signedText)
+            {
+                if (_failure is not null)
+                {
+                    return _failure;
+                }
+
+                SignaturePacket signature = _signature!;
+                byte[] digest = Digest!.Finish();
+
+                DateTimeOffset createdAt;
+                try
+                {
+                    createdAt = SignatureVerifier.GetCreationTime(signature);
+                }
+                catch (FailClosedException ex)
+                {
+                    return Failure(VerificationStatus.MalformedInput, "Signature cannot be used: " + ex.Message);
+                }
+
+                VerificationResult? best = null;
+                foreach ((Certificate certificate, PublicKeyPacket key) in _candidates)
+                {
+                    VerificationResult result = EvaluateCandidate(signature, digest, createdAt, certificate, key, now, signedText);
+                    if (result.IsValid)
+                    {
+                        return result;
+                    }
+
+                    if (best is null || Rank(result.Status) > Rank(best.Status))
+                    {
+                        best = result;
+                    }
+                }
+
+                return best!;
+            }
+
+            private static VerificationResult EvaluateCandidate(
+                SignaturePacket signature,
+                byte[] digest,
+                DateTimeOffset createdAt,
+                Certificate certificate,
+                PublicKeyPacket key,
+                DateTimeOffset now,
+                string? signedText)
+            {
+                string? incompatibility = SignatureVerifier.GetIncompatibility(key, signature);
+                if (incompatibility is not null)
+                {
+                    // A key we can't use, or a hash too weak for it, is "unsupported"; a key whose
+                    // version or algorithm simply doesn't match the signature didn't make it.
+                    VerificationStatus status = !key.CanVerify || (key.Version == signature.Version && key.Algorithm == signature.PublicKeyAlgorithm)
+                        ? VerificationStatus.UnsupportedAlgorithm
+                        : VerificationStatus.BadSignature;
+                    return Failure(status, "Signature cannot be checked with this key: " + incompatibility + ".", certificate, key, createdAt);
+                }
+
+                // Cryptography first: a forged signature must read as "bad", never as e.g. "expired".
+                if (!SignatureVerifier.VerifyDigest(key, signature, digest))
+                {
+                    return Failure(VerificationStatus.BadSignature, "The signature does not match the data and key.", certificate, key, createdAt);
+                }
+
+                try
+                {
+                    if (!SignatureVerifier.IsUnexpired(signature, now))
+                    {
+                        return Failure(VerificationStatus.SignatureExpired, "The signature has expired.", certificate, key, createdAt);
+                    }
+                }
+                catch (FailClosedException ex)
+                {
+                    return Failure(VerificationStatus.MalformedInput, "Signature cannot be used: " + ex.Message, certificate, key, createdAt);
+                }
+
+                (VerificationStatus keyStatus, string keyMessage) = certificate.CheckSigningKey(key, createdAt, now);
+                if (keyStatus != VerificationStatus.Valid)
+                {
+                    return Failure(keyStatus, keyMessage, certificate, key, createdAt);
+                }
+
+                return new VerificationResult(
+                    VerificationStatus.Valid,
+                    "Good signature.",
+                    key.Fingerprint.ToString(),
+                    certificate.Primary.Fingerprint.ToString(),
+                    createdAt,
+                    signedText);
+            }
+        }
+    }
+}

@@ -52,11 +52,12 @@ internal sealed class OpenPgpCliApplication
 
     private int RunVerify(OpenPgpCliOptions options)
     {
-        string publicKeyArmor;
+        // Keys and detached signatures may be armored or binary; the library tells them apart.
+        byte[] publicKeys;
         byte[] signatureFileBytes;
         try
         {
-            publicKeyArmor = File.ReadAllText(options.KeyPath);
+            publicKeys = File.ReadAllBytes(options.KeyPath);
             signatureFileBytes = File.ReadAllBytes(options.SignaturePath);
         }
         catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
@@ -65,63 +66,62 @@ internal sealed class OpenPgpCliApplication
             return ExitCodes.InputError;
         }
 
-        // Decode strictly: File.ReadAllText would silently turn invalid UTF-8 into U+FFFD, so
-        // different files could verify as the same signed text.
-        string signatureArmorOrClearsignedMessage;
-        try
-        {
-            signatureArmorOrClearsignedMessage = StrictUtf8.GetString(signatureFileBytes);
-        }
-        catch (DecoderFallbackException)
-        {
-            _stderr.WriteLine("Scarlet.OpenPgp: signature file is not valid UTF-8.");
-            return ExitCodes.InputError;
-        }
-
-        if (signatureArmorOrClearsignedMessage.Length > 0 && signatureArmorOrClearsignedMessage[0] == '﻿')
-        {
-            signatureArmorOrClearsignedMessage = signatureArmorOrClearsignedMessage.Substring(1);
-        }
-
-        bool verified;
-        string? signedText = null;
+        VerificationResult result;
         if (options.DataPath is not null)
         {
-            byte[] data;
             try
             {
-                data = File.ReadAllBytes(options.DataPath);
+                // Streamed: release artifacts can be far larger than is sensible to hold in memory.
+                using FileStream data = File.OpenRead(options.DataPath);
+                result = OpenPgpVerifier.VerifyDetached(data, signatureFileBytes, publicKeys);
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
             {
                 _stderr.WriteLine("Scarlet.OpenPgp: could not read input file: " + ex.Message);
                 return ExitCodes.InputError;
             }
-
-            verified = OpenPgpVerifier.VerifyDetached(data, signatureArmorOrClearsignedMessage, publicKeyArmor);
         }
         else
         {
-            verified = OpenPgpVerifier.VerifyClearsign(signatureArmorOrClearsignedMessage, publicKeyArmor, out string text);
-            signedText = text;
-        }
-
-        if (verified)
-        {
-            if (options.OutputPath is not null && signedText is not null)
+            // Decode strictly: a lenient decoder would silently turn invalid UTF-8 into U+FFFD, so
+            // different files could verify as the same signed text.
+            string clearsignedMessage;
+            try
             {
-                if (!TryWriteSignedText(options.OutputPath, signedText))
-                {
-                    return ExitCodes.InputError;
-                }
+                clearsignedMessage = StrictUtf8.GetString(signatureFileBytes);
+            }
+            catch (DecoderFallbackException)
+            {
+                _stderr.WriteLine("Scarlet.OpenPgp: signature file is not valid UTF-8.");
+                return ExitCodes.InputError;
             }
 
-            _stderr.WriteLine("Scarlet.OpenPgp: signature verified.");
-            return ExitCodes.Success;
+            result = OpenPgpVerifier.VerifyClearsign(clearsignedMessage, publicKeys);
         }
 
-        _stderr.WriteLine("Scarlet.OpenPgp: signature verification failed.");
-        return ExitCodes.VerificationFailed;
+        if (!result.IsValid)
+        {
+            _stderr.WriteLine("Scarlet.OpenPgp: signature verification failed (" + result.Status + "): " + result.Message);
+            if (result.SignerFingerprint is not null)
+            {
+                _stderr.WriteLine("Scarlet.OpenPgp: signing key " + result.SignerFingerprint);
+            }
+
+            return result.Status is VerificationStatus.MalformedInput or VerificationStatus.InvalidPublicKey
+                ? ExitCodes.InputError
+                : ExitCodes.VerificationFailed;
+        }
+
+        if (options.OutputPath is not null && result.SignedText is not null && !TryWriteSignedText(options.OutputPath, result.SignedText))
+        {
+            return ExitCodes.InputError;
+        }
+
+        _stderr.WriteLine("Scarlet.OpenPgp: signature verified.");
+        _stderr.WriteLine("Scarlet.OpenPgp: signing key " + result.SignerFingerprint
+                          + (result.SignerFingerprint == result.PrimaryKeyFingerprint ? string.Empty : " (subkey of " + result.PrimaryKeyFingerprint + ")"));
+        _stderr.WriteLine("Scarlet.OpenPgp: signed " + result.SignatureCreationTime?.ToString("u", System.Globalization.CultureInfo.InvariantCulture));
+        return ExitCodes.Success;
     }
 
     private bool TryWriteSignedText(string outputPath, string signedText)

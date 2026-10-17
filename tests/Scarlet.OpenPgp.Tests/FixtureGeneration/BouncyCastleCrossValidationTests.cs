@@ -110,7 +110,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
             string signatureArmor = SignDetached(PublicKeyAlgorithmTag.RsaGeneral, privateKey, data);
 
             // Act
-            bool result = OpenPgpVerifier.VerifyDetached(data, signatureArmor, publicKeyArmor);
+            bool result = OpenPgpVerifier.VerifyDetached(data, signatureArmor, publicKeyArmor).IsValid;
 
             // Assert
             Assert.True(result);
@@ -126,7 +126,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
             string signatureArmor = SignDetached(PublicKeyAlgorithmTag.RsaGeneral, privateKey, data);
 
             // Act
-            bool result = OpenPgpVerifier.VerifyDetached(data, signatureArmor, wrongKeyArmor);
+            bool result = OpenPgpVerifier.VerifyDetached(data, signatureArmor, wrongKeyArmor).IsValid;
 
             // Assert
             Assert.False(result);
@@ -142,7 +142,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
             string clearsignedMessage = SignClearsign(PublicKeyAlgorithmTag.RsaGeneral, privateKey, lines);
 
             // Act
-            bool result = OpenPgpVerifier.VerifyClearsign(clearsignedMessage, publicKeyArmor, out _);
+            bool result = OpenPgpVerifier.VerifyClearsign(clearsignedMessage, publicKeyArmor).IsValid;
 
             // Assert
             Assert.True(result);
@@ -158,7 +158,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
             string tampered = clearsignedMessage.Replace("Second line", "Tampered line");
 
             // Act
-            bool result = OpenPgpVerifier.VerifyClearsign(tampered, publicKeyArmor, out _);
+            bool result = OpenPgpVerifier.VerifyClearsign(tampered, publicKeyArmor).IsValid;
 
             // Assert
             Assert.False(result);
@@ -173,7 +173,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
             string signatureArmor = SignDetached(PublicKeyAlgorithmTag.EdDsa, privateKey, data);
 
             // Act
-            bool result = OpenPgpVerifier.VerifyDetached(data, signatureArmor, publicKeyArmor);
+            bool result = OpenPgpVerifier.VerifyDetached(data, signatureArmor, publicKeyArmor).IsValid;
 
             // Assert
             Assert.True(result);
@@ -188,7 +188,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
             string clearsignedMessage = SignClearsign(PublicKeyAlgorithmTag.EdDsa, privateKey, lines);
 
             // Act
-            bool result = OpenPgpVerifier.VerifyClearsign(clearsignedMessage, publicKeyArmor, out _);
+            bool result = OpenPgpVerifier.VerifyClearsign(clearsignedMessage, publicKeyArmor).IsValid;
 
             // Assert
             Assert.True(result);

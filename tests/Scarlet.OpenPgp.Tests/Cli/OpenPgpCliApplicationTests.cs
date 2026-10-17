@@ -229,7 +229,7 @@ namespace Scarlet.OpenPgp.Tests.Cli
             Assert.Equal(
                 File.ReadAllText(BunAssets + "SHASUMS256.txt").Replace("\r\n", "\n"),
                 File.ReadAllText(outputPath).Replace("\r\n", "\n"));
-            Assert.Equal(ExitCodes.VerificationFailed, tamperedExitCode);
+            Assert.Equal(ExitCodes.InputError, tamperedExitCode); // unsigned text around the block makes the message malformed
             Assert.False(File.Exists(tamperedOutputPath));
         }
 

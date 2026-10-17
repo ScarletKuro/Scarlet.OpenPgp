@@ -1,52 +1,129 @@
+using System;
+using Scarlet.OpenPgp.Hashing;
 using Scarlet.OpenPgp.Packets;
 
 namespace Scarlet.OpenPgp.Signing
 {
     /// <summary>
-    /// Builds the exact byte sequence a v4 signature hashes (RFC 4880 §5.2.4): the signed content,
-    /// followed by the signature packet's own hashed-subpacket region, followed by a fixed trailer.
-    /// Isolated on purpose - a bug here produces verification failures that look exactly like a
-    /// crypto bug but aren't, so it gets its own byte-exact test independent of full verification.
+    /// Builds the exact byte sequence a v4/v6 signature hashes (RFC 9580 §5.2.4): the v6 salt, the
+    /// signed content, the signature packet's own hashed portion, and a fixed trailer. Isolated on
+    /// purpose - a bug here produces verification failures that look exactly like a crypto bug but
+    /// aren't, so it gets its own byte-exact test independent of full verification.
     /// </summary>
     internal static class SignatureHashBuilder
     {
+        /// <summary>The whole hash input for in-memory content. Used by tests and for small key-signature inputs.</summary>
         public static byte[] BuildDataToHash(byte[] content, SignaturePacket signature)
         {
-            byte[] hashedPortion = BuildHashedPortion(signature);
-            byte[] trailer = BuildTrailer(hashedPortion.Length);
-
-            var result = new byte[content.Length + hashedPortion.Length + trailer.Length];
-            System.Array.Copy(content, 0, result, 0, content.Length);
-            System.Array.Copy(hashedPortion, 0, result, content.Length, hashedPortion.Length);
-            System.Array.Copy(trailer, 0, result, content.Length + hashedPortion.Length, trailer.Length);
+            byte[] trailer = BuildTrailer(signature);
+            var result = new byte[signature.Salt.Length + content.Length + signature.HashedPortion.Length + trailer.Length];
+            int offset = 0;
+            Append(result, ref offset, signature.Salt);
+            Append(result, ref offset, content);
+            Append(result, ref offset, signature.HashedPortion);
+            Append(result, ref offset, trailer);
             return result;
         }
 
-        private static byte[] BuildHashedPortion(SignaturePacket signature)
+        /// <summary>The digest of <paramref name="content"/> (hashed as-is, no text canonicalization) under <paramref name="signature"/>.</summary>
+        public static byte[] ComputeDigest(byte[] content, SignaturePacket signature, bool isKeySignature = false)
         {
-            byte[] hashedSubpacketData = signature.HashedSubpacketData;
-            var portion = new byte[6 + hashedSubpacketData.Length];
-            portion[0] = signature.Version;
-            portion[1] = signature.SignatureTypeRaw;
-            portion[2] = (byte)signature.PublicKeyAlgorithm;
-            portion[3] = (byte)signature.HashAlgorithm;
-            portion[4] = (byte)(hashedSubpacketData.Length >> 8);
-            portion[5] = (byte)hashedSubpacketData.Length;
-            System.Array.Copy(hashedSubpacketData, 0, portion, 6, hashedSubpacketData.Length);
-            return portion;
+            using (SignatureDigest digest = SignatureDigest.Begin(signature, canonicalizeText: false, isKeySignature))
+            {
+                digest.Update(content, 0, content.Length);
+                return digest.Finish();
+            }
         }
 
-        private static byte[] BuildTrailer(int hashedPortionLength)
+        /// <summary>The trailer: the signature version, 0xFF, and the hashed portion's length as a 4-octet big-endian number.</summary>
+        public static byte[] BuildTrailer(SignaturePacket signature)
         {
+            int length = signature.HashedPortion.Length;
             return new[]
             {
-                (byte)0x04,
+                signature.Version,
                 (byte)0xFF,
-                (byte)(hashedPortionLength >> 24),
-                (byte)(hashedPortionLength >> 16),
-                (byte)(hashedPortionLength >> 8),
-                (byte)hashedPortionLength,
+                (byte)(length >> 24),
+                (byte)(length >> 16),
+                (byte)(length >> 8),
+                (byte)length,
             };
         }
+
+        private static void Append(byte[] target, ref int offset, byte[] source)
+        {
+            Array.Copy(source, 0, target, offset, source.Length);
+            offset += source.Length;
+        }
+    }
+
+    /// <summary>
+    /// An in-progress signature digest that content can be streamed into, so a large document is
+    /// read once and never buffered. For text-mode signatures (type 0x01) the content's line
+    /// endings are converted to CRLF on the fly (RFC 9580 §5.2.4): a LF not already preceded by CR
+    /// becomes CRLF, even across chunk boundaries.
+    /// </summary>
+    internal sealed class SignatureDigest : IDisposable
+    {
+        private static readonly byte[] CarriageReturn = { (byte)'\r' };
+
+        private readonly SignaturePacket _signature;
+        private readonly HashContext _hash;
+        private readonly bool _canonicalizeText;
+        private bool _previousWasCarriageReturn;
+
+        private SignatureDigest(SignaturePacket signature, HashContext hash, bool canonicalizeText)
+        {
+            _signature = signature;
+            _hash = hash;
+            _canonicalizeText = canonicalizeText;
+        }
+
+        public SignaturePacket Signature => _signature;
+
+        /// <param name="signature">The signature whose digest to compute.</param>
+        /// <param name="canonicalizeText">Convert line endings to CRLF while hashing (text-mode signatures).</param>
+        /// <param name="isKeySignature">The signature is a key self-signature, for which SHA-1 is acceptable (see <see cref="HashContext.Create"/>).</param>
+        public static SignatureDigest Begin(SignaturePacket signature, bool canonicalizeText, bool isKeySignature = false)
+        {
+            HashContext hash = HashContext.Create(signature.HashAlgorithm, allowSha1: isKeySignature);
+            hash.Update(signature.Salt); // empty for v4; for v6 it goes in before anything else
+            return new SignatureDigest(signature, hash, canonicalizeText);
+        }
+
+        public void Update(byte[] buffer, int offset, int count)
+        {
+            if (!_canonicalizeText)
+            {
+                _hash.Update(buffer, offset, count);
+                return;
+            }
+
+            int runStart = offset;
+            int end = offset + count;
+            for (int i = offset; i < end; i++)
+            {
+                byte b = buffer[i];
+                if (b == (byte)'\n' && !_previousWasCarriageReturn)
+                {
+                    _hash.Update(buffer, runStart, i - runStart);
+                    _hash.Update(CarriageReturn);
+                    runStart = i; // the LF itself goes out with the next run
+                }
+
+                _previousWasCarriageReturn = b == (byte)'\r';
+            }
+
+            _hash.Update(buffer, runStart, end - runStart);
+        }
+
+        public byte[] Finish()
+        {
+            _hash.Update(_signature.HashedPortion);
+            _hash.Update(SignatureHashBuilder.BuildTrailer(_signature));
+            return _hash.Finish();
+        }
+
+        public void Dispose() => _hash.Dispose();
     }
 }

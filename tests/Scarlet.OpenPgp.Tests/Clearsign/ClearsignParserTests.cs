@@ -163,7 +163,7 @@ namespace Scarlet.OpenPgp.Tests.Clearsign
         public void Parse_WithAnUnrecognizedHashName_ShouldFailClosed()
         {
             // Arrange
-            string message = WellFormedMessage(headers: "Hash: SHA3-256\n");
+            string message = WellFormedMessage(headers: "Hash: SHA3-384\n"); // not in RFC 9580 Table 23
 
             // Act & Assert
             Assert.Throws<FailClosedException>(() => ClearsignParser.Parse(message));
