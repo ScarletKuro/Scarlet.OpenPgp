@@ -67,22 +67,27 @@ namespace Scarlet.OpenPgp.Signing
                 }
 
                 // An identical copy adds nothing but another pass over the data.
-                if (!bodies.Exists(b => b.AsSpan().SequenceEqual(packet.Body)))
+                if (bodies.Exists(b => b.AsSpan().SequenceEqual(packet.Body)))
                 {
-                    bodies.Add(packet.Body);
+                    continue;
                 }
+
+                // Each signature costs a full pass over the data, so the count bounds the work a
+                // hostile signature file can cause (256 copies made an 8 MiB file cost 2 GiB of
+                // hashing). Checked as each one arrives, so no packet is ever compared against more
+                // than MaxSignatures others - checking afterwards made 64,000 distinct packets
+                // quadratic (8 s just to reject).
+                if (bodies.Count == MaxSignatures)
+                {
+                    return Failed(VerificationStatus.MalformedInput, "The signature input contains more than " + MaxSignatures + " signatures.");
+                }
+
+                bodies.Add(packet.Body);
             }
 
             if (bodies.Count == 0)
             {
                 return Failed(VerificationStatus.MalformedInput, "The signature input contains no signature.");
-            }
-
-            // Each signature costs a full pass over the data, so the count bounds the work a
-            // hostile signature file can cause (256 copies made an 8 MiB file cost 2 GiB of hashing).
-            if (bodies.Count > MaxSignatures)
-            {
-                return Failed(VerificationStatus.MalformedInput, "The signature input contains more than " + MaxSignatures + " signatures.");
             }
 
             var entries = new List<Entry>(bodies.Count);

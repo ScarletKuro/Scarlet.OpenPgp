@@ -230,8 +230,21 @@ namespace Scarlet.OpenPgp
         internal static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, ParsedInput<byte[]> signatures, ParsedInput<KeyRing> keys, DateTimeOffset now)
         {
             using DocumentVerification verification = StartDetached(signatures, keys);
-            byte[] content = data.ToArray();
-            verification.Update(content, 0, content.Length);
+
+            // Fed through one bounded buffer, like the stream overload, rather than copying the
+            // whole document (netstandard2.0's hash APIs take arrays, not spans). Nothing is copied
+            // at all when the outcome is already decided.
+            if (verification.NeedsContent)
+            {
+                var buffer = new byte[Math.Min(StreamBufferSize, data.Length)];
+                for (int offset = 0; offset < data.Length && verification.NeedsContent; offset += buffer.Length)
+                {
+                    int count = Math.Min(buffer.Length, data.Length - offset);
+                    data.Slice(offset, count).CopyTo(buffer);
+                    verification.Update(buffer, 0, count);
+                }
+            }
+
             return verification.Complete(now, signedText: null);
         }
 

@@ -23,22 +23,23 @@ namespace Scarlet.OpenPgp.Armor
         /// blocks (e.g. concatenated key files); every block must carry <paramref name="expectedLabel"/>
         /// and their bodies are concatenated.
         /// </summary>
-        public static byte[] Decode(ReadOnlySpan<byte> input, string expectedLabel)
+        /// <remarks>Binary input is returned as is, not copied, so pass an array the caller owns.</remarks>
+        public static byte[] Decode(byte[] input, string expectedLabel)
         {
             if (!LooksArmored(input))
             {
-                if (input.IsEmpty)
+                if (input.Length == 0)
                 {
                     throw new FailClosedException("Input is empty.");
                 }
 
-                return input.ToArray();
+                return input;
             }
 
             string text;
             try
             {
-                text = StrictUtf8.GetString(input.ToArray());
+                text = StrictUtf8.GetString(input);
             }
             catch (DecoderFallbackException ex)
             {
@@ -48,7 +49,7 @@ namespace Scarlet.OpenPgp.Armor
             return Decode(text, expectedLabel);
         }
 
-        /// <summary>Returns the packet bytes of armored <paramref name="armorText"/> (see <see cref="Decode(ReadOnlySpan{byte}, string)"/>).</summary>
+        /// <summary>Returns the packet bytes of armored <paramref name="armorText"/> (see <see cref="Decode(byte[], string)"/>).</summary>
         public static byte[] Decode(string armorText, string expectedLabel)
         {
             List<AsciiArmorBlock> blocks = AsciiArmorReader.ReadAll(armorText);

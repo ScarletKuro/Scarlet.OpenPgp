@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using System.IO;
+using System;
 using Scarlet.OpenPgp.Internal;
 
 namespace Scarlet.OpenPgp.Packets
@@ -42,7 +42,10 @@ namespace Scarlet.OpenPgp.Packets
 
             bool newFormat = (tagByte & 0x40) != 0;
             byte rawTag;
-            var body = new MemoryStream();
+
+            // Where the body lies in the input: one segment, or several for partial-length framing.
+            // Located first and copied once at its final size - no growing buffer, no second copy.
+            var body = new List<Segment>(1);
 
             if (newFormat)
             {
@@ -57,10 +60,49 @@ namespace Scarlet.OpenPgp.Packets
             }
 
             var header = new PacketHeader((PacketTag)rawTag, rawTag);
-            return new Packet(header, body.ToArray());
+            return new Packet(header, IsBodyIgnored(header.Tag) ? [] : Materialize(data, body));
         }
 
-        private static void ReadOldFormatBody(byte[] data, ref int position, int lengthType, MemoryStream body)
+        /// <summary>
+        /// Packet types whose bodies no consumer reads: Marker and Padding are defined to be ignored
+        /// (RFC 9580 §5.8, §5.15), and Trust packets are local keyring data with no meaning here.
+        /// Their bodies are skipped without being copied - a padding packet can be arbitrarily large.
+        /// </summary>
+        private static bool IsBodyIgnored(PacketTag tag) => tag == PacketTag.Marker || tag == PacketTag.Padding || tag == PacketTag.Trust;
+
+        private static byte[] Materialize(byte[] data, List<Segment> segments)
+        {
+            if (segments.Count == 1)
+            {
+                return data.AsSpan(segments[0].Offset, segments[0].Length).ToArray();
+            }
+
+            // Partial-length chunks all lie within the input, so their total fits in an array.
+            long total = 0;
+            foreach (Segment segment in segments)
+            {
+                total += segment.Length;
+            }
+
+            var body = new byte[total];
+            int offset = 0;
+            foreach (Segment segment in segments)
+            {
+                Array.Copy(data, segment.Offset, body, offset, segment.Length);
+                offset += segment.Length;
+            }
+
+            return body;
+        }
+
+        private readonly struct Segment(int offset, int length)
+        {
+            public int Offset { get; } = offset;
+
+            public int Length { get; } = length;
+        }
+
+        private static void ReadOldFormatBody(byte[] data, ref int position, int lengthType, List<Segment> body)
         {
             int length;
             switch (lengthType)
@@ -92,7 +134,7 @@ namespace Scarlet.OpenPgp.Packets
             AppendBytes(data, ref position, length, body);
         }
 
-        private static void ReadNewFormatBody(byte[] data, ref int position, byte rawTag, MemoryStream body)
+        private static void ReadNewFormatBody(byte[] data, ref int position, byte rawTag, List<Segment> body)
         {
             bool firstChunk = true;
             while (true)
@@ -158,7 +200,7 @@ namespace Scarlet.OpenPgp.Packets
             }
         }
 
-        private static void AppendBytes(byte[] data, ref int position, int length, MemoryStream body)
+        private static void AppendBytes(byte[] data, ref int position, int length, List<Segment> body)
         {
             // Widen to long before adding: a maliciously large 4/5-byte length (e.g. 0x7FFFFFFF)
             // plus a nonzero position can overflow int, wrapping the sum negative and slipping
@@ -168,7 +210,7 @@ namespace Scarlet.OpenPgp.Packets
                 throw new FailClosedException("Packet body length extends past the end of the input (truncated packet).");
             }
 
-            body.Write(data, position, length);
+            body.Add(new Segment(position, length));
             position += length;
         }
 
