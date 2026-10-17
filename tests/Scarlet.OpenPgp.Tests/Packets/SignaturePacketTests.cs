@@ -340,5 +340,96 @@ namespace Scarlet.OpenPgp.Tests.Packets
             // Act & Assert
             Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(body));
         }
+
+        /// <summary>A v4 binary EdDSA/SHA-256 signature body with the given hashed subpacket area.</summary>
+        private static byte[] V4Body(params byte[] hashedSubpackets)
+        {
+            var body = new List<byte> { 0x04, 0x00, 0x16, 0x08, (byte)(hashedSubpackets.Length >> 8), (byte)hashedSubpackets.Length };
+            body.AddRange(hashedSubpackets);
+            body.AddRange(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01 });
+            return body.ToArray();
+        }
+
+        [Fact]
+        public void Parse_WithCriticalNotationData_ShouldFailClosed()
+        {
+            // Arrange: critical subpacket 20 (0x80 | 20) - a notation the verifier would have to
+            // understand to know what the signature means.
+            byte[] body = V4Body(0x05, 0x02, 0x00, 0x00, 0x00, 0x01, 0x09, 0x80 | 20, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(body));
+        }
+
+        [Fact]
+        public void Parse_WithCriticalKeyFlagsAndKeyExpiration_ShouldSucceed()
+        {
+            // Arrange: RFC 9580 says both SHOULD be marked critical; they must not be mistaken for
+            // unknown critical subpackets.
+            byte[] body = V4Body(0x05, 0x02, 0x00, 0x00, 0x00, 0x01, 0x02, 0x80 | 27, 0x03, 0x05, 0x80 | 9, 0x00, 0x00, 0x0E, 0x10);
+
+            // Act
+            SignaturePacket signature = SignaturePacket.Parse(body);
+
+            // Assert
+            Assert.Equal(new byte[] { 0x03 }, signature.KeyFlags);
+            Assert.True(signature.TryGetHashedTime(SignatureSubpacketType.KeyExpirationTime, out uint lifetime));
+            Assert.Equal(3600u, lifetime);
+        }
+
+        [Fact]
+        public void Parse_WithAnIssuerFingerprintOfTheWrongVersion_ShouldFailClosedEvenWhenNotCritical()
+        {
+            // Arrange: a v4 signature naming a v6 fingerprint (RFC 9580 §5.2.3.35: malformed).
+            var subpacket = new List<byte> { 34, 33, 6 };
+            subpacket.AddRange(new byte[32]);
+            byte[] body = V4Body(subpacket.ToArray());
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(body));
+        }
+
+        [Fact]
+        public void Parse_WithTheRfc9580V6CleartextSignature_ShouldReadTheSaltAndNativeEd25519Value()
+        {
+            // Arrange: the Signature packet of RFC 9580 Appendix A.6.
+            string armor = System.IO.File.ReadAllText("TestAssets/rfc9580/a6-cleartext-signed.asc");
+            string signatureArmor = armor.Substring(armor.IndexOf("-----BEGIN PGP SIGNATURE-----", System.StringComparison.Ordinal));
+            byte[] packetBytes = Scarlet.OpenPgp.Armor.AsciiArmorReader.Read(signatureArmor).Body;
+
+            // Act
+            SignaturePacket signature = SignaturePacket.Parse(PacketReader.ReadAll(packetBytes)[0].Body);
+
+            // Assert
+            Assert.Equal(6, signature.Version);
+            Assert.Equal(PublicKeyAlgorithm.Ed25519, signature.PublicKeyAlgorithm);
+            Assert.Equal(HashAlgorithmId.Sha512, signature.HashAlgorithm);
+            Assert.Equal("76495F50218890F7F5E2EE3C1822514F70500F551D86E5C921E404E34A53FBAC", System.Convert.ToHexString(signature.Salt));
+            Assert.Equal(64, signature.EdDsaSignatureValue!.Length);
+            Assert.Equal(new byte[] { 0x69, 0x36 }, signature.LeftHashBytes16);
+        }
+
+        [Fact]
+        public void Parse_WithAV6SignatureWhoseSaltSizeDoesNotMatchItsHash_ShouldFailClosed()
+        {
+            // Arrange: v6, SHA2-512 (needs a 32-octet salt) but declaring a 16-octet one.
+            var body = new List<byte> { 0x06, 0x00, 27, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0x00, 0x00, 16 };
+            body.AddRange(new byte[16 + 64]);
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(body.ToArray()));
+        }
+
+        [Fact]
+        public void Parse_WithAV6EdDsaLegacySignature_ShouldFailClosed()
+        {
+            // Arrange: EdDSALegacy (22) is forbidden in v6 signatures (RFC 9580 §5.2.3.3).
+            var body = new List<byte> { 0x06, 0x00, 22, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0x00, 0x00, 16 };
+            body.AddRange(new byte[16]);
+            body.AddRange(new byte[] { 0x00, 0x01, 0x01, 0x00, 0x01, 0x01 });
+
+            // Act & Assert
+            Assert.Throws<FailClosedException>(() => SignaturePacket.Parse(body.ToArray()));
+        }
     }
 }
