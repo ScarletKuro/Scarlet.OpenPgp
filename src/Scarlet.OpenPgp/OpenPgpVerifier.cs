@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading;
@@ -236,12 +237,21 @@ namespace Scarlet.OpenPgp
             // at all when the outcome is already decided.
             if (verification.NeedsContent)
             {
-                var buffer = new byte[Math.Min(StreamBufferSize, data.Length)];
-                for (int offset = 0; offset < data.Length && verification.NeedsContent; offset += buffer.Length)
+                byte[] buffer = ArrayPool<byte>.Shared.Rent(Math.Min(StreamBufferSize, data.Length));
+                try
                 {
-                    int count = Math.Min(buffer.Length, data.Length - offset);
-                    data.Slice(offset, count).CopyTo(buffer);
-                    verification.Update(buffer, 0, count);
+                    int offset = 0;
+                    while (offset < data.Length && verification.NeedsContent)
+                    {
+                        int count = Math.Min(buffer.Length, data.Length - offset);
+                        data.Slice(offset, count).CopyTo(buffer);
+                        verification.Update(buffer, 0, count);
+                        offset += count;
+                    }
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
                 }
             }
 
@@ -256,11 +266,18 @@ namespace Scarlet.OpenPgp
             }
 
             using DocumentVerification verification = StartDetached(signatures, keys);
-            var buffer = new byte[StreamBufferSize];
-            int read;
-            while (verification.NeedsContent && (read = data.Read(buffer, 0, buffer.Length)) > 0)
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(StreamBufferSize);
+            try
             {
-                verification.Update(buffer, 0, read);
+                int read;
+                while (verification.NeedsContent && (read = data.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    verification.Update(buffer, 0, read);
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
             }
 
             return verification.Complete(now, signedText: null);
@@ -274,11 +291,18 @@ namespace Scarlet.OpenPgp
             }
 
             using DocumentVerification verification = StartDetached(signatures, keys);
-            var buffer = new byte[StreamBufferSize];
-            int read;
-            while (verification.NeedsContent && (read = await data.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(StreamBufferSize);
+            try
             {
-                verification.Update(buffer, 0, read);
+                int read;
+                while (verification.NeedsContent && (read = await data.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
+                {
+                    verification.Update(buffer, 0, read);
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
             }
 
             return verification.Complete(now, signedText: null);

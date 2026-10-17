@@ -13,7 +13,7 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
     internal static class Ed25519Verifier
     {
         /// <summary>The curve's cofactor h: the full group has order h * L (RFC 8032 §5.1).</summary>
-        private const int Cofactor = 8;
+        public const int Cofactor = 8;
 
         private static readonly BigInteger GroupOrderL =
             BigInteger.Pow(2, 252) + BigInteger.Parse("27742317777372353535851937790883648493", System.Globalization.CultureInfo.InvariantCulture);
@@ -25,15 +25,8 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
                 return false;
             }
 
-            if (!PointDecoder.TryDecode(publicKey.CompressedPoint, out EdwardsPoint a))
-            {
-                return false;
-            }
-
-            // Reject small-order public keys ([8]A = identity, which includes the identity itself).
-            // No real key is one, and with such an A the equation [S]B = R + [k]A no longer depends
-            // on the message - e.g. A = R = identity, S = 0 "verifies" anything.
-            if (a.ScalarMultiply(Cofactor).Equals(EdwardsPoint.Identity))
+            // Decoded once per key; small-order keys fail here (see Ed25519PublicKey.TryGetValidPoint).
+            if (!publicKey.TryGetValidPoint(out EdwardsPoint a))
             {
                 return false;
             }

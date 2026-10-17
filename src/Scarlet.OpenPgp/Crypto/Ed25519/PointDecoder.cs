@@ -11,6 +11,9 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
         private static readonly BigInteger SqrtCandidateExponent = (FieldElement.P + 3) / 8;
         private static readonly BigInteger SqrtMinusOneExponent = (FieldElement.P - 1) / 4;
 
+        /// <summary>sqrt(-1) mod p = 2^((p-1)/4): a constant, so computed once rather than on every point decode.</summary>
+        private static readonly FieldElement SqrtMinusOne = new FieldElement(2).Pow(SqrtMinusOneExponent);
+
         public static bool TryDecode(byte[] compressed32, out EdwardsPoint point)
         {
             point = default;
@@ -60,7 +63,7 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
             }
             else if (vCandidateSquared == -u)
             {
-                candidate = candidate * SqrtMinusOne();
+                candidate = candidate * SqrtMinusOne;
             }
             else
             {
@@ -81,7 +84,6 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
             return true;
         }
 
-        private static FieldElement SqrtMinusOne() => new FieldElement(2).Pow(SqrtMinusOneExponent);
 
         /// <summary>Interprets a little-endian byte sequence (Ed25519's native encoding for y-coordinates, scalars, and hash outputs) as an unsigned integer. Shared with <see cref="Ed25519Verifier"/> rather than duplicated.</summary>
         public static BigInteger LittleEndianToBigInteger(byte[] littleEndian)

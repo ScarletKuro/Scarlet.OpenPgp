@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using Scarlet.OpenPgp.Hashing;
 using Scarlet.OpenPgp.Packets;
 
@@ -63,12 +64,14 @@ namespace Scarlet.OpenPgp.Signing
     /// </summary>
     internal sealed class SignatureDigest : IDisposable
     {
-        private static readonly byte[] CarriageReturn = [(byte)'\r'];
+        /// <summary>How much input text is canonicalized per hash update (the scratch buffer is twice this).</summary>
+        private const int TextSliceSize = 32 * 1024;
 
         private readonly SignaturePacket _signature;
         private readonly HashContext _hash;
         private readonly bool _canonicalizeText;
         private bool _previousWasCarriageReturn;
+        private byte[]? _scratch;
 
         private SignatureDigest(SignaturePacket signature, HashContext hash, bool canonicalizeText)
         {
@@ -97,22 +100,30 @@ namespace Scarlet.OpenPgp.Signing
                 return;
             }
 
-            int runStart = offset;
+            // Canonicalize into a scratch buffer and hash it with one update per slice. Hashing each
+            // run between line breaks separately cost two hash calls per bare LF - 26x slower on
+            // LF-dense input (8 MiB of LFs: 572 ms). A slice expands at most 2x (every byte a LF).
+            _scratch ??= ArrayPool<byte>.Shared.Rent(2 * TextSliceSize);
             int end = offset + count;
-            for (int i = offset; i < end; i++)
+            while (offset < end)
             {
-                byte b = buffer[i];
-                if (b == (byte)'\n' && !_previousWasCarriageReturn)
+                int sliceEnd = Math.Min(end, offset + TextSliceSize);
+                int written = 0;
+                for (int i = offset; i < sliceEnd; i++)
                 {
-                    _hash.Update(buffer, runStart, i - runStart);
-                    _hash.Update(CarriageReturn);
-                    runStart = i; // the LF itself goes out with the next run
+                    byte b = buffer[i];
+                    if (b == (byte)'\n' && !_previousWasCarriageReturn)
+                    {
+                        _scratch[written++] = (byte)'\r';
+                    }
+
+                    _scratch[written++] = b;
+                    _previousWasCarriageReturn = b == (byte)'\r';
                 }
 
-                _previousWasCarriageReturn = b == (byte)'\r';
+                _hash.Update(_scratch, 0, written);
+                offset = sliceEnd;
             }
-
-            _hash.Update(buffer, runStart, end - runStart);
         }
 
         public byte[] Finish()
@@ -122,6 +133,14 @@ namespace Scarlet.OpenPgp.Signing
             return _hash.Finish();
         }
 
-        public void Dispose() => _hash.Dispose();
+        public void Dispose()
+        {
+            _hash.Dispose();
+            if (_scratch is not null)
+            {
+                ArrayPool<byte>.Shared.Return(_scratch);
+                _scratch = null;
+            }
+        }
     }
 }

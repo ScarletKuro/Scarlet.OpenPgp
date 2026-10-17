@@ -79,5 +79,93 @@ namespace Scarlet.OpenPgp.Tests.Signing
             // Assert
             Assert.Equal(signature.LeftHashBytes16, new[] { digest[0], digest[1] });
         }
+
+        public static TheoryData<string, int> TextModeInputs => new()
+        {
+            // name, chunk size used to feed the digest (0 = everything in one Update)
+            { "mixed", 0 },
+            { "mixed", 1 },
+            { "mixed", 7 },
+            { "all-lf", 0 },
+            { "all-lf", 4096 },
+            { "cr-lf-across-slice", 0 },
+            { "cr-lf-across-slice", 32 * 1024 },
+            { "lone-cr-then-lf-next-slice", 0 },
+        };
+
+        [Theory]
+        [MemberData(nameof(TextModeInputs))]
+        public void SignatureDigest_InTextMode_ShouldHashTheSameBytesAsAReferenceCanonicalization(string name, int chunkSize)
+        {
+            // Arrange: text mode converts each LF not preceded by CR into CRLF. The digest batches
+            // that through a 32 KiB slice, so the inputs straddle slices, expand 2x (every byte a
+            // LF) and split CR from its LF both within one Update and across Update calls.
+            SignaturePacket signature = ParseSignatureFixture();
+            byte[] content = BuildTextInput(name);
+            byte[] expected = SignatureHashBuilder.ComputeDigest(ReferenceCanonicalize(content), signature);
+
+            // Act
+            byte[] actual;
+            using (SignatureDigest digest = SignatureDigest.Begin(signature, canonicalizeText: true))
+            {
+                int step = chunkSize == 0 ? content.Length : chunkSize;
+                for (int offset = 0; offset < content.Length; offset += step)
+                {
+                    digest.Update(content, offset, Math.Min(step, content.Length - offset));
+                }
+
+                actual = digest.Finish();
+            }
+
+            // Assert
+            Assert.Equal(expected, actual);
+        }
+
+        private static byte[] BuildTextInput(string name)
+        {
+            const int slice = 32 * 1024;
+            switch (name)
+            {
+                case "mixed":
+                    return Encoding.ASCII.GetBytes("a\nb\r\nc\rd\n\n\r\r\n\r\ne\n");
+                case "all-lf":
+                    return Enumerable.Repeat((byte)'\n', (2 * slice) + 3).ToArray();
+                case "cr-lf-across-slice":
+                    {
+                        byte[] text = Enumerable.Repeat((byte)'x', (2 * slice) + 10).ToArray();
+                        text[slice - 1] = (byte)'\r';
+                        text[slice] = (byte)'\n'; // already CRLF: must not gain a second CR
+                        text[(2 * slice) - 1] = (byte)'\n';
+                        return text;
+                    }
+
+                case "lone-cr-then-lf-next-slice":
+                    {
+                        byte[] text = Enumerable.Repeat((byte)'x', slice + 10).ToArray();
+                        text[slice - 2] = (byte)'\r';
+                        text[slice] = (byte)'\n'; // CR not directly before it: becomes CRLF
+                        return text;
+                    }
+
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(name), name, null);
+            }
+        }
+
+        private static byte[] ReferenceCanonicalize(byte[] text)
+        {
+            var result = new List<byte>(text.Length * 2);
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (text[i] == (byte)'\n' && (i == 0 || text[i - 1] != (byte)'\r'))
+                {
+                    result.Add((byte)'\r');
+                }
+
+                result.Add(text[i]);
+            }
+
+            return result.ToArray();
+        }
     }
 }
