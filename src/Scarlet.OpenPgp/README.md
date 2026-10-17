@@ -1,30 +1,47 @@
 # Scarlet.OpenPgp
 
-A pure C#, zero-dependency, verify-only OpenPGP (RFC 4880 v4) implementation.
+A pure C#, zero-dependency, verify-only OpenPGP implementation (RFC 9580, and RFC 4880 v4).
 
 ```csharp
 using Scarlet.OpenPgp;
 
-bool ok = OpenPgpVerifier.VerifyClearsign(clearsignedText, publicKeyArmor, out string signedText);
-// Use signedText from here on - never the original clearsignedText.
+// Clearsigned: on success, SignedText is exactly what was signed.
+VerificationResult clearsigned = OpenPgpVerifier.VerifyClearsign(clearsignedText, publicKeys);
+if (clearsigned.IsValid)
+{
+    Use(clearsigned.SignedText);
+}
 
-bool ok2 = OpenPgpVerifier.VerifyDetached(fileBytes, signatureArmor, publicKeyArmor);
+// Detached, signature and keys armored (.asc) or binary (.sig/.gpg); data streamed, never buffered.
+using FileStream data = File.OpenRead("release.tar.gz");
+VerificationResult detached = OpenPgpVerifier.VerifyDetached(data, File.ReadAllBytes("release.tar.gz.sig"), File.ReadAllBytes("keys.gpg"));
+Console.WriteLine(detached);                    // e.g. "KeyExpired: The signing subkey expired at ..."
+Console.WriteLine(detached.SignerFingerprint);  // the (sub)key that signed
 ```
 
-Only use `signedText` from a clearsigned message. The input also contains unsigned text, such as
+Only use `SignedText` from a clearsigned message. The input also contains unsigned text, such as
 dash-escaping and the signature block's own armor headers, so reading data straight out of the
 `.asc` file means trusting text nobody signed.
 
 ## Scope
 
-- Ed25519 (EdDSA) and RSA-PKCS#1 v1.5 signatures, v4 keys.
-- Clearsigned messages and detached signatures.
-- No signing, key generation, encryption, or key management. Supply exactly the public key you
-  already trust; this library does not decide whether to trust it.
-- Time is checked too: a signature past its own expiration time, a signature older than its key,
-  and a key past the expiration set by its most recent valid self-signature all fail. A key that
-  has expired fails *now* even for signatures it made while still valid, the same policy as apt.
-  Revocation is not checked.
+- Clearsigned messages, and detached signatures over binary (0x00) or text-mode (0x01) data.
+- v4 and v6 (RFC 9580) keys and signatures: RSA PKCS#1 v1.5, DSA, ECDSA on NIST P-256/384/521 and
+  brainpoolP256r1/384r1/512r1, EdDSALegacy Ed25519, native Ed25519 and Ed448. Hashes SHA2-224/256/
+  384/512 and SHA3-256/512; MD5, SHA-1 and RIPEMD-160 signatures are rejected.
+- Signatures and keys may be ASCII-armored or binary. Key input may hold several certificates and
+  signature input several signatures: the result is valid when any signature verifies against any
+  supplied key.
+- Signing subkeys need a binding signature with the sign flag and a valid back-signature; a primary
+  key whose self-signature lacks the sign flag can't sign data.
+- Time is checked: a signature past its own expiration time, a signature older than its key, and a
+  key or subkey past the expiration set by its newest valid self-signature all fail. A key that has
+  expired fails *now* even for signatures it made while still valid, the same policy as apt.
+- Revocations in the supplied certificates are honored: "compromised" (or no reason) invalidates
+  every signature; "superseded" and "retired" only signatures made after the revocation.
+- No signing, key generation, encryption, or trust management. Supply exactly the keys you already
+  trust; this library does not decide whether to trust them.
+- Nothing throws on bad input: every failure is a `VerificationResult` with a `Status` and `Message`.
 - Zero external NuGet dependencies. Targets `netstandard2.0` for broad compatibility, plus
   `net10.0` so it can be properly AOT/trim-analyzed when consumed by an AOT-published app.
 

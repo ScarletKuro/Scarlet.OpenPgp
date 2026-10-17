@@ -36,6 +36,39 @@ does not wrap or mimic. This library implements the **OpenPGP standard** (RFC 48
 `OpenPgp` is the accurate name — it also matches existing ecosystem convention (BouncyCastle's namespace for
 this is `Org.BouncyCastle.Bcpg.OpenPgp`; PGPainless follows the same logic).
 
+## Current implementation (supersedes the v1 scope below)
+
+The original v1 brief follows unchanged for its rationale. The implementation has since grown past it:
+
+- **Formats:** OpenPGP v4 (RFC 4880) and v6 (RFC 9580) keys and signatures, including v6 salted
+  hashing, v6 fingerprints, and RFC 9580's armor rules (optional, unchecked CRC24) and cleartext
+  framework (only well-formed `Hash` headers, whose contents are ignored).
+- **Algorithms:** RSA PKCS#1 v1.5 (2048-16384 bits), DSA (2048+ bits, 224/256-bit q), ECDSA on NIST
+  P-256/384/521 and brainpoolP256r1/384r1/512r1, EdDSALegacy Ed25519, native Ed25519 and Ed448.
+- **Hashes:** SHA2-224/256/384/512 and SHA3-256/512 for data signatures. SHA-1 is accepted only for
+  a certificate's own self-signatures (see `HashContext`); MD5, SHA-1 and RIPEMD-160 data
+  signatures are rejected (RFC 9580 §9.5).
+- **Inputs:** signatures and keys may be ASCII-armored or binary. Key input may hold several
+  certificates and signature input several signatures; the result is valid when any signature
+  verifies against any supplied key.
+- **Certificates:** signing subkeys (binding signature plus back-signature required), key flags,
+  key/subkey expiration from the newest valid self-signature (a v6 key requires a Direct Key
+  signature), signature expiration, and revocations contained in the supplied certificates. Hard
+  revocations (compromised, no reason) invalidate every signature; soft ones (superseded, retired)
+  only signatures made after them. Third-party certifications and designated revokers are ignored.
+- **Data:** detached signatures stream the data once (`Stream` and async overloads), binary (0x00)
+  and text-mode (0x01) signatures alike.
+- **Result:** a `VerificationResult` with a status, a reason, the signer and primary fingerprints,
+  the signature time and, for clearsign, the signed text.
+- **Testing:** real release artifacts (Bun, Tor Browser, GnuPG, Node.js, Debian), GnuPG 2.4.9 output
+  for every algorithm and certificate scenario, RFC 9580 / RFC 8032 / NIST vectors, BouncyCastle
+  cross-validation, a deterministic mutation fuzzer in the test suite, and a SharpFuzz/libFuzzer
+  harness (`fuzz/`) run in CI. The test project is also published and run as Native AOT with trim/AOT
+  warnings as errors.
+
+Still out of scope: signing, encryption, inline-signed (one-pass) messages, trust chains, third-party
+revocations, LibrePGP v5 keys, and v3 keys/signatures.
+
 ## Goal (v1 scope)
 
 A pure C# (zero external NuGet dependencies), verify-only OpenPGP implementation covering the common
@@ -145,26 +178,37 @@ This splits into two genuinely separate pieces of work:
     SHA-512 internally as specified.
   - RFC 8032 Appendix contains full pseudocode and, critically, **official test vectors** — use them.
 
-### Suggested public API shape (adjust as needed, this is a starting sketch, not a mandate)
+### Public API (as implemented)
 
 ```csharp
 namespace Scarlet.OpenPgp;
 
 public static class OpenPgpVerifier
 {
-    // Verifies a clearsigned message block against an ASCII-armored public key. On success,
-    // signedText is exactly the authenticated text - the only part of the input callers may use.
-    public static bool VerifyClearsign(string clearsignedMessage, string publicKeyArmor, out string signedText);
+    // Clearsigned message; on success result.SignedText is exactly the authenticated text - the only
+    // part of the input callers may use. Keys: armored string, or armored/binary bytes.
+    public static VerificationResult VerifyClearsign(string clearsignedMessage, string publicKeys);
+    public static VerificationResult VerifyClearsign(string clearsignedMessage, ReadOnlySpan<byte> publicKeys);
 
-    // Verifies a detached signature (ASCII-armored or binary) over arbitrary bytes.
-    public static bool VerifyDetached(ReadOnlySpan<byte> data, string signatureArmor, string publicKeyArmor);
+    // Detached signature(s), armored or binary, over in-memory or streamed data.
+    public static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, string signature, string publicKeys);
+    public static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> publicKeys);
+    public static VerificationResult VerifyDetached(Stream data, string signature, string publicKeys);
+    public static VerificationResult VerifyDetached(Stream data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> publicKeys);
+    public static Task<VerificationResult> VerifyDetachedAsync(Stream data, ReadOnlyMemory<byte> signature, ReadOnlyMemory<byte> publicKeys, CancellationToken cancellationToken = default);
+}
+
+public sealed class VerificationResult
+{
+    public bool IsValid { get; }
+    public VerificationStatus Status { get; }      // Valid, BadSignature, KeyExpired, KeyRevoked, ...
+    public string Message { get; }
+    public string? SignerFingerprint { get; }      // the signing (sub)key
+    public string? PrimaryKeyFingerprint { get; }  // the certificate
+    public DateTimeOffset? SignatureCreationTime { get; }
+    public string? SignedText { get; }             // clearsign only
 }
 ```
-
-Consider a richer result type (`VerificationResult { bool IsValid; string? FailureReason; DateTimeOffset?
-SignedAt; string? IssuerKeyId; }`) instead of a bare `bool` once the shape settles, since "why did this fail"
-matters a lot for a security tool's usability — but don't over-design this up front, get a working `bool`
-version first.
 
 ## Project structure (mirroring `Scarlet.Bun`'s layout, adjust as needed)
 
@@ -211,9 +255,11 @@ may end up depending on:
   there's no code-sharing relationship).
 - Whether to expose the packet-parsing layer as a public API (useful for inspecting a key/signature without
   verifying, e.g. "what key ID signed this") or keep it entirely internal behind `OpenPgpVerifier`.
-- Whether v2 should add RSA-PSS, ECDSA (P-256/P-384), and/or DSA — RSA-PKCS1v1.5 and Ed25519 cover the
-  large majority of real-world cases, but not all of them.
-- Whether v2 should add RFC 9580 (v6 key/signature) support once real-world adoption grows.
+- ~~Whether v2 should add ECDSA and/or DSA~~ and ~~RFC 9580 (v6) support~~: done (see "Current
+  implementation"). OpenPGP has no RSA-PSS.
+- Whether to expose per-signature results when an input holds several signatures (today the result
+  reports the first valid one, or the most informative failure).
+- Whether to honor third-party revocations by designated revokers whose certificates are also supplied.
 
 ## Non-negotiables (carry these forward regardless of who implements this)
 
@@ -237,15 +283,19 @@ may end up depending on:
   for signed content (e.g. an injected line in a `SHASUMS256.txt.asc` that a script then searches for a
   checksum). GnuPG gets away with tolerating it because it can output the verified text; this library
   instead parses clearsigned messages strictly: only blank lines may precede the BEGIN line or follow
-  the END line, only `Hash` armor headers are accepted and they must name the signature's algorithm, body
-  lines starting with `-` must be dash-escaped, and a bare CR is rejected. `VerifyClearsign` also returns
-  the signed text, and callers must use only that text. Malformed *content inside* a matched block (bad
-  base64, wrong CRC24, a packet body with unexpected trailing bytes, more than one Signature packet inside
-  that block) fails closed everywhere.
+  the END line, only well-formed `Hash` armor headers are accepted (RFC 9580 §7.1; their contents are
+  ignored per §6.2.2.3), body lines starting with `-` must be dash-escaped, and a bare CR is rejected.
+  `VerifyClearsign` also returns the signed text, and callers must use only that text. Malformed *content
+  inside* a matched block (bad base64, a packet body with unexpected trailing bytes, a non-signature
+  packet among the signatures) fails closed everywhere. The CRC24 line is not checked: RFC 9580 §6.1
+  forbids rejecting armor over it, and it never protected against tampering anyway.
 - **Signature and key lifetimes are enforced.** A signature past its hashed signature-expiration time, a
-  signature created before its key, and a key past the expiration set by its most recent self-signature
-  that verifies all fail verification. Key expiration is only read from self-signatures that verify
-  against the primary key, never from unverified packets in the block.
+  signature created before its key, and a key or subkey past the expiration set by its most recent
+  self-signature that verifies all fail verification - a key must be valid both now and when it signed.
+  Key expiration, flags and revocations are only read from signatures that verify against the primary
+  key, never from unverified packets in the block.
+- **Bounded work on hostile input.** RSA moduli are capped at 16384 bits (and exponents at 256 bits),
+  DSA primes at 16384 bits, so no input can make a single verification take minutes.
 - **Correctness over performance**, but still write clean, readable code — this will be read and audited by
   people deciding whether to trust it. `Span<T>`/`ReadOnlySpan<T>` are fair game where they reduce
   allocations without hurting readability (see "Performance follow-up" below), but don't chase performance
@@ -264,6 +314,8 @@ there are real allocation hot spots if this ever needs to verify many signatures
   array to reverse byte order for `BigInteger`. Could take `ReadOnlySpan<byte>` instead of `byte[]` to at
   least avoid one intermediate copy at each call site, though the byte-reversal allocation itself is
   probably unavoidable without dropping to `stackalloc` for small (≤64-byte) MPIs.
+- Ed25519 now uses extended (inversion-free) coordinates and Ed448 projective ones; the next step for
+  either would be fixed-width field arithmetic instead of `BigInteger`.
 - `Crypto/Ed25519/Ed25519Verifier.cs`'s `Concat`/`LittleEndianToBigInteger` helpers, and the equivalent
   spots in `Crypto/Rsa/RsaPkcs1Verifier.cs` — same story, small allocations that `stackalloc` + `Span<byte>`
   could avoid for the fixed-size (32/64-byte) Ed25519 values.
