@@ -3,55 +3,81 @@ using System.Numerics;
 namespace Scarlet.OpenPgp.Crypto.Ed25519
 {
     /// <summary>
-    /// A point on Ed25519's twisted Edwards curve (-x^2 + y^2 = 1 + d*x^2*y^2), in affine
-    /// coordinates. Affine (rather than extended projective) coordinates and BigInteger-backed
-    /// field arithmetic are a deliberate simplicity-over-speed choice - acceptable per SPEC.md,
-    /// since this is a verify-only library with no secret scalars to protect from timing leaks.
+    /// A point on Ed25519's twisted Edwards curve (-x^2 + y^2 = 1 + d*x^2*y^2), held in extended
+    /// homogeneous coordinates (X:Y:Z:T) with x = X/Z, y = Y/Z, x*y = T/Z (RFC 8032 §5.1.4).
+    /// Extended coordinates make addition inversion-free - affine addition needs two field
+    /// inversions per step, which made every verification (and every self-signature check in a
+    /// keyring) needlessly slow. BigInteger-backed field arithmetic remains a deliberate
+    /// simplicity-over-speed choice, acceptable per SPEC.md: a verify-only library has no secret
+    /// scalars to protect from timing leaks.
     /// </summary>
     internal readonly struct EdwardsPoint
     {
         /// <summary>The curve constant d = -121665/121666 (mod p), derived from first principles rather than hardcoded so it is auditable against RFC 8032 §5.1.1.</summary>
         public static readonly FieldElement D = new FieldElement(-121665) * new FieldElement(121666).Invert();
 
+        private static readonly FieldElement TwoD = D + D;
+
         public static readonly EdwardsPoint Identity = new EdwardsPoint(FieldElement.Zero, FieldElement.One);
 
         /// <summary>The Ed25519 base point B = (x, 4/5) with x chosen even (RFC 8032 §5.1.2), derived rather than hardcoded for the same auditability reason as <see cref="D"/>.</summary>
         public static readonly EdwardsPoint B = CreateBasePoint();
 
+        private readonly FieldElement _x;
+        private readonly FieldElement _y;
+        private readonly FieldElement _z;
+        private readonly FieldElement _t;
+
+        /// <summary>Creates a point from affine coordinates.</summary>
         public EdwardsPoint(FieldElement x, FieldElement y)
+            : this(x, y, FieldElement.One, x * y)
         {
-            X = x;
-            Y = y;
         }
 
-        public FieldElement X { get; }
+        private EdwardsPoint(FieldElement x, FieldElement y, FieldElement z, FieldElement t)
+        {
+            _x = x;
+            _y = y;
+            _z = z;
+            _t = t;
+        }
 
-        public FieldElement Y { get; }
+        /// <summary>The affine x coordinate (costs one field inversion).</summary>
+        public FieldElement X => _x * _z.Invert();
+
+        /// <summary>The affine y coordinate (costs one field inversion).</summary>
+        public FieldElement Y => _y * _z.Invert();
 
         public bool IsOnCurve
         {
             get
             {
-                FieldElement xx = X * X;
-                FieldElement yy = Y * Y;
-                FieldElement lhs = yy - xx;
-                FieldElement rhs = FieldElement.One + (D * xx * yy);
-                return lhs == rhs;
+                // The homogeneous curve equation (-X^2 + Y^2) Z^2 = Z^4 + d X^2 Y^2, plus the
+                // extended-coordinate invariant X*Y = Z*T.
+                FieldElement xx = _x * _x;
+                FieldElement yy = _y * _y;
+                FieldElement zz = _z * _z;
+                FieldElement lhs = (yy - xx) * zz;
+                FieldElement rhs = (zz * zz) + (D * xx * yy);
+                return lhs == rhs && _x * _y == _z * _t;
             }
         }
 
-        /// <summary>The unified twisted-Edwards addition law (RFC 8032 §5.1.4); the same formula handles doubling when <paramref name="other"/> is <c>this</c>.</summary>
+        /// <summary>
+        /// The unified extended-coordinates addition law (RFC 8032 §5.1.4). It is complete for
+        /// Ed25519 (a = -1 and d a non-square), so the same formula also doubles a point.
+        /// </summary>
         public EdwardsPoint Add(EdwardsPoint other)
         {
-            FieldElement x1y2 = X * other.Y;
-            FieldElement y1x2 = Y * other.X;
-            FieldElement y1y2 = Y * other.Y;
-            FieldElement x1x2 = X * other.X;
-            FieldElement dx1x2y1y2 = D * X * other.X * Y * other.Y;
-
-            FieldElement x3 = (x1y2 + y1x2) * (FieldElement.One + dx1x2y1y2).Invert();
-            FieldElement y3 = (y1y2 + x1x2) * (FieldElement.One - dx1x2y1y2).Invert();
-            return new EdwardsPoint(x3, y3);
+            FieldElement a = (_y - _x) * (other._y - other._x);
+            FieldElement b = (_y + _x) * (other._y + other._x);
+            FieldElement c = _t * TwoD * other._t;
+            FieldElement d = (_z + _z) * other._z;
+            FieldElement e = b - a;
+            FieldElement f = d - c;
+            FieldElement g = d + c;
+            FieldElement h = b + a;
+            return new EdwardsPoint(e * f, g * h, f * g, e * h);
         }
 
         public EdwardsPoint ScalarMultiply(BigInteger scalar)
@@ -74,7 +100,8 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
             return result;
         }
 
-        public bool Equals(EdwardsPoint other) => X == other.X && Y == other.Y;
+        /// <summary>Projective equality: X1/Z1 = X2/Z2 and Y1/Z1 = Y2/Z2, compared without inverting.</summary>
+        public bool Equals(EdwardsPoint other) => _x * other._z == other._x * _z && _y * other._z == other._y * _z;
 
         public override bool Equals(object? obj) => obj is EdwardsPoint other && Equals(other);
 

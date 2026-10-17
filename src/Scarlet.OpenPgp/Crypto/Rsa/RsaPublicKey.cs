@@ -9,6 +9,12 @@ namespace Scarlet.OpenPgp.Crypto.Rsa
         /// <summary>The smallest modulus accepted. 1024-bit RSA is within reach of well-funded attackers, and NIST has disallowed anything below 2048 bits for signatures since 2013.</summary>
         public const int MinimumModulusBitLength = 2048;
 
+        /// <summary>The largest modulus accepted - GnuPG's own limit. Bigger moduli serve no security purpose and make each verification take minutes.</summary>
+        public const int MaximumModulusBitLength = 16384;
+
+        /// <summary>The largest public exponent accepted, in bits. Real keys use small exponents (65537, 17, 3); a huge one only makes verification slow.</summary>
+        public const int MaximumExponentBitLength = 256;
+
         public RsaPublicKey(BigInteger modulus, BigInteger exponent)
         {
             Modulus = modulus;
@@ -17,14 +23,14 @@ namespace Scarlet.OpenPgp.Crypto.Rsa
             // Fail closed on structurally weak or nonsensical keys rather than "verifying" against
             // them: with e = 1 the signature *is* the encoded message, so anyone can forge one, and
             // an even modulus or exponent can never be a real RSA key.
-            if (modulus.IsEven || ModulusBitLength < MinimumModulusBitLength)
+            if (modulus.IsEven || ModulusBitLength < MinimumModulusBitLength || ModulusBitLength > MaximumModulusBitLength)
             {
-                throw new FailClosedException("RSA modulus must be odd and at least " + MinimumModulusBitLength + " bits.");
+                throw new FailClosedException("RSA modulus must be odd and between " + MinimumModulusBitLength + " and " + MaximumModulusBitLength + " bits.");
             }
 
-            if (exponent.IsEven || exponent < 3 || exponent >= modulus)
+            if (exponent.IsEven || exponent < 3 || exponent >= modulus || BigIntegerMath.BitLength(exponent) > MaximumExponentBitLength)
             {
-                throw new FailClosedException("RSA public exponent must be odd, at least 3, and smaller than the modulus.");
+                throw new FailClosedException("RSA public exponent must be odd, at least 3, at most " + MaximumExponentBitLength + " bits, and smaller than the modulus.");
             }
         }
 

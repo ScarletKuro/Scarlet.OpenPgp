@@ -31,6 +31,9 @@ namespace Scarlet.OpenPgp.Crypto.Dsa
         /// <summary>The smallest prime modulus accepted (L in FIPS 186-4 §4.2).</summary>
         public const int MinimumPBitLength = 2048;
 
+        /// <summary>The largest prime modulus accepted. FIPS 186-4 tops out at 3072 bits; this leaves headroom while keeping a verification's modular exponentiations bounded.</summary>
+        public const int MaximumPBitLength = 16384;
+
         public DsaPublicKey(BigInteger p, BigInteger q, BigInteger g, BigInteger y)
         {
             P = p;
@@ -39,9 +42,9 @@ namespace Scarlet.OpenPgp.Crypto.Dsa
             Y = y;
 
             int pBits = BigIntegerMath.BitLength(p);
-            if (pBits < MinimumPBitLength || p.IsEven)
+            if (pBits < MinimumPBitLength || pBits > MaximumPBitLength || p.IsEven)
             {
-                throw new FailClosedException("DSA prime p must be odd and at least " + MinimumPBitLength + " bits.");
+                throw new FailClosedException("DSA prime p must be odd and between " + MinimumPBitLength + " and " + MaximumPBitLength + " bits.");
             }
 
             QBitLength = BigIntegerMath.BitLength(q);
