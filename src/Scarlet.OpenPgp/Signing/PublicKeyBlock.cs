@@ -84,11 +84,13 @@ namespace Scarlet.OpenPgp.Signing
                     continue;
                 }
 
-                if (!TryVerifySelfSignature(primaryKey, keyPrefix, currentUserId, seenUserIdOrAttribute, packet.Body, now, out SignaturePacket? selfSignature, out DateTimeOffset createdAt))
+                SignaturePacket? selfSignature = ReadValidSelfSignature(primaryKey, keyPrefix, currentUserId, seenUserIdOrAttribute, packet.Body, now);
+                if (selfSignature is null)
                 {
                     continue;
                 }
 
+                DateTimeOffset createdAt = SignatureVerifier.GetCreationTime(selfSignature);
                 if (latestSelfSignature is null || createdAt >= latestCreatedAt)
                 {
                     latestSelfSignature = selfSignature;
@@ -107,18 +109,15 @@ namespace Scarlet.OpenPgp.Signing
             return new PublicKeyBlock(primaryKey, expiresAt);
         }
 
-        private static bool TryVerifySelfSignature(
+        /// <summary>The parsed signature if it is a valid, unexpired self-signature over the primary key (and current User ID); otherwise <c>null</c>.</summary>
+        private static SignaturePacket? ReadValidSelfSignature(
             PublicKeyPacket primaryKey,
             byte[] keyPrefix,
             byte[]? currentUserId,
             bool seenUserIdOrAttribute,
             byte[] signatureBody,
-            DateTimeOffset now,
-            out SignaturePacket? selfSignature,
-            out DateTimeOffset createdAt)
+            DateTimeOffset now)
         {
-            selfSignature = null;
-            createdAt = default;
             try
             {
                 SignaturePacket signature = SignaturePacket.Parse(signatureBody);
@@ -135,26 +134,19 @@ namespace Scarlet.OpenPgp.Signing
                 }
                 else
                 {
-                    return false;
+                    return null;
                 }
 
-                createdAt = SignatureVerifier.GetCreationTime(signature);
-                if (createdAt < primaryKey.CreatedAt || !SignatureVerifier.IsUnexpired(signature, now))
+                if (SignatureVerifier.GetCreationTime(signature) < primaryKey.CreatedAt || !SignatureVerifier.IsUnexpired(signature, now))
                 {
-                    return false;
+                    return null;
                 }
 
-                if (!SignatureVerifier.VerifyCryptographic(primaryKey, signature, signedContent))
-                {
-                    return false;
-                }
-
-                selfSignature = signature;
-                return true;
+                return SignatureVerifier.VerifyCryptographic(primaryKey, signature, signedContent) ? signature : null;
             }
             catch (FailClosedException)
             {
-                return false;
+                return null;
             }
         }
 

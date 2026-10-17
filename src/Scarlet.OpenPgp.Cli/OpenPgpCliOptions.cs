@@ -1,118 +1,122 @@
-namespace Scarlet.OpenPgp.Cli
+using System.Diagnostics.CodeAnalysis;
+
+namespace Scarlet.OpenPgp.Cli;
+
+/// <summary>Parsed command-line options for the <c>verify</c> subcommand. Manual parsing, matching the tiny surface of this tool - no argument-parsing package is warranted for one subcommand and four flags.</summary>
+internal sealed class OpenPgpCliOptions
 {
-    /// <summary>Parsed command-line options for the <c>verify</c> subcommand. Manual parsing, matching the tiny surface of this tool - no argument-parsing package is warranted for one subcommand and four flags.</summary>
-    internal sealed class OpenPgpCliOptions
+    private OpenPgpCliOptions(string keyPath, string signaturePath, string? dataPath, string? outputPath)
     {
-        private OpenPgpCliOptions(string keyPath, string signaturePath, string? dataPath, string? outputPath)
+        KeyPath = keyPath;
+        SignaturePath = signaturePath;
+        DataPath = dataPath;
+        OutputPath = outputPath;
+    }
+
+    public string KeyPath { get; }
+
+    public string SignaturePath { get; }
+
+    /// <summary>When present, verify a detached signature over this file. When absent, <see cref="SignaturePath"/> names a self-contained clearsigned message.</summary>
+    public string? DataPath { get; }
+
+    /// <summary>Clearsign only: where to write the verified signed text on success ("-" for stdout). Nothing is written when verification fails.</summary>
+    public string? OutputPath { get; }
+
+    public static bool TryParse(
+        string[] args,
+        [NotNullWhen(true)] out OpenPgpCliOptions? options,
+        [NotNullWhen(false)] out string? error)
+    {
+        options = null;
+        error = null;
+
+        if (args.Length == 0)
         {
-            KeyPath = keyPath;
-            SignaturePath = signaturePath;
-            DataPath = dataPath;
-            OutputPath = outputPath;
+            error = "no command given";
+            return false;
         }
 
-        public string KeyPath { get; }
-
-        public string SignaturePath { get; }
-
-        /// <summary>When present, verify a detached signature over this file. When absent, <see cref="SignaturePath"/> names a self-contained clearsigned message.</summary>
-        public string? DataPath { get; }
-
-        /// <summary>Clearsign only: where to write the verified signed text on success ("-" for stdout). Nothing is written when verification fails.</summary>
-        public string? OutputPath { get; }
-
-        public static bool TryParse(string[] args, out OpenPgpCliOptions? options, out string? error)
+        if (args[0] != "verify")
         {
-            options = null;
-            error = null;
+            error = "unknown command \"" + args[0] + "\" (expected \"verify\")";
+            return false;
+        }
 
-            if (args.Length == 0)
+        string? key = null;
+        string? signature = null;
+        string? data = null;
+        string? output = null;
+
+        for (int i = 1; i < args.Length; i++)
+        {
+            switch (args[i])
             {
-                error = "no command given";
-                return false;
-            }
-
-            if (args[0] != "verify")
-            {
-                error = "unknown command \"" + args[0] + "\" (expected \"verify\")";
-                return false;
-            }
-
-            string? key = null;
-            string? signature = null;
-            string? data = null;
-            string? output = null;
-
-            for (int i = 1; i < args.Length; i++)
-            {
-                switch (args[i])
-                {
-                    case "--key":
-                        if (++i >= args.Length)
-                        {
-                            error = "--key requires a path argument";
-                            return false;
-                        }
-
-                        key = args[i];
-                        break;
-
-                    case "--signature":
-                        if (++i >= args.Length)
-                        {
-                            error = "--signature requires a path argument";
-                            return false;
-                        }
-
-                        signature = args[i];
-                        break;
-
-                    case "--data":
-                        if (++i >= args.Length)
-                        {
-                            error = "--data requires a path argument";
-                            return false;
-                        }
-
-                        data = args[i];
-                        break;
-
-                    case "--output":
-                        if (++i >= args.Length)
-                        {
-                            error = "--output requires a path argument (or \"-\" for stdout)";
-                            return false;
-                        }
-
-                        output = args[i];
-                        break;
-
-                    default:
-                        error = "unknown argument \"" + args[i] + "\"";
+                case "--key":
+                    if (++i >= args.Length)
+                    {
+                        error = "--key requires a path argument";
                         return false;
-                }
-            }
+                    }
 
-            if (key is null)
-            {
-                error = "missing required --key <path>";
-                return false;
-            }
+                    key = args[i];
+                    break;
 
-            if (signature is null)
-            {
-                error = "missing required --signature <path>";
-                return false;
-            }
+                case "--signature":
+                    if (++i >= args.Length)
+                    {
+                        error = "--signature requires a path argument";
+                        return false;
+                    }
 
-            if (data is not null && output is not null)
-            {
-                error = "--output only applies to clearsigned messages (omit --data)";
-                return false;
-            }
+                    signature = args[i];
+                    break;
 
-            options = new OpenPgpCliOptions(key, signature, data, output);
-            return true;
+                case "--data":
+                    if (++i >= args.Length)
+                    {
+                        error = "--data requires a path argument";
+                        return false;
+                    }
+
+                    data = args[i];
+                    break;
+
+                case "--output":
+                    if (++i >= args.Length)
+                    {
+                        error = "--output requires a path argument (or \"-\" for stdout)";
+                        return false;
+                    }
+
+                    output = args[i];
+                    break;
+
+                default:
+                    error = "unknown argument \"" + args[i] + "\"";
+                    return false;
+            }
         }
+
+        if (key is null)
+        {
+            error = "missing required --key <path>";
+            return false;
+        }
+
+        if (signature is null)
+        {
+            error = "missing required --signature <path>";
+            return false;
+        }
+
+        if (data is not null && output is not null)
+        {
+            error = "--output only applies to clearsigned messages (omit --data)";
+            return false;
+        }
+
+        options = new OpenPgpCliOptions(key, signature, data, output);
+        return true;
     }
 }

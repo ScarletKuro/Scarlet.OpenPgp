@@ -29,16 +29,15 @@ namespace Scarlet.OpenPgp.Packets
 
         public static KeyFingerprint ComputeV4(byte[] publicKeyPacketBody)
         {
-            var header = new byte[3];
-            header[0] = 0x99;
-            header[1] = (byte)(publicKeyPacketBody.Length >> 8);
-            header[2] = (byte)publicKeyPacketBody.Length;
+            var hashInput = new byte[3 + publicKeyPacketBody.Length];
+            hashInput[0] = 0x99;
+            hashInput[1] = (byte)(publicKeyPacketBody.Length >> 8);
+            hashInput[2] = (byte)publicKeyPacketBody.Length;
+            System.Array.Copy(publicKeyPacketBody, 0, hashInput, 3, publicKeyPacketBody.Length);
 
             using (var sha1 = SHA1.Create())
             {
-                sha1.TransformBlock(header, 0, header.Length, header, 0);
-                sha1.TransformFinalBlock(publicKeyPacketBody, 0, publicKeyPacketBody.Length);
-                return new KeyFingerprint(sha1.Hash!);
+                return new KeyFingerprint(sha1.ComputeHash(hashInput));
             }
         }
 
