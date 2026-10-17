@@ -28,6 +28,13 @@ namespace Scarlet.OpenPgp.Crypto.Rsa
             0x00, 0x04, 0x40,
         };
 
+        // SHA2-224: OID 2.16.840.1.101.3.4.2.4 (RFC 9580 Table 24).
+        private static readonly byte[] Sha224 =
+        {
+            0x30, 0x2D, 0x30, 0x0D, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x04, 0x05,
+            0x00, 0x04, 0x1C,
+        };
+
         // SHA3-256 and SHA3-512: the same structure with OIDs 2.16.840.1.101.3.4.2.8 and .10
         // (RFC 9580 Table 24).
         private static readonly byte[] Sha3_256 =
@@ -46,6 +53,8 @@ namespace Scarlet.OpenPgp.Crypto.Rsa
         {
             switch (algorithm)
             {
+                case HashAlgorithmId.Sha224:
+                    return Sha224;
                 case HashAlgorithmId.Sha256:
                     return Sha256;
                 case HashAlgorithmId.Sha384:

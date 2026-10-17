@@ -104,6 +104,18 @@ namespace Scarlet.OpenPgp
             return VerifyClearsign(clearsignedMessage, ParseKeys(publicKeys), now);
         }
 
+        /// <summary>The clearsign check against an explicit clock, so tests can pin "now".</summary>
+        internal static VerificationResult VerifyClearsign(string clearsignedMessage, ReadOnlySpan<byte> publicKeys, DateTimeOffset now)
+        {
+            return VerifyClearsign(clearsignedMessage, ParseKeys(publicKeys), now);
+        }
+
+        /// <summary>The streaming detached check against an explicit clock, so tests can pin "now".</summary>
+        internal static VerificationResult VerifyDetached(Stream data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> publicKeys, DateTimeOffset now)
+        {
+            return VerifyDetached(data, ParseSignatures(signature), ParseKeys(publicKeys), now);
+        }
+
         /// <summary>The detached check against an explicit clock, so tests can pin "now".</summary>
         internal static VerificationResult VerifyDetached(ReadOnlySpan<byte> data, string signature, string publicKeys, DateTimeOffset now)
         {

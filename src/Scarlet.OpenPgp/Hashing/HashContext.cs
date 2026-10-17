@@ -6,24 +6,41 @@ namespace Scarlet.OpenPgp.Hashing
 {
     /// <summary>
     /// An incremental hash over one of the supported OpenPGP hash algorithms, so signed data can be
-    /// streamed through once instead of being buffered. SHA2 is the platform's own implementation;
-    /// SHA3 (which netstandard2.0 lacks) is this library's <see cref="KeccakHash"/>.
+    /// streamed through once instead of being buffered. SHA2-256/384/512 are the platform's own;
+    /// SHA2-224 and SHA3 (which the platform lacks) are this library's <see cref="Sha224"/> and <see cref="KeccakHash"/>.
     /// </summary>
     /// <remarks>
-    /// Only SHA2-256/384/512 and SHA3-256/512 are supported. MD5, SHA-1 and RIPEMD-160 are broken or
-    /// deprecated for signatures (RFC 9580 §9.5), and SHA2-224 has no platform implementation;
+    /// Only SHA2-224/256/384/512 and SHA3-256/512 are supported. MD5, SHA-1 and RIPEMD-160 are broken or
+    /// deprecated for signatures (RFC 9580 §9.5);
     /// anything else fails closed rather than silently proceeding.
     /// </remarks>
     internal sealed class HashContext : IDisposable
     {
-        private readonly IncrementalHash? _sha2;
-        private readonly KeccakHash? _sha3;
+        private readonly Action<byte[], int, int> _update;
+        private readonly Func<byte[]> _finish;
+        private readonly IDisposable? _disposable;
 
-        private HashContext(HashAlgorithmId algorithm, IncrementalHash? sha2, KeccakHash? sha3)
+        private HashContext(HashAlgorithmId algorithm, Action<byte[], int, int> update, Func<byte[]> finish, IDisposable? disposable)
         {
             Algorithm = algorithm;
-            _sha2 = sha2;
-            _sha3 = sha3;
+            _update = update;
+            _finish = finish;
+            _disposable = disposable;
+        }
+
+        private HashContext(HashAlgorithmId algorithm, IncrementalHash platform)
+            : this(algorithm, platform.AppendData, platform.GetHashAndReset, platform)
+        {
+        }
+
+        private HashContext(HashAlgorithmId algorithm, KeccakHash keccak)
+            : this(algorithm, keccak.Update, keccak.Finish, null)
+        {
+        }
+
+        private HashContext(HashAlgorithmId algorithm, Sha224 sha224)
+            : this(algorithm, sha224.Update, sha224.Finish, null)
+        {
         }
 
         public HashAlgorithmId Algorithm { get; }
@@ -41,27 +58,30 @@ namespace Scarlet.OpenPgp.Hashing
             switch (algorithm)
             {
                 case HashAlgorithmId.Sha1 when allowSha1:
-                    return new HashContext(algorithm, IncrementalHash.CreateHash(HashAlgorithmName.SHA1), null);
+                    return new HashContext(algorithm, IncrementalHash.CreateHash(HashAlgorithmName.SHA1));
+                case HashAlgorithmId.Sha224:
+                    return new HashContext(algorithm, new Sha224());
                 case HashAlgorithmId.Sha256:
-                    return new HashContext(algorithm, IncrementalHash.CreateHash(HashAlgorithmName.SHA256), null);
+                    return new HashContext(algorithm, IncrementalHash.CreateHash(HashAlgorithmName.SHA256));
                 case HashAlgorithmId.Sha384:
-                    return new HashContext(algorithm, IncrementalHash.CreateHash(HashAlgorithmName.SHA384), null);
+                    return new HashContext(algorithm, IncrementalHash.CreateHash(HashAlgorithmName.SHA384));
                 case HashAlgorithmId.Sha512:
-                    return new HashContext(algorithm, IncrementalHash.CreateHash(HashAlgorithmName.SHA512), null);
+                    return new HashContext(algorithm, IncrementalHash.CreateHash(HashAlgorithmName.SHA512));
                 case HashAlgorithmId.Sha3_256:
-                    return new HashContext(algorithm, null, KeccakHash.CreateSha3_256());
+                    return new HashContext(algorithm, KeccakHash.CreateSha3_256());
                 case HashAlgorithmId.Sha3_512:
-                    return new HashContext(algorithm, null, KeccakHash.CreateSha3_512());
+                    return new HashContext(algorithm, KeccakHash.CreateSha3_512());
                 default:
                     throw FailClosedException.Unsupported("Unsupported hash algorithm: " + algorithm + ".");
             }
         }
 
-        /// <summary>Whether <paramref name="algorithm"/> can be computed by <see cref="Create"/>.</summary>
+        /// <summary>Whether <paramref name="algorithm"/> can be computed by <see cref="Create"/> for a document signature.</summary>
         public static bool IsSupported(HashAlgorithmId algorithm)
         {
             switch (algorithm)
             {
+                case HashAlgorithmId.Sha224:
                 case HashAlgorithmId.Sha256:
                 case HashAlgorithmId.Sha384:
                 case HashAlgorithmId.Sha512:
@@ -78,6 +98,10 @@ namespace Scarlet.OpenPgp.Hashing
         {
             switch (algorithm)
             {
+                case HashAlgorithmId.Sha1:
+                    return 160;
+                case HashAlgorithmId.Sha224:
+                    return 224;
                 case HashAlgorithmId.Sha256:
                 case HashAlgorithmId.Sha3_256:
                     return 256;
@@ -112,20 +136,10 @@ namespace Scarlet.OpenPgp.Hashing
 
         public void Update(byte[] data) => Update(data, 0, data.Length);
 
-        public void Update(byte[] data, int offset, int count)
-        {
-            if (_sha2 is not null)
-            {
-                _sha2.AppendData(data, offset, count);
-            }
-            else
-            {
-                _sha3!.Update(data, offset, count);
-            }
-        }
+        public void Update(byte[] data, int offset, int count) => _update(data, offset, count);
 
-        public byte[] Finish() => _sha2 is not null ? _sha2.GetHashAndReset() : _sha3!.Finish();
+        public byte[] Finish() => _finish();
 
-        public void Dispose() => _sha2?.Dispose();
+        public void Dispose() => _disposable?.Dispose();
     }
 }
