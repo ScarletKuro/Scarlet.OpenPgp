@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Test with coverage
+        run: >
+          dotnet test -c Release --
+          --coverage --coverage-output-format cobertura --coverage-output coverage.cobertura.xml
+          --results-directory "${{ github.workspace }}/TestResults"
+
+      - name: Upload coverage
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: TestResults/coverage.cobertura.xml
+          if-no-files-found: error
+
+  aot:
+    # Publishing the test project as Native AOT fails on any trim/AOT warning
+    # (IlcTreatWarningsAsErrors), then the native test executable runs the whole suite.
+    name: Native AOT (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: windows-latest
+            rid: win-x64
+          - os: macos-latest
+            rid: osx-arm64
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install Native AOT prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+
+      - name: Publish tests as Native AOT
+        run: dotnet publish tests/Scarlet.OpenPgp.Tests -c Release -r ${{ matrix.rid }} -o out/tests
+
+      - name: Run native tests
+        # Test assets are resolved relative to the working directory.
+        working-directory: out/tests
+        run: ./Scarlet.OpenPgp.Tests
+
+      - name: Publish CLI as Native AOT
+        run: dotnet publish src/Scarlet.OpenPgp.Cli -c Release -r ${{ matrix.rid }} -o out/cli
+
+      - name: Smoke-test CLI against the real Bun release signature
+        run: |
+          assets=tests/Scarlet.OpenPgp.Tests/TestAssets/bun-release
+          cli=out/cli/scarlet-openpgp
+
+          "$cli" verify --key "$assets/bun-public-key.asc" --signature "$assets/SHASUMS256.txt.asc" --output out/signed.txt
+          diff <(tr -d '\r' < out/signed.txt) <(tr -d '\r' < "$assets/SHASUMS256.txt")
+
+          # Unsigned text injected before the clearsigned block must fail verification (exit 1).
+          { echo "deadbeef  bun-linux-x64.zip"; cat "$assets/SHASUMS256.txt.asc"; } > out/tampered.asc
+          set +e
+          "$cli" verify --key "$assets/bun-public-key.asc" --signature out/tampered.asc
+          code=$?
+          set -e
+          if [ "$code" -ne 1 ]; then
+            echo "Expected exit code 1 for a tampered message, got $code"
+            exit 1
+          fi
