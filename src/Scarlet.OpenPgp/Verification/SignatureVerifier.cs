@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Scarlet.OpenPgp.Hashing;
 using Scarlet.OpenPgp.Internal;
 using Scarlet.OpenPgp.Packets;

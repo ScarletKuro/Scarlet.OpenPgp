@@ -1,5 +1,3 @@
-using System.Text;
-using Scarlet.OpenPgp.Armor;
 
 namespace Scarlet.OpenPgp.Tests
 {

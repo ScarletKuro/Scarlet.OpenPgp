@@ -358,8 +358,8 @@ namespace Scarlet.OpenPgp.Packets
                         break;
 
                     default:
-                        // Includes Regular Expression, Notation Data, Signature Target and Intended
-                        // Recipient Fingerprint: each changes what the signature means in ways this
+                        // Includes Regular Expression (6), Notation Data (20), Signature Target (31) and Intended
+                        // Recipient Fingerprint (35): each changes what the signature means in ways this
                         // verifier doesn't evaluate.
                         throw new FailClosedException(
                             "Signature contains an unrecognized critical subpacket (type " + subpacket.RawType + "); failing closed per RFC 9580.");

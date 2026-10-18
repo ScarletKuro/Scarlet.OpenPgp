@@ -1,5 +1,3 @@
-using System.Text;
-using Scarlet.OpenPgp.Armor;
 using Scarlet.OpenPgp.Cli;
 
 namespace Scarlet.OpenPgp.Tests.Cli

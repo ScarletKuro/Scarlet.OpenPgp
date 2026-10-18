@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using System.Text;
-using Scarlet.OpenPgp.Hashing;
 using Scarlet.OpenPgp.Packets;
 using Scarlet.OpenPgp.Verification;
 using Scarlet.OpenPgp.Tests.Packets;

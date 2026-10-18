@@ -3,9 +3,7 @@ using System.Numerics;
 namespace Scarlet.OpenPgp.Crypto
 {
     /// <summary>The algorithm-specific value of a signature (RFC 9580 §5.2.3.2-5), as parsed from a signature packet.</summary>
-    internal abstract class SignatureValue
-    {
-    }
+    internal abstract class SignatureValue;
 
     /// <summary>An RSA signature: the integer s = m^d mod n.</summary>
     internal sealed class RsaSignatureValue(BigInteger value) : SignatureValue

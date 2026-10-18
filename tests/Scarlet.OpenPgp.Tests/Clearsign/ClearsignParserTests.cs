@@ -1,5 +1,3 @@
-using System.Text;
-using Scarlet.OpenPgp.Armor;
 using Scarlet.OpenPgp.Clearsign;
 using Scarlet.OpenPgp.Hashing;
 using Scarlet.OpenPgp.Internal;
