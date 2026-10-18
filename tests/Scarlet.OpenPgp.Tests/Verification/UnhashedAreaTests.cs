@@ -117,7 +117,7 @@ namespace Scarlet.OpenPgp.Tests.Verification
 
             SignaturePacket parsed = SignaturePacket.Parse(revocation);
             Assert.DoesNotContain(parsed.HashedSubpackets, s => s.Is(SignatureSubpacketType.IssuerFingerprint) || s.Is(SignatureSubpacketType.IssuerKeyId));
-            byte[] keyId = Assert.Single(parsed.UnhashedSubpackets, s => s.Is(SignatureSubpacketType.IssuerKeyId)).Data;
+            byte[] keyId = Assert.Single(parsed.UnhashedSubpackets, s => s.Is(SignatureSubpacketType.IssuerKeyId)).Data.ToArray();
 
             // Replace the unsigned key ID in place (flip every byte).
             int at = revocation.AsSpan().IndexOf(keyId);
@@ -154,6 +154,22 @@ namespace Scarlet.OpenPgp.Tests.Verification
 
             // Act
             VerificationResult result = OpenPgpVerifier.VerifyDetached(File.ReadAllBytes(folder + "data.txt"), File.ReadAllBytes(folder + "data.txt.before-revocation.sig"), certificate, Now);
+
+            // Assert
+            Assert.Equal(VerificationStatus.KeyNotValidForSigning, result.Status);
+        }
+
+        [Fact]
+        public void Revocation_RelabeledAsVersion3_ShouldMakeTheKeyUnusable()
+        {
+            // Arrange: the version octet isn't signed either. Set to 3, the revocation no longer
+            // parses, and its type was then read from where v3 keeps it - the public-key algorithm
+            // octet - so it no longer looked like a revocation and was dropped.
+            const string folder = Assets + "v4-revoked-key-hard/";
+            byte[] altered = AlterSignatures(File.ReadAllBytes(folder + "public-key.gpg"), 0x20, b => [3, .. b[1..]]);
+
+            // Act
+            VerificationResult result = OpenPgpVerifier.VerifyDetached(File.ReadAllBytes(folder + "data.txt"), File.ReadAllBytes(folder + "data.txt.after-revocation.sig"), altered, Now);
 
             // Assert
             Assert.Equal(VerificationStatus.KeyNotValidForSigning, result.Status);

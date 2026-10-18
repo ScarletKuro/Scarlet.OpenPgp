@@ -16,6 +16,14 @@ namespace Scarlet.OpenPgp.Crypto
         public abstract int MinimumHashBits { get; }
 
         /// <summary>
+        /// Roughly what one signature check with this key costs, in units of an Ed25519 check
+        /// (about 0.3 ms): at least 1. Key-signature budgets are charged by this, so a key that makes
+        /// every check expensive gets proportionally fewer of them. Calibrated against the
+        /// benchmarks; only the order of magnitude matters.
+        /// </summary>
+        public abstract int CheckCost { get; }
+
+        /// <summary>
         /// Whether <paramref name="signature"/> is this key's signature over <paramref name="digest"/>,
         /// the finished hash of the signed content. A signature value of another algorithm's shape is
         /// simply not a valid signature.

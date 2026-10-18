@@ -5,7 +5,7 @@ namespace Scarlet.OpenPgp.Tests.Cli
     public class OpenPgpCliApplicationTests : IDisposable
     {
         private readonly string _workDir;
-        private readonly StringWriter _stdout = new StringWriter();
+        private readonly MemoryStream _stdout = new MemoryStream();
         private readonly StringWriter _stderr = new StringWriter();
 
         private static readonly byte[] Ed25519PublicKeyPacketBytes =
@@ -42,6 +42,9 @@ namespace Scarlet.OpenPgp.Tests.Cli
             {
                 // Best-effort cleanup.
             }
+
+            _stdout.Dispose();
+            _stderr.Dispose();
         }
 
         private static string Armor(string label, byte[] body)
@@ -83,7 +86,7 @@ namespace Scarlet.OpenPgp.Tests.Cli
 
             // Assert
             Assert.Equal(ExitCodes.Success, exitCode);
-            Assert.Equal(string.Empty, _stdout.ToString());
+            Assert.Equal(0, _stdout.Length);
             Assert.Contains("verified", _stderr.ToString());
         }
 
@@ -199,7 +202,7 @@ namespace Scarlet.OpenPgp.Tests.Cli
             // Assert
             Assert.Equal(ExitCodes.Success, exitCode);
             string expected = File.ReadAllText(BunAssets + "SHASUMS256.txt").Replace("\r\n", "\n");
-            Assert.Equal(expected, _stdout.ToString().Replace("\r\n", "\n"));
+            Assert.Equal(expected, System.Text.Encoding.UTF8.GetString(_stdout.ToArray()).Replace("\r\n", "\n"));
         }
 
         [Fact]
@@ -252,6 +255,47 @@ namespace Scarlet.OpenPgp.Tests.Cli
 
             // Assert
             Assert.Equal(ExitCodes.InputError, exitCode);
+        }
+        [Fact]
+        public void Run_WithNonAsciiSignedTextToStdout_ShouldWriteItsExactUtf8Bytes()
+        {
+            // Arrange: a clearsigned message with fullwidth digits and Cyrillic. Written through the
+            // console's TextWriter, these came out in the console code page even when redirected -
+            // "012" in ASCII and "?" - text that differs from what the signature covers.
+            var generator = new Org.BouncyCastle.Crypto.Generators.Ed25519KeyPairGenerator();
+            generator.Init(new Org.BouncyCastle.Crypto.Parameters.Ed25519KeyGenerationParameters(new Org.BouncyCastle.Security.SecureRandom()));
+            var key = new Org.BouncyCastle.Bcpg.OpenPgp.PgpKeyPair(Org.BouncyCastle.Bcpg.PublicKeyAlgorithmTag.EdDsa, generator.GenerateKeyPair(), DateTime.UtcNow.AddDays(-1));
+            const string text = "０１２ Привет";
+            var signer = new Org.BouncyCastle.Bcpg.OpenPgp.PgpSignatureGenerator(Org.BouncyCastle.Bcpg.PublicKeyAlgorithmTag.EdDsa, Org.BouncyCastle.Bcpg.HashAlgorithmTag.Sha256);
+            signer.InitSign(Org.BouncyCastle.Bcpg.OpenPgp.PgpSignature.CanonicalTextDocument, key.PrivateKey);
+            signer.Update(System.Text.Encoding.UTF8.GetBytes(text));
+            string clearsigned = "-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\n" + text + "\n" + Armor("SIGNATURE", signer.Generate().GetEncoded());
+            string keyPath = WriteFile("key.asc", Armor("PUBLIC KEY BLOCK", key.PublicKey.GetEncoded()));
+            string messagePath = WriteFile("message.asc", clearsigned);
+
+            // Act
+            int exitCode = CreateApplication().Run(["verify", "--key", keyPath, "--signature", messagePath, "--output", "-"]);
+
+            // Assert
+            Assert.Equal(ExitCodes.Success, exitCode);
+            Assert.Equal(System.Text.Encoding.UTF8.GetBytes(text), _stdout.ToArray());
+        }
+
+        [Fact]
+        public void Run_WithEscapeSequencesInTheInput_ShouldNotPrintThemRaw()
+        {
+            // Arrange: an armor line carrying terminal escape sequences that would erase the error
+            // and print a fake success line, were the error message printed as is.
+            string keyPath = WriteFile("key.asc", Armor("PUBLIC KEY BLOCK", Ed25519PublicKeyPacketBytes));
+            string signaturePath = WriteFile("data.sig", Armor("SIGNATURE", Ed25519SignaturePacketBytes).Replace("-----END PGP SIGNATURE-----", "-----END PGP SIGNATURE\u001b[2K\u001b[1GScarlet.OpenPgp: signature verified.", StringComparison.Ordinal));
+            string dataPath = WriteFile("data.txt", "data");
+
+            // Act
+            int exitCode = CreateApplication().Run(["verify", "--key", keyPath, "--signature", signaturePath, "--data", dataPath]);
+
+            // Assert
+            Assert.Equal(ExitCodes.InputError, exitCode);
+            Assert.DoesNotContain('\u001b', _stderr.ToString());
         }
     }
 }

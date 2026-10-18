@@ -33,15 +33,19 @@ namespace Scarlet.OpenPgp.Verification
         /// dropping one certificate could drop the copy that carries a revocation and leave a stale
         /// copy in charge. Input with no usable certificate fails too.
         /// </summary>
-        /// <remarks>Packets are read and certificates built one at a time, so only one certificate's packets are ever held at once.</remarks>
+        /// <remarks>
+        /// Packets are read one certificate copy at a time, so only one copy's packets are held at
+        /// once. All copies of a certificate feed one <see cref="CertificateBuilder"/>, which matches
+        /// their signatures against every copy's User IDs and subkeys: a revocation in one copy
+        /// applies to the subkey from another. Building each copy on its own and merging afterwards
+        /// let a repeated Public-Key packet cut a revocation off from its subkey.
+        /// </remarks>
         public static KeyRing Parse(byte[] packetBytes)
         {
-            // Copies of each certificate, by primary fingerprint in first-seen order, merged once at
-            // the end; one check budget per certificate for all its copies; and the digests of copies
-            // already read, so an exact repeat costs a hash rather than a rebuild.
-            var copies = new Dictionary<byte[], List<Certificate>>(ByteArrayComparer.Instance);
-            var order = new List<byte[]>();
-            var budgets = new Dictionary<byte[], CheckBudget>(ByteArrayComparer.Instance);
+            // One builder per certificate, by primary fingerprint in first-seen order, and the
+            // digests of copies already read, so an exact repeat costs a hash rather than a pass.
+            var builders = new Dictionary<byte[], CertificateBuilder>(ByteArrayComparer.Instance);
+            var order = new List<CertificateBuilder>();
             var seenCopies = new HashSet<byte[]>(ByteArrayComparer.Instance);
             string? lastError = null;
             int certificateCount = 0;
@@ -91,9 +95,9 @@ namespace Scarlet.OpenPgp.Verification
             // Several copies of one certificate (an old and a new export, say) become one, so a stale
             // copy without a revocation can't be picked instead of the revoked one.
             var certificates = new List<Certificate>(order.Count);
-            foreach (byte[] fingerprint in order)
+            foreach (CertificateBuilder builder in order)
             {
-                certificates.Add(Certificate.MergeAll(copies[fingerprint]));
+                certificates.Add(builder.Build());
             }
 
             return new KeyRing(certificates);
@@ -105,37 +109,22 @@ namespace Scarlet.OpenPgp.Verification
                     return; // an exact repeat of a copy already read says nothing new
                 }
 
-                Certificate certificate;
                 try
                 {
-                    certificate = CertificateBuilder.Build(packets, BudgetFor);
+                    var primary = PublicKeyPacket.Parse(packets[0].Body);
+                    if (!builders.TryGetValue(primary.Fingerprint.Bytes, out CertificateBuilder? builder))
+                    {
+                        builder = CertificateBuilder.Create(primary);
+                        builders.Add(primary.Fingerprint.Bytes, builder);
+                        order.Add(builder);
+                    }
+
+                    builder.AddCopy(packets);
                 }
                 catch (FailClosedException ex) when (ex.IsUnsupported)
                 {
                     lastError = ex.Message;
-                    return;
                 }
-
-                byte[] fingerprint = certificate.Primary.Fingerprint.Bytes;
-                if (!copies.TryGetValue(fingerprint, out List<Certificate>? list))
-                {
-                    list = [];
-                    copies.Add(fingerprint, list);
-                    order.Add(fingerprint);
-                }
-
-                list.Add(certificate);
-            }
-
-            CheckBudget BudgetFor(PublicKeyPacket primary)
-            {
-                if (!budgets.TryGetValue(primary.Fingerprint.Bytes, out CheckBudget? budget))
-                {
-                    budget = new CheckBudget();
-                    budgets.Add(primary.Fingerprint.Bytes, budget);
-                }
-
-                return budget;
             }
         }
 

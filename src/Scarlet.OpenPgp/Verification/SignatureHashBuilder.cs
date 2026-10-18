@@ -25,7 +25,7 @@ namespace Scarlet.OpenPgp.Verification
         /// <summary>The trailer: the signature version, 0xFF, and the hashed portion's length as a 4-octet big-endian number.</summary>
         public static byte[] BuildTrailer(SignaturePacket signature)
         {
-            int length = signature.HashedPortion.Length;
+            int length = signature.HashedPortionLength;
             return
             [
                 signature.Version,
@@ -129,7 +129,7 @@ namespace Scarlet.OpenPgp.Verification
 
         public byte[] Finish()
         {
-            _hash.Update(_signature.HashedPortion);
+            _hash.Update(_signature.Body, 0, _signature.HashedPortionLength);
             _hash.Update(SignatureHashBuilder.BuildTrailer(_signature));
             return _hash.Finish();
         }

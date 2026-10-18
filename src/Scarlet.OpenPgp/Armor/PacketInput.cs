@@ -56,7 +56,7 @@ namespace Scarlet.OpenPgp.Armor
             {
                 if (!string.Equals(block.Label, expectedLabel, StringComparison.Ordinal))
                 {
-                    throw new FailClosedException("Expected a \"" + expectedLabel + "\" armor block, found \"" + block.Label + "\".");
+                    throw new FailClosedException("Expected a \"" + expectedLabel + "\" armor block, found \"" + InputText.Quote(block.Label) + "\".");
                 }
             }
 

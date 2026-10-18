@@ -107,5 +107,72 @@ namespace Scarlet.OpenPgp.Crypto
 
             return value;
         }
+
+        /// <summary>
+        /// Miller-Rabin with <paramref name="rounds"/> random bases: a composite passes a round with
+        /// probability at most 1/4, so the default 32 rounds let one through with probability at
+        /// most 2^-64. The bases are random because for any fixed set of bases, composites crafted
+        /// to pass all of them exist.
+        /// </summary>
+        public static bool IsProbablePrime(BigInteger n, int rounds = 32)
+        {
+            if (n < 2)
+            {
+                return false;
+            }
+
+            foreach (int small in new[] { 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37 })
+            {
+                if (n == small)
+                {
+                    return true;
+                }
+
+                if ((n % small).IsZero)
+                {
+                    return false;
+                }
+            }
+
+            BigInteger nMinusOne = n - 1;
+            BigInteger d = nMinusOne;
+            int s = 0;
+            while (d.IsEven)
+            {
+                d >>= 1;
+                s++;
+            }
+
+            // A base in [2, n - 2], from 8 more random bytes than n has, so reducing it leaves no
+            // meaningful bias.
+            var buffer = new byte[n.ToByteArray().Length + 8];
+            using var random = System.Security.Cryptography.RandomNumberGenerator.Create();
+            for (int round = 0; round < rounds; round++)
+            {
+                random.GetBytes(buffer);
+                buffer[buffer.Length - 1] = 0; // keep it positive
+                BigInteger a = 2 + BigInteger.Remainder(new BigInteger(buffer), n - 3);
+
+                BigInteger x = BigInteger.ModPow(a, d, n);
+                if (x.IsOne || x == nMinusOne)
+                {
+                    continue;
+                }
+
+                bool witnessed = true;
+                for (int i = 1; i < s && witnessed; i++)
+                {
+                    x = BigInteger.ModPow(x, 2, n);
+                    witnessed = x != nMinusOne;
+                }
+
+                if (witnessed)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
     }
 }

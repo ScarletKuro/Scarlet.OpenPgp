@@ -43,7 +43,8 @@ The original v1 brief follows unchanged for its rationale. The implementation ha
 - **Formats:** OpenPGP v4 (RFC 4880) and v6 (RFC 9580) keys and signatures, including v6 salted
   hashing, v6 fingerprints, and RFC 9580's armor rules (optional, unchecked CRC24) and cleartext
   framework (only well-formed `Hash` headers, whose contents are ignored).
-- **Algorithms:** RSA PKCS#1 v1.5 (2048-16384 bits), DSA (2048+ bits, 224/256-bit q), ECDSA on NIST
+- **Algorithms:** RSA PKCS#1 v1.5 (2048-16384 bits, exponents up to 32 bits), DSA (2048-3072 bits,
+  224/256-bit prime q), ECDSA on NIST
   P-256/384/521 and brainpoolP256r1/384r1/512r1, EdDSALegacy Ed25519, native Ed25519 and Ed448.
 - **Hashes:** SHA2-224/256/384/512 and SHA3-256/512 for data signatures. SHA-1 is accepted only for
   a certificate's own self-signatures (see `HashContext`); MD5, SHA-1 and RIPEMD-160 data
@@ -58,7 +59,10 @@ The original v1 brief follows unchanged for its rationale. The implementation ha
   only signatures made after them. Certification revocations (0x30) take back the key owner's earlier
   User ID certifications or Direct Key signatures; a key whose self-signatures are all revoked is
   unusable, not unrestricted. A signature counts for what it verifiably covers, wherever it sits in
-  the block, so moving a revocation can't hide it. Third-party certifications and designated
+  the block - or in another copy of the certificate, after a repeated Public-Key packet - so
+  moving a revocation or a restricting self-signature can't hide it. SHA-1 User ID
+  self-certifications made after 2019-01-19 (when chosen-prefix collisions became practical) are set
+  aside when the key has another self-signature. Third-party certifications and designated
   revokers are ignored.
 - **Data:** detached signatures stream the data once (`Stream` and async overloads), binary (0x00)
   and text-mode (0x01) signatures alike.
@@ -328,11 +332,14 @@ may end up depending on:
   self-signature that verifies all fail verification - a key must be valid both now and when it signed.
   Key expiration, flags and revocations are only read from signatures that verify against the primary
   key, never from unverified packets in the block.
-- **Bounded work on hostile input.** RSA moduli are capped at 16384 bits (and exponents at 256 bits),
-  DSA primes at 16384 bits, so no input can make a single verification take minutes. Signature input
+- **Bounded work on hostile input.** RSA moduli are capped at 16384 bits (exponents at 32 bits, and
+  a signature value may be at most 64 bits shorter than the modulus, so a tiny one can't buy a full
+  exponentiation), DSA primes at 3072 bits. Signature input
   holds at most 32 distinct signatures (256 packets with copies); key input at most 16,384
-  certificates, each with at most 16,384 packets per copy and 4,096 signature checks across all its
-  copies (exact repeats are skipped, the rest merged once). Packets are read
+  certificates, each with at most 16,384 packets per copy and about 2.5 s of signature checking across all its
+  copies, each check weighted by its key's cost (exact repeats of a copy or a signature are skipped).
+  Document signatures that name no issuer may only be tried against so many keys. Subpackets are
+  read in place, never copied one by one. Packets are read
   lazily and ignorable ones (Marker, Padding, Trust) cost nothing, so a flood of tiny packets
   can't be amplified into memory or work.
 - **Unsigned data never decides anything.** A signature's unhashed subpacket area is editable by anyone

@@ -31,6 +31,8 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
         /// <summary>RFC 9580 §5.2.3.4-5: Ed25519 signatures need at least a 256-bit digest.</summary>
         public override int MinimumHashBits => 256;
 
+        public override int CheckCost => 1;
+
         public override bool Verify(HashAlgorithmId hashAlgorithm, byte[] digest, SignatureValue signature) =>
             signature is EdDsaSignatureValue eddsa && Ed25519Verifier.Verify(this, digest, eddsa.Value);
 

@@ -67,7 +67,7 @@ namespace Scarlet.OpenPgp.Verification
         }
 
         /// <summary>Matches the Issuer Fingerprint (without its version octet) or Issuer Key ID subpackets of one area against <paramref name="key"/>, without copying them.</summary>
-        private static HintMatch MatchHints(IReadOnlyList<SignatureSubpacket> subpackets, PublicKeyPacket key, SignatureSubpacketType type)
+        private static HintMatch MatchHints(SubpacketArea subpackets, PublicKeyPacket key, SignatureSubpacketType type)
         {
             HintMatch result = HintMatch.NoHints;
             foreach (SignatureSubpacket subpacket in subpackets)
@@ -85,7 +85,7 @@ namespace Scarlet.OpenPgp.Verification
                         continue;
                     }
 
-                    matches = key.Fingerprint.Matches(subpacket.Data.AsSpan(1)); // after the version octet
+                    matches = key.Fingerprint.Matches(subpacket.Data.Slice(1)); // after the version octet
                 }
                 else
                 {
@@ -216,6 +216,30 @@ namespace Scarlet.OpenPgp.Verification
                 return ex.IsUnsupported ? KeySignatureCheck.Unverifiable : KeySignatureCheck.NotFromKey;
             }
         }
+
+        /// <summary>
+        /// From when a SHA-1 User ID certification could be a collision (the date GnuPG uses for
+        /// SHA-1 identity signatures). SHA-1 chosen-prefix collisions (2019-2020) let someone who
+        /// gets a key to certify their crafted key and User ID turn that certification into one that
+        /// reads as the key's self-signature over a User ID of its own - newer than the real ones,
+        /// and without their expiration or key-flag restrictions. The colliding part comes before
+        /// the signed trailer, so the creation time is the real signing time, and certifications
+        /// made before the attacks became practical can't have been crafted this way.
+        /// </summary>
+        public static readonly DateTimeOffset Sha1CertificationCutoff = new(2019, 1, 19, 0, 0, 0, TimeSpan.Zero);
+
+        /// <summary>
+        /// Whether <paramref name="signature"/> is a SHA-1 User ID certification (0x10-0x13) made
+        /// after <see cref="Sha1CertificationCutoff"/>. <see cref="CertificateBuilder"/> sets those
+        /// aside when the key has another self-signature. Other key signatures keep accepting SHA-1
+        /// (see <see cref="HashContext.Create"/>): a binding or revocation is made by the key holder
+        /// over their own keys, not over material someone else prepared.
+        /// </summary>
+        public static bool IsCollidableCertification(SignaturePacket signature, DateTimeOffset createdAt) =>
+            signature.HashAlgorithm == HashAlgorithmId.Sha1
+            && signature.SignatureTypeRaw >= (byte)SignatureType.GenericCertification
+            && signature.SignatureTypeRaw <= (byte)SignatureType.PositiveCertification
+            && createdAt >= Sha1CertificationCutoff;
 
         /// <summary>
         /// The signature's creation time. RFC 9580 §5.2.3.11 requires it in the hashed area; a

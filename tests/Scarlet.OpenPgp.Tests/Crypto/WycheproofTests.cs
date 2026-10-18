@@ -127,12 +127,18 @@ namespace Scarlet.OpenPgp.Tests.Crypto
                 return (message, signature) =>
                     signature.Length == key.ModulusByteLength
                     && RsaPkcs1Verifier.Verify(key, hash, Digest(hash, message), Unsigned(signature));
-            });
+            }, rejectedByPolicy: "SmallSignature");
         }
 
         /// <param name="file">The vector file.</param>
         /// <param name="verifierFor">Builds a verifier from a test group's key; throws <see cref="FailClosedException"/> for a key this library refuses.</param>
-        private static void AssertAgrees(string file, Func<JsonElement, Func<byte[], byte[], bool>> verifierFor)
+        /// <param name="rejectedByPolicy">
+        /// A Wycheproof flag marking "valid" vectors this library rejects on purpose. RSA's "SmallSignature" is a
+        /// key crafted so a valid signature is tiny; a real signature is that short with probability
+        /// 2^-64, and accepting them let tiny inputs buy full-size exponentiations (see
+        /// <see cref="RsaPkcs1Verifier.MaxSignatureShortfallBits"/>).
+        /// </param>
+        private static void AssertAgrees(string file, Func<JsonElement, Func<byte[], byte[], bool>> verifierFor, string? rejectedByPolicy = null)
         {
             using JsonDocument document = JsonDocument.Parse(File.ReadAllBytes(Folder + file));
             var disagreements = new List<string>();
@@ -159,7 +165,8 @@ namespace Scarlet.OpenPgp.Tests.Crypto
                     checkedVectors++;
                     string expected = test.GetProperty("result").GetString()!;
                     bool accepted = verify is not null && verify(Hex(test.GetProperty("msg")), Hex(test.GetProperty("sig")));
-                    if ((expected == "invalid" && accepted) || (expected == "valid" && !accepted && verify is not null))
+                    bool policyRejection = rejectedByPolicy is not null && test.GetProperty("flags").EnumerateArray().Any(f => f.GetString() == rejectedByPolicy);
+                    if ((expected == "invalid" && accepted) || (expected == "valid" && !accepted && verify is not null && !policyRejection))
                     {
                         disagreements.Add(
                             "tcId " + test.GetProperty("tcId").GetInt32() + " expected " + expected + " got " + (accepted ? "accepted" : "rejected")

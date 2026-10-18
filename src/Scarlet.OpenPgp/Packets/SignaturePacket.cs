@@ -23,9 +23,9 @@ namespace Scarlet.OpenPgp.Packets
         private SignaturePacket(
             byte[] body,
             int depth,
-            byte[] hashedPortion,
-            IReadOnlyList<SignatureSubpacket> hashedSubpackets,
-            IReadOnlyList<SignatureSubpacket> unhashedSubpackets,
+            int hashedPortionLength,
+            SubpacketArea hashedSubpackets,
+            SubpacketArea unhashedSubpackets,
             byte[] leftHashBytes16,
             byte[] salt,
             SignatureValue value)
@@ -36,7 +36,7 @@ namespace Scarlet.OpenPgp.Packets
             SignatureTypeRaw = body[1];
             PublicKeyAlgorithm = (PublicKeyAlgorithm)body[2];
             HashAlgorithm = (HashAlgorithmId)body[3];
-            HashedPortion = hashedPortion;
+            HashedPortionLength = hashedPortionLength;
             HashedSubpackets = hashedSubpackets;
             UnhashedSubpackets = unhashedSubpackets;
             LeftHashBytes16 = leftHashBytes16;
@@ -63,11 +63,14 @@ namespace Scarlet.OpenPgp.Packets
         /// The packet body from the version octet through the end of the hashed subpackets - the part
         /// of the signature that is itself hashed, before the trailer (RFC 9580 §5.2.4).
         /// </summary>
-        public byte[] HashedPortion { get; }
+        public ReadOnlySpan<byte> HashedPortion => Body.AsSpan(0, HashedPortionLength);
 
-        public IReadOnlyList<SignatureSubpacket> HashedSubpackets { get; }
+        /// <summary>The length of <see cref="HashedPortion"/>, which starts at the beginning of <see cref="Body"/>.</summary>
+        public int HashedPortionLength { get; }
 
-        public IReadOnlyList<SignatureSubpacket> UnhashedSubpackets { get; }
+        public SubpacketArea HashedSubpackets { get; }
+
+        public SubpacketArea UnhashedSubpackets { get; }
 
         /// <summary>The 2-byte quick-check prefix of the expected hash (RFC 9580 §5.2.3), immediately preceding the salt/signature values.</summary>
         public byte[] LeftHashBytes16 { get; }
@@ -79,7 +82,7 @@ namespace Scarlet.OpenPgp.Packets
         public SignatureValue Value { get; }
 
         /// <summary>The key flags (RFC 9580 §5.2.3.29) from the hashed area, or <c>null</c> when absent.</summary>
-        public byte[]? KeyFlags => FindUniqueHashed(SignatureSubpacketType.KeyFlags)?.Data;
+        public byte[]? KeyFlags => FindUniqueHashed(SignatureSubpacketType.KeyFlags) is { } flags ? flags.Data.ToArray() : null;
 
         /// <summary>The machine-readable reason for revocation code (RFC 9580 §5.2.3.31) from the hashed area, or <c>null</c> when absent.</summary>
         public byte? RevocationReason
@@ -92,12 +95,12 @@ namespace Scarlet.OpenPgp.Packets
                     return null;
                 }
 
-                if (subpacket.Data.Length < 1)
+                if (subpacket.Value.Data.Length < 1)
                 {
                     throw new FailClosedException("Reason for Revocation subpacket is empty.");
                 }
 
-                return subpacket.Data[0];
+                return subpacket.Value.Data[0];
             }
         }
 
@@ -121,7 +124,7 @@ namespace Scarlet.OpenPgp.Packets
                     SignaturePacket? embedded = null;
                     try
                     {
-                        embedded = Parse(subpacket.Data, _depth + 1);
+                        embedded = Parse(subpacket.Data.ToArray(), _depth + 1);
                     }
                     catch (FailClosedException)
                     {
@@ -151,12 +154,13 @@ namespace Scarlet.OpenPgp.Packets
                 return false;
             }
 
-            if (subpacket.Data.Length != 4)
+            ReadOnlySpan<byte> data = subpacket.Value.Data;
+            if (data.Length != 4)
             {
                 throw new FailClosedException("Hashed time subpacket (type " + (byte)type + ") must be exactly 4 bytes.");
             }
 
-            value = ((uint)subpacket.Data[0] << 24) | ((uint)subpacket.Data[1] << 16) | ((uint)subpacket.Data[2] << 8) | subpacket.Data[3];
+            value = ((uint)data[0] << 24) | ((uint)data[1] << 16) | ((uint)data[2] << 8) | data[3];
             return true;
         }
 
@@ -187,15 +191,17 @@ namespace Scarlet.OpenPgp.Packets
 
             // v4 subpacket areas have 2-octet lengths, v6 4-octet ones (RFC 9580 §5.2.3).
             int lengthFieldSize = version == 6 ? 4 : 2;
-            List<SignatureSubpacket> hashedSubpackets = SubpacketReader.ReadAll(reader.ReadLengthPrefixed(lengthFieldSize, "hashed subpacket data"));
-            byte[] hashedPortion = body.AsSpan(0, reader.Offset).ToArray();
+            (int hashedStart, int hashedLength) = reader.SkipLengthPrefixed(lengthFieldSize, "hashed subpacket data");
+            SubpacketArea hashedSubpackets = SubpacketArea.Read(body, hashedStart, hashedLength);
+            int hashedPortionLength = reader.Offset;
 
             // The unhashed area isn't covered by the signature, so anyone can add to or change it
             // (RFC 9580 §13.13). Nothing in it may decide whether the signature is valid: if a
             // malformed or "critical" unhashed subpacket could make the signature fail to parse, then
             // two unsigned bytes added to a certificate's revocation would make the revocation
             // vanish. It is read leniently (unreadable = empty) and never validated.
-            List<SignatureSubpacket> unhashedSubpackets = TryReadSubpackets(reader.ReadLengthPrefixed(lengthFieldSize, "unhashed subpacket data"));
+            (int unhashedStart, int unhashedLength) = reader.SkipLengthPrefixed(lengthFieldSize, "unhashed subpacket data");
+            SubpacketArea unhashedSubpackets = TryReadSubpackets(body, unhashedStart, unhashedLength);
 
             ValidateSubpackets(hashedSubpackets, version, depth);
 
@@ -216,7 +222,7 @@ namespace Scarlet.OpenPgp.Packets
             SignatureValue value = ParseValue(algorithm, version, ref reader);
             reader.ExpectEnd("Signature packet body");
 
-            return new SignaturePacket(body, depth, hashedPortion, hashedSubpackets, unhashedSubpackets, leftHashBytes16, salt, value);
+            return new SignaturePacket(body, depth, hashedPortionLength, hashedSubpackets, unhashedSubpackets, leftHashBytes16, salt, value);
         }
 
         private static SignatureValue ParseValue(PublicKeyAlgorithm algorithm, byte version, ref PacketBodyReader reader)
@@ -275,15 +281,15 @@ namespace Scarlet.OpenPgp.Packets
         }
 
         /// <summary>The unhashed area's subpackets, or none if its framing is broken - it is advisory, so an unreadable one is simply absent.</summary>
-        private static List<SignatureSubpacket> TryReadSubpackets(byte[] data)
+        private static SubpacketArea TryReadSubpackets(byte[] body, int start, int length)
         {
             try
             {
-                return SubpacketReader.ReadAll(data);
+                return SubpacketArea.Read(body, start, length);
             }
             catch (FailClosedException)
             {
-                return [];
+                return SubpacketArea.Empty;
             }
         }
 
@@ -295,7 +301,7 @@ namespace Scarlet.OpenPgp.Packets
         /// *non-critical* instances of the time/issuer types are left for the code that reads them,
         /// which fails closed if it ever needs one.
         /// </summary>
-        private static void ValidateSubpackets(List<SignatureSubpacket> subpackets, byte version, int depth)
+        private static void ValidateSubpackets(SubpacketArea subpackets, byte version, int depth)
         {
             foreach (SignatureSubpacket subpacket in subpackets)
             {
@@ -336,7 +342,7 @@ namespace Scarlet.OpenPgp.Packets
                         break;
 
                     case SignatureSubpacketType.EmbeddedSignature:
-                        Parse(subpacket.Data, depth + 1); // throws if malformed or nested too deep
+                        Parse(subpacket.Data.ToArray(), depth + 1); // throws if malformed or nested too deep
                         break;
 
                     case SignatureSubpacketType.ExportableCertification:

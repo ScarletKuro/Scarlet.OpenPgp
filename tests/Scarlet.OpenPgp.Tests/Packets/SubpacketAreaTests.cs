@@ -3,32 +3,32 @@ using Scarlet.OpenPgp.Packets;
 
 namespace Scarlet.OpenPgp.Tests.Packets
 {
-    public class SubpacketReaderTests
+    public class SubpacketAreaTests
     {
         [Fact]
-        public void ReadAll_WithOneByteLength_ShouldParseTypeAndData()
+        public void Read_WithOneByteLength_ShouldParseTypeAndData()
         {
             // Arrange: length=5 (type + 4 data bytes), type=2 (SignatureCreationTime), data=4 bytes.
             byte[] data = [0x05, 0x02, 0xAA, 0xBB, 0xCC, 0xDD];
 
             // Act
-            List<SignatureSubpacket> subpackets = SubpacketReader.ReadAll(data);
+            List<SignatureSubpacket> subpackets = [.. SubpacketArea.Read(data)];
 
             // Assert
             Assert.Single(subpackets);
             Assert.Equal(2, subpackets[0].RawType);
             Assert.False(subpackets[0].Critical);
-            Assert.Equal([0xAA, 0xBB, 0xCC, 0xDD], subpackets[0].Data);
+            Assert.Equal([0xAA, 0xBB, 0xCC, 0xDD], subpackets[0].Data.ToArray());
         }
 
         [Fact]
-        public void ReadAll_WithCriticalBitSet_ShouldReportCritical()
+        public void Read_WithCriticalBitSet_ShouldReportCritical()
         {
             // Arrange: type byte 0x90 = 0x80 (critical) | 0x10 (raw type 16).
             byte[] data = [0x02, 0x90, 0xAA];
 
             // Act
-            List<SignatureSubpacket> subpackets = SubpacketReader.ReadAll(data);
+            List<SignatureSubpacket> subpackets = [.. SubpacketArea.Read(data)];
 
             // Assert
             Assert.True(subpackets[0].Critical);
@@ -36,7 +36,7 @@ namespace Scarlet.OpenPgp.Tests.Packets
         }
 
         [Fact]
-        public void ReadAll_WithTwoByteLength_ShouldParseCorrectly()
+        public void Read_WithTwoByteLength_ShouldParseCorrectly()
         {
             // Arrange: first=192, second=1 -> length = ((192-192)<<8)+1+192 = 193 (type + 192 data bytes).
             var data = new List<byte> { 192, 1, 0x02 };
@@ -46,7 +46,7 @@ namespace Scarlet.OpenPgp.Tests.Packets
             }
 
             // Act
-            List<SignatureSubpacket> subpackets = SubpacketReader.ReadAll(data.ToArray());
+            List<SignatureSubpacket> subpackets = [.. SubpacketArea.Read(data.ToArray())];
 
             // Assert
             Assert.Single(subpackets);
@@ -54,7 +54,7 @@ namespace Scarlet.OpenPgp.Tests.Packets
         }
 
         [Fact]
-        public void ReadAll_WithOversizedFiveByteLengthCausingIntOverflow_ShouldFailClosedNotThrowUnhandled()
+        public void Read_WithOversizedFiveByteLengthCausingIntOverflow_ShouldFailClosedNotThrowUnhandled()
         {
             // Arrange: 5-octet length marker (255) followed by 0x7FFFFFFF. Naively checking
             // "position + length > data.Length" in 32-bit int arithmetic overflows (position=5
@@ -63,37 +63,37 @@ namespace Scarlet.OpenPgp.Tests.Packets
             byte[] data = [255, 0x7F, 0xFF, 0xFF, 0xFF];
 
             // Act & Assert
-            Assert.Throws<FailClosedException>(() => SubpacketReader.ReadAll(data));
+            Assert.Throws<FailClosedException>(() => SubpacketArea.Read(data));
         }
 
         [Fact]
-        public void ReadAll_WithLengthExceedingRemainingData_ShouldFailClosed()
+        public void Read_WithLengthExceedingRemainingData_ShouldFailClosed()
         {
             // Arrange: length=10 but only 2 bytes follow.
             byte[] data = [10, 0x02, 0xAA];
 
             // Act & Assert
-            Assert.Throws<FailClosedException>(() => SubpacketReader.ReadAll(data));
+            Assert.Throws<FailClosedException>(() => SubpacketArea.Read(data));
         }
 
         [Fact]
-        public void ReadAll_WithTruncatedLength_ShouldFailClosed()
+        public void Read_WithTruncatedLength_ShouldFailClosed()
         {
             // Arrange: a 2-octet length marker (>=192, <255) with no second byte.
             byte[] data = [200];
 
             // Act & Assert
-            Assert.Throws<FailClosedException>(() => SubpacketReader.ReadAll(data));
+            Assert.Throws<FailClosedException>(() => SubpacketArea.Read(data));
         }
 
         [Fact]
-        public void ReadAll_WithLengthOfZero_ShouldFailClosed()
+        public void Read_WithLengthOfZero_ShouldFailClosed()
         {
             // Arrange: a subpacket must include at least its own type octet.
             byte[] data = [0x00];
 
             // Act & Assert
-            Assert.Throws<FailClosedException>(() => SubpacketReader.ReadAll(data));
+            Assert.Throws<FailClosedException>(() => SubpacketArea.Read(data));
         }
     }
 }

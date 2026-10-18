@@ -56,6 +56,20 @@ namespace Scarlet.OpenPgp.Packets
             return ReadBytes((int)length, what);
         }
 
+        /// <summary>Like <see cref="ReadLengthPrefixed"/>, but returns where the region lies in the body instead of copying it.</summary>
+        public (int Start, int Length) SkipLengthPrefixed(int lengthFieldSize, string what)
+        {
+            long length = ReadBigEndian(lengthFieldSize, what + " length");
+            if (Offset + length > _body.Length)
+            {
+                throw new FailClosedException("Unexpected end of input while reading the " + what + " (truncated).");
+            }
+
+            int start = Offset;
+            Offset += (int)length;
+            return (start, (int)length);
+        }
+
         /// <summary>
         /// One MPI (RFC 9580 §3.2). Real integers (RSA, DSA and ECDSA values) are read with
         /// <paramref name="requireCanonical"/>, so the same value can't be re-encoded another way;

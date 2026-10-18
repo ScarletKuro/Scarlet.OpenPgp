@@ -116,14 +116,14 @@ namespace Scarlet.OpenPgp.Armor
 
             if (i == lines.Length)
             {
-                throw new FailClosedException("No ASCII armor END line found for label \"" + label + "\".");
+                throw new FailClosedException("No ASCII armor END line found for label \"" + InputText.Quote(label) + "\".");
             }
 
             string endLabel = ExtractLabel(lines[i], EndPrefix);
             if (!string.Equals(endLabel, label, StringComparison.Ordinal))
             {
                 throw new FailClosedException(
-                    "ASCII armor END label \"" + endLabel + "\" does not match BEGIN label \"" + label + "\".");
+                    "ASCII armor END label \"" + InputText.Quote(endLabel) + "\" does not match BEGIN label \"" + InputText.Quote(label) + "\".");
             }
 
             i++;
@@ -146,7 +146,7 @@ namespace Scarlet.OpenPgp.Armor
             string trimmed = line.TrimEnd(' ', '\t');
             if (!trimmed.EndsWith(TailMarker, StringComparison.Ordinal) || trimmed.Length < prefix.Length + TailMarker.Length)
             {
-                throw new FailClosedException("Malformed armor boundary line: " + line);
+                throw new FailClosedException("Malformed armor boundary line: " + InputText.Quote(line));
             }
 
             return trimmed.Substring(prefix.Length, trimmed.Length - prefix.Length - TailMarker.Length);

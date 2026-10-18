@@ -4,17 +4,25 @@ namespace Scarlet.OpenPgp.Cli;
 
 /// <summary>
 /// The CLI's testable composition seam. <see cref="Program.Main"/> is a thin wrapper around this
-/// so tests can inject <see cref="TextWriter"/>s instead of touching the real console. Stdout
-/// stays clean (script-friendly); every diagnostic goes to stderr, prefixed "Scarlet.OpenPgp: ".
+/// so tests can inject streams and writers instead of touching the real console. Stdout
+/// stays clean (script-friendly) and carries only the verified signed text, as raw UTF-8; every
+/// diagnostic goes to stderr, prefixed "Scarlet.OpenPgp: ", with control characters escaped.
 /// </summary>
 internal sealed class OpenPgpCliApplication
 {
     private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
-    private readonly TextWriter _stdout;
+    private readonly Stream _stdout;
     private readonly TextWriter _stderr;
 
-    public OpenPgpCliApplication(TextWriter stdout, TextWriter stderr)
+    /// <param name="stdout">
+    /// Where --output - writes the signed text: a byte stream, not a <see cref="TextWriter"/>. The
+    /// console's writer encodes with the console code page even when redirected (437 on Windows),
+    /// which turned fullwidth digits into ASCII ones and Cyrillic into "?" - output differing from
+    /// what the signature covers.
+    /// </param>
+    /// <param name="stderr">Where diagnostics go.</param>
+    public OpenPgpCliApplication(Stream stdout, TextWriter stderr)
     {
         _stdout = stdout;
         _stderr = stderr;
@@ -30,7 +38,7 @@ internal sealed class OpenPgpCliApplication
 
         if (!OpenPgpCliOptions.TryParse(args, out OpenPgpCliOptions? options, out string? parseError))
         {
-            _stderr.WriteLine("Scarlet.OpenPgp: " + parseError);
+            _stderr.WriteLine("Scarlet.OpenPgp: " + Escape(parseError));
             WriteUsage();
             return ExitCodes.UsageError;
         }
@@ -47,7 +55,7 @@ internal sealed class OpenPgpCliApplication
             // failure modes handled inside RunVerify (a bad input file, a failed/successful
             // verification) still gets a clean exit code and message instead of crashing the
             // process with a raw stack trace.
-            _stderr.WriteLine("Scarlet.OpenPgp: unexpected error: " + ex.Message);
+            _stderr.WriteLine("Scarlet.OpenPgp: unexpected error: " + Escape(ex.Message));
             return ExitCodes.UnexpectedError;
         }
     }
@@ -64,7 +72,7 @@ internal sealed class OpenPgpCliApplication
         }
         catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
         {
-            _stderr.WriteLine("Scarlet.OpenPgp: could not read input file: " + ex.Message);
+            _stderr.WriteLine("Scarlet.OpenPgp: could not read input file: " + Escape(ex.Message));
             return ExitCodes.InputError;
         }
 
@@ -79,7 +87,7 @@ internal sealed class OpenPgpCliApplication
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
             {
-                _stderr.WriteLine("Scarlet.OpenPgp: could not read input file: " + ex.Message);
+                _stderr.WriteLine("Scarlet.OpenPgp: could not read input file: " + Escape(ex.Message));
                 return ExitCodes.InputError;
             }
         }
@@ -103,7 +111,7 @@ internal sealed class OpenPgpCliApplication
 
         if (!result.IsValid)
         {
-            _stderr.WriteLine("Scarlet.OpenPgp: signature verification failed (" + result.Status + "): " + result.Message);
+            _stderr.WriteLine("Scarlet.OpenPgp: signature verification failed (" + result.Status + "): " + Escape(result.Message));
             if (result.SignerFingerprint is not null)
             {
                 _stderr.WriteLine("Scarlet.OpenPgp: signing key " + result.SignerFingerprint);
@@ -130,7 +138,8 @@ internal sealed class OpenPgpCliApplication
     {
         if (outputPath == "-")
         {
-            _stdout.Write(signedText);
+            byte[] bytes = StrictUtf8.GetBytes(signedText);
+            _stdout.Write(bytes, 0, bytes.Length);
             _stdout.Flush();
             return true;
         }
@@ -142,9 +151,32 @@ internal sealed class OpenPgpCliApplication
         }
         catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
         {
-            _stderr.WriteLine("Scarlet.OpenPgp: could not write output file: " + ex.Message);
+            _stderr.WriteLine("Scarlet.OpenPgp: could not write output file: " + Escape(ex.Message));
             return false;
         }
+    }
+
+    /// <summary>
+    /// <paramref name="message"/> with control and formatting characters written as XXXX. Messages
+    /// can quote the input (an armor line, a file name), and a terminal escape sequence printed raw
+    /// could rewrite the screen - erase the failure and show "signature verified." instead.
+    /// </summary>
+    private static string Escape(string message)
+    {
+        var builder = new StringBuilder(message.Length);
+        foreach (char c in message)
+        {
+            if (char.IsControl(c) || char.IsSurrogate(c) || System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.Format)
+            {
+                builder.Append("\\u").Append(((int)c).ToString("X4", System.Globalization.CultureInfo.InvariantCulture));
+            }
+            else
+            {
+                builder.Append(c);
+            }
+        }
+
+        return builder.ToString();
     }
 
     private void WriteUsage()

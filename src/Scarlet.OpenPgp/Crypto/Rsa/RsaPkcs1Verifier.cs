@@ -7,9 +7,21 @@ namespace Scarlet.OpenPgp.Crypto.Rsa
     /// <summary>RSA signature verification per RFC 8017 §8.2.2 / §9.2 (EMSA-PKCS1-v1_5): recover the padded block via modular exponentiation, then check its structure byte-for-byte.</summary>
     internal static class RsaPkcs1Verifier
     {
+        /// <summary>How many bits shorter than the modulus a signature value may be.</summary>
+        public const int MaxSignatureShortfallBits = 64;
+
         public static bool Verify(RsaPublicKey key, HashAlgorithmId hashAlgorithm, byte[] digest, BigInteger signature)
         {
             if (signature.Sign < 0 || signature >= key.Modulus)
+            {
+                return false;
+            }
+
+            // A real signature is a random-looking value below the modulus: the chance it is more
+            // than 64 bits shorter is 2^-64. Rejecting those costs nothing legitimate, and stops a
+            // 4-byte "signature" buying a full exponentiation modulo a 16384-bit key - which made a
+            // small file of them cost minutes of work.
+            if (BigIntegerMath.BitLength(signature) < key.ModulusBitLength - MaxSignatureShortfallBits)
             {
                 return false;
             }

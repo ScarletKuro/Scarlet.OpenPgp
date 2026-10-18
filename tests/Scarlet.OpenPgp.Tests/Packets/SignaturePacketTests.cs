@@ -58,7 +58,7 @@ namespace Scarlet.OpenPgp.Tests.Packets
             SignaturePacket signature = ParseFixture();
 
             // Assert
-            Assert.Equal(ExpectedIssuerKeyId, Assert.Single(signature.UnhashedSubpackets, s => s.Is(SignatureSubpacketType.IssuerKeyId)).Data);
+            Assert.Equal(ExpectedIssuerKeyId, Assert.Single(signature.UnhashedSubpackets, s => s.Is(SignatureSubpacketType.IssuerKeyId)).Data.ToArray());
         }
 
         [Fact]
@@ -125,7 +125,7 @@ namespace Scarlet.OpenPgp.Tests.Packets
             // Assert: version(04) type(00) pubalg(16) hashalg(08) hashed-subpacket-count(0006)
             // hashed-subpacket-data(05 02 55 f9 5f 95) - the exact 12-byte "hashed data" region
             // documented in the draft's own hash-input worked example.
-            Assert.Equal([0x04, 0x00, 0x16, 0x08, 0x00, 0x06, 0x05, 0x02, 0x55, 0xf9, 0x5f, 0x95], signature.HashedPortion);
+            Assert.Equal([0x04, 0x00, 0x16, 0x08, 0x00, 0x06, 0x05, 0x02, 0x55, 0xf9, 0x5f, 0x95], signature.HashedPortion.ToArray());
         }
 
         [Fact]

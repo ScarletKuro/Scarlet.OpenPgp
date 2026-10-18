@@ -169,5 +169,19 @@ namespace Scarlet.OpenPgp.Tests.Armor
             // Assert
             Assert.Equal(body, block.Body);
         }
+        [Fact]
+        public void Read_WithEscapeSequencesInABoundaryLine_ShouldNotQuoteThemRaw()
+        {
+            // Arrange: error messages quote the input, and end up in terminals: an escape sequence
+            // in a boundary line could erase the error there and print "signature verified." instead.
+            string armor = BuildArmor("SIGNATURE", "", "abc"u8.ToArray()).Replace("-----END PGP SIGNATURE-----", "-----END PGP SIGNATURE\u001b[2K\u001b[1Gsignature verified.", StringComparison.Ordinal);
+
+            // Act
+            FailClosedException ex = Assert.Throws<FailClosedException>(() => AsciiArmorReader.Read(armor));
+
+            // Assert
+            Assert.DoesNotContain('\u001b', ex.Message);
+            Assert.Contains("\\u001B", ex.Message, StringComparison.Ordinal);
+        }
     }
 }

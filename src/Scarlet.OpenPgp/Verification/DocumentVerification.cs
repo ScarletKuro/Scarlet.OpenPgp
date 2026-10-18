@@ -25,6 +25,15 @@ namespace Scarlet.OpenPgp.Verification
         /// <summary>The most signature packets one input may carry, counting identical copies of the same signature.</summary>
         public const int MaxSignaturePackets = 8 * MaxSignatures;
 
+        /// <summary>
+        /// The most checking work (in <see cref="Crypto.VerificationKey.CheckCost"/> units, about 0.3 ms
+        /// each) the signatures of one input may call for, summed over every key each could be from.
+        /// A signature that names its issuer has one or two candidate keys; one that names none could
+        /// be from any key in the ring, and 32 of them against a large keyring meant tens of thousands
+        /// of checks.
+        /// </summary>
+        public const int MaxCheckCost = 1024;
+
         private readonly List<Entry> _entries;
         private readonly VerificationResult? _earlyResult;
 
@@ -98,6 +107,22 @@ namespace Scarlet.OpenPgp.Verification
             foreach (byte[] body in bodies)
             {
                 entries.Add(Entry.Create(body, keyRing, isClearsign));
+            }
+
+            long checkCost = 0;
+            foreach (Entry entry in entries)
+            {
+                checkCost += entry.CandidateCost;
+            }
+
+            if (checkCost > MaxCheckCost)
+            {
+                foreach (Entry entry in entries)
+                {
+                    entry.Dispose();
+                }
+
+                return Failed(VerificationStatus.MalformedInput, "The signatures don't name their issuer, and too many of the supplied keys could have made them to check them all.");
             }
 
             return new DocumentVerification(entries, null);
@@ -187,6 +212,27 @@ namespace Scarlet.OpenPgp.Verification
             private readonly List<(Certificate Certificate, PublicKeyPacket Key)> _candidates = [];
 
             public SignatureDigest? Digest { get; private set; }
+
+            /// <summary>What checking this signature against every candidate key would cost (see <see cref="MaxCheckCost"/>).</summary>
+            public int CandidateCost
+            {
+                get
+                {
+                    if (Digest is null || _signature is not { } signature)
+                    {
+                        return 0; // failed early; nothing will be checked
+                    }
+
+                    int cost = 0;
+                    foreach ((Certificate _, PublicKeyPacket key) in _candidates)
+                    {
+                        // Only keys of the signature's version and algorithm get a cryptographic check.
+                        cost += key.CanVerify && !SignatureVerifier.IsForDifferentKey(key, signature) ? key.VerificationKey.CheckCost : 0;
+                    }
+
+                    return cost;
+                }
+            }
 
             public void Dispose() => Digest?.Dispose();
 

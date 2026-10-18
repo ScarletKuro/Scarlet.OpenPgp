@@ -822,5 +822,181 @@ namespace Scarlet.OpenPgp.Tests.Verification
             // Assert
             Assert.True(result.IsValid, result.ToString());
         }
+
+        /// <summary>A User ID self-certification made at <paramref name="at"/> allowing signing, optionally making the key expire two days after its creation.</summary>
+        private static byte[] SelfCertification(PgpKeyPair primary, DateTime at, bool expiring, int type = PgpSignature.PositiveCertification) =>
+            Timed(primary, type, at, g => g.GenerateCertification(UserId, primary.PublicKey), g =>
+            {
+                g.SetIssuerFingerprint(false, primary.PublicKey);
+                g.SetKeyFlags(false, PgpKeyFlags.CanSign);
+                if (expiring)
+                {
+                    g.SetKeyExpirationTime(false, 2 * 86400);
+                }
+            });
+
+        [Fact]
+        public void SubkeyRevocation_InAnotherCopyOfTheCertificate_ShouldStillRevoke()
+        {
+            // Arrange: the certificate, then its Public-Key packet again followed by the subkey's
+            // revocation. Each copy was built on its own, so the revocation found no subkey in its
+            // copy and was dropped - turning KeyRevoked into Valid with one packet inserted.
+            PgpKeyPair primary = NewKey();
+            PgpKeyPair subkey = NewKey();
+            byte[] firstCopy = Concat(
+                Packet(PacketTag.PublicKey, KeyBody(primary.PublicKey)),
+                Packet(PacketTag.UserId, Encoding.UTF8.GetBytes(UserId)),
+                SelfCertification(primary, CreatedAt, expiring: false),
+                Packet(PacketTag.PublicSubkey, KeyBody(subkey.PublicKey)),
+                Encoded(SubkeyBinding(primary, subkey, PgpKeyFlags.CanSign, withBackSignature: true)));
+            byte[] revocation = Timed(primary, PgpSignature.SubkeyRevocation, CreatedAt.AddDays(1), g => g.GenerateCertification(primary.PublicKey, subkey.PublicKey), g => g.SetIssuerFingerprint(false, primary.PublicKey));
+            byte[] signature = SignData(subkey, CreatedAt.AddDays(2));
+
+            // Act
+            VerificationResult unrevoked = Verify(signature, firstCopy);
+            VerificationResult revoked = Verify(signature, Concat(firstCopy, Packet(PacketTag.PublicKey, KeyBody(primary.PublicKey)), revocation));
+
+            // Assert
+            Assert.True(unrevoked.IsValid, unrevoked.ToString());
+            Assert.Equal(VerificationStatus.KeyRevoked, revoked.Status);
+        }
+
+        [Fact]
+        public void ExpiringSelfCertification_InAnotherCopyOfTheCertificate_ShouldStillApply()
+        {
+            // Arrange: an older self-certification without an expiration, and a newer one that makes
+            // the key expire - moved into a second copy that lacks the User ID. It was dropped there,
+            // and the older one left the key valid forever.
+            PgpKeyPair primary = NewKey();
+            byte[] certificate = Concat(
+                Packet(PacketTag.PublicKey, KeyBody(primary.PublicKey)),
+                Packet(PacketTag.UserId, Encoding.UTF8.GetBytes(UserId)),
+                SelfCertification(primary, CreatedAt, expiring: false),
+                Packet(PacketTag.PublicKey, KeyBody(primary.PublicKey)),
+                SelfCertification(primary, CreatedAt.AddDays(1), expiring: true));
+
+            // Act
+            VerificationResult result = Verify(SignData(primary, CreatedAt.AddHours(1)), certificate);
+
+            // Assert
+            Assert.Equal(VerificationStatus.KeyExpired, result.Status);
+        }
+
+        [Fact]
+        public void UserIdRevocation_InAnotherCopyOfTheCertificate_ShouldStillRevokeTheUserId()
+        {
+            // Arrange: the User ID's only self-certification, and its revocation in a second copy.
+            PgpKeyPair primary = NewKey();
+            byte[] certificate = Concat(
+                Packet(PacketTag.PublicKey, KeyBody(primary.PublicKey)),
+                Packet(PacketTag.UserId, Encoding.UTF8.GetBytes(UserId)),
+                SelfCertification(primary, CreatedAt, expiring: false),
+                Packet(PacketTag.PublicKey, KeyBody(primary.PublicKey)),
+                SelfCertification(primary, CreatedAt.AddDays(1), expiring: false, PgpSignature.CertificationRevocation));
+
+            // Act
+            OpenPgpKeyRing ring = OpenPgpKeyRing.Parse(certificate);
+
+            // Assert
+            Assert.Empty(ring.Certificates[0].UserIds);
+        }
+
+        [Fact]
+        public void ExpiringSelfCertification_MovedUnderAnotherUserId_ShouldStillApply()
+        {
+            // Arrange: the newer, expiring self-certification moved under a second User ID (which has
+            // none of its own). Checked only against that User ID, it was dropped.
+            PgpKeyPair primary = NewKey();
+            byte[] certificate = Concat(
+                Packet(PacketTag.PublicKey, KeyBody(primary.PublicKey)),
+                Packet(PacketTag.UserId, Encoding.UTF8.GetBytes(UserId)),
+                SelfCertification(primary, CreatedAt, expiring: false),
+                Packet(PacketTag.UserId, "Other <other@example.test>"u8.ToArray()),
+                SelfCertification(primary, CreatedAt.AddDays(1), expiring: true));
+
+            // Act
+            VerificationResult result = Verify(SignData(primary, CreatedAt.AddHours(1)), certificate);
+
+            // Assert
+            Assert.Equal(VerificationStatus.KeyExpired, result.Status);
+        }
+
+        /// <summary>An RSA User ID self-certification made at <paramref name="at"/> with <paramref name="hash"/>, optionally making the key expire an hour after its creation.</summary>
+        private static byte[] RsaSelfCertification(PgpKeyPair key, HashAlgorithmTag hash, DateTime at, bool expiring)
+        {
+            var subpackets = new PgpSignatureSubpacketGenerator();
+            subpackets.SetSignatureCreationTime(false, at);
+            subpackets.SetIssuerFingerprint(false, key.PublicKey);
+            subpackets.SetKeyFlags(false, PgpKeyFlags.CanSign);
+            if (expiring)
+            {
+                subpackets.SetKeyExpirationTime(false, 3600);
+            }
+
+            var generator = new PgpSignatureGenerator(key.PublicKey.Algorithm, hash);
+            generator.InitSign(PgpSignature.PositiveCertification, key.PrivateKey);
+            generator.SetHashedSubpackets(subpackets.Generate());
+            return Encoded(generator.GenerateCertification(UserId, key.PublicKey));
+        }
+
+        [Fact]
+        public void Sha1SelfCertification_MadeAfterTheCollisionCutoff_ShouldBeIgnored()
+        {
+            // Arrange: a SHA-256 self-certification making the key expire, and a newer SHA-1 one
+            // without that restriction - what a chosen-prefix collision with a certification the key
+            // made for someone else could produce. SHA-1 User ID certifications made after
+            // 2019-01-19 are set aside when the key has another self-signature, so the restriction stays.
+            PgpKeyPair key = NewRsaKey();
+            byte[] certificate = Concat(
+                Packet(PacketTag.PublicKey, KeyBody(key.PublicKey)),
+                Packet(PacketTag.UserId, Encoding.UTF8.GetBytes(UserId)),
+                RsaSelfCertification(key, HashAlgorithmTag.Sha256, CreatedAt, expiring: true),
+                RsaSelfCertification(key, HashAlgorithmTag.Sha1, CreatedAt.AddDays(1), expiring: false));
+
+            // Act
+            VerificationResult result = Verify(SignDataWith(key), certificate);
+
+            // Assert
+            Assert.Equal(VerificationStatus.KeyExpired, result.Status);
+        }
+
+        [Fact]
+        public void Sha1SelfCertification_MadeBeforeTheCollisionCutoff_ShouldStillApply()
+        {
+            // Arrange: an old key whose only self-certification is SHA-1, from 2018.
+            var generator = new RsaKeyPairGenerator();
+            generator.Init(new RsaKeyGenerationParameters(Org.BouncyCastle.Math.BigInteger.ValueOf(65537), new SecureRandom(), 2048, 80));
+            var createdAt = new DateTime(2018, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            var key = new PgpKeyPair(PublicKeyAlgorithmTag.RsaGeneral, generator.GenerateKeyPair(), createdAt);
+            byte[] certificate = Concat(
+                Packet(PacketTag.PublicKey, KeyBody(key.PublicKey)),
+                Packet(PacketTag.UserId, Encoding.UTF8.GetBytes(UserId)),
+                RsaSelfCertification(key, HashAlgorithmTag.Sha1, createdAt, expiring: true));
+
+            // Act
+            OpenPgpKeyRing ring = OpenPgpKeyRing.Parse(certificate);
+
+            // Assert: the expiration it sets is honored.
+            Assert.Equal(new DateTimeOffset(createdAt).AddHours(1), ring.Certificates[0].PrimaryKey.GetStatus(Now).ExpiresAt);
+        }
+
+        [Fact]
+        public void Sha1SelfCertification_MadeAfterTheCutoff_ShouldStillApplyWhenItIsTheOnlyOne()
+        {
+            // Arrange: a key made with an old tool whose only self-certification is SHA-1 and recent.
+            // Setting it aside would leave a key with no self-signature - unrestricted, so its
+            // expiration would be lost.
+            PgpKeyPair key = NewRsaKey();
+            byte[] certificate = Concat(
+                Packet(PacketTag.PublicKey, KeyBody(key.PublicKey)),
+                Packet(PacketTag.UserId, Encoding.UTF8.GetBytes(UserId)),
+                RsaSelfCertification(key, HashAlgorithmTag.Sha1, CreatedAt, expiring: true));
+
+            // Act
+            VerificationResult result = Verify(SignDataWith(key), certificate);
+
+            // Assert
+            Assert.Equal(VerificationStatus.KeyExpired, result.Status);
+        }
     }
 }

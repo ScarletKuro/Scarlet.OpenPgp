@@ -18,6 +18,25 @@ namespace Scarlet.OpenPgp.Crypto.Ecdsa
         /// <summary>RFC 9580 §5.2.3.2: at least the curve's field size, except P-521, which needs at least 512 bits.</summary>
         public override int MinimumHashBits => Math.Min(BigIntegerMath.BitLength(Curve.P), 512);
 
+        /// <summary>
+        /// P-256 has its own fixed-width arithmetic (about 0.7 ms); the other curves use the generic
+        /// path, whose cost grows with the square of the field size and is about twice as high for
+        /// brainpool curves (a ≠ -3): about 7 ms for P-521, 14 ms for brainpoolP512r1.
+        /// </summary>
+        public override int CheckCost
+        {
+            get
+            {
+                if (ReferenceEquals(Curve, EcCurve.NistP256))
+                {
+                    return 2;
+                }
+
+                double scale = (double)Curve.FieldByteLength / 32;
+                return (int)Math.Ceiling((Curve.IsAMinus3 ? 6 : 12) * scale * scale);
+            }
+        }
+
         public override bool Verify(HashAlgorithmId hashAlgorithm, byte[] digest, SignatureValue signature)
         {
             if (signature is not RsSignatureValue rs)

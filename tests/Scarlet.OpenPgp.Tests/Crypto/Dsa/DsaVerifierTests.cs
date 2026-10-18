@@ -407,5 +407,32 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Dsa
             // Assert
             Assert.Throws<FailClosedException>(act);
         }
+        [Fact]
+        public void DsaPublicKey_WithACompositeSubgroupOrder_ShouldFailClosed()
+        {
+            // Arrange: a 256-bit q that is the product of two 128-bit factors. With a composite q
+            // anyone - not only the owner who chose it - can forge signatures for the key.
+            BigInteger p = (BigInteger.One << 2047) + 1;
+            BigInteger q = ((BigInteger.One << 128) + 1) * ((BigInteger.One << 127) + 3);
+
+            // Act
+            FailClosedException ex = Assert.Throws<FailClosedException>(() => new DsaPublicKey(p, q, 2, 3));
+
+            // Assert
+            Assert.Contains("must be prime", ex.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void DsaPublicKey_LargerThanFips186_ShouldBeUnsupported()
+        {
+            // Arrange: FIPS 186-4 stops at 3072-bit p; a 16384-bit p made each check cost 150 ms.
+            BigInteger p = (BigInteger.One << 4095) + 1;
+
+            // Act
+            FailClosedException ex = Assert.Throws<FailClosedException>(() => new DsaPublicKey(p, (BigInteger.One << 255) + 1, 2, 3));
+
+            // Assert
+            Assert.True(ex.IsUnsupported);
+        }
     }
 }

@@ -18,13 +18,13 @@ namespace Scarlet.OpenPgp.Crypto.Dsa
     /// 80-bit security no matter how strong the hash. RFC 9580 §9.1 also deprecates DSA entirely.
     /// </para>
     /// <para>
-    /// The remaining checks are the cheap structural ones from FIPS 186-4 Appendix A.1.1/A.2.2
-    /// and SP 800-89 §5.3.1 (partial public-key validation): q | p - 1, and both g and y lie in
-    /// (1, p) and in the order-q subgroup (x^q ≡ 1 mod p). Rejecting y outside that subgroup or
-    /// y = 1 matters: with y = 1, v = g^u1 mod p mod q and anyone can forge. p and q are not
-    /// primality-tested: that would be expensive, and parameters are chosen by the key owner, who
-    /// can only weaken their own signatures - the subgroup checks are what rule out degenerate
-    /// values that would let a third party forge.
+    /// The remaining checks are the structural ones from FIPS 186-4 Appendix A.1.1/A.2.2 and
+    /// SP 800-89 §5.3.1 (partial public-key validation): q is prime, q | p - 1, and both g and y lie
+    /// in (1, p) and in the order-q subgroup (x^q ≡ 1 mod p). Rejecting y outside that subgroup or
+    /// y = 1 matters: with y = 1, v = g^u1 mod p mod q and anyone can forge. So does q's
+    /// primality: with a composite q, signatures for the key can be forged by anyone, not only by
+    /// the owner who chose it. Testing q costs well under a millisecond; p is not tested - at up to
+    /// 3072 bits that would cost far more, and the subgroup checks already tie g and y to q.
     /// </para>
     /// </remarks>
     internal sealed class DsaPublicKey : VerificationKey
@@ -32,8 +32,8 @@ namespace Scarlet.OpenPgp.Crypto.Dsa
         /// <summary>The smallest prime modulus accepted (L in FIPS 186-4 §4.2).</summary>
         public const int MinimumPBitLength = 2048;
 
-        /// <summary>The largest prime modulus accepted. FIPS 186-4 tops out at 3072 bits; this leaves headroom while keeping a verification's modular exponentiations bounded.</summary>
-        public const int MaximumPBitLength = 16384;
+        /// <summary>The largest prime modulus accepted: FIPS 186-4's largest, and GnuPG's. Bigger ones serve no purpose and make every verification slower (about 150 ms at 16384 bits).</summary>
+        public const int MaximumPBitLength = 3072;
 
         public DsaPublicKey(BigInteger p, BigInteger q, BigInteger g, BigInteger y)
         {
@@ -59,6 +59,11 @@ namespace Scarlet.OpenPgp.Crypto.Dsa
             if (QBitLength != 224 && QBitLength != 256)
             {
                 throw FailClosedException.Unsupported("DSA subgroup order q must be 224 or 256 bits (FIPS 186-4 §4.2); got " + QBitLength + " bits.");
+            }
+
+            if (q.IsEven || !BigIntegerMath.IsProbablePrime(q))
+            {
+                throw new FailClosedException("DSA subgroup order q must be prime.");
             }
 
             if (!BigInteger.Remainder(p - 1, q).IsZero)
@@ -99,6 +104,9 @@ namespace Scarlet.OpenPgp.Crypto.Dsa
 
         /// <summary>RFC 9580 §5.2.3.2: a digest at least as long as q.</summary>
         public override int MinimumHashBits => QBitLength;
+
+        /// <summary>Two exponentiations with q-bit exponents modulo p: about 9.7 ms for DSA-3072.</summary>
+        public override int CheckCost => (int)System.Math.Ceiling(4.2 * QBitLength * ((double)PBitLength / 1024) * ((double)PBitLength / 1024) / 300);
 
         public override bool Verify(HashAlgorithmId hashAlgorithm, byte[] digest, SignatureValue signature) =>
             signature is RsSignatureValue rs && DsaVerifier.Verify(this, digest, rs.R, rs.S);

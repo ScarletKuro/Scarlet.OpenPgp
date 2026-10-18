@@ -7,7 +7,8 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
-        var application = new OpenPgpCliApplication(Console.Out, Console.Error);
+        using Stream stdout = Console.OpenStandardOutput();
+        var application = new OpenPgpCliApplication(stdout, Console.Error);
         return application.Run(args);
     }
 }

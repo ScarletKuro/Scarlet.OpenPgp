@@ -13,8 +13,8 @@ namespace Scarlet.OpenPgp.Crypto.Rsa
         /// <summary>The largest modulus accepted - GnuPG's own limit. Bigger moduli serve no security purpose and make each verification take minutes.</summary>
         public const int MaximumModulusBitLength = 16384;
 
-        /// <summary>The largest public exponent accepted, in bits. Real keys use small exponents (65537, 17, 3); a huge one only makes verification slow.</summary>
-        public const int MaximumExponentBitLength = 256;
+        /// <summary>The largest public exponent accepted, in bits. Real keys use small exponents (65537, 17, 3); a huge one only makes every verification slower.</summary>
+        public const int MaximumExponentBitLength = 32;
 
         public RsaPublicKey(BigInteger modulus, BigInteger exponent)
         {
@@ -49,6 +49,9 @@ namespace Scarlet.OpenPgp.Crypto.Rsa
             {
                 throw FailClosedException.Unsupported("RSA public exponent must be at most " + MaximumExponentBitLength + " bits.");
             }
+
+            double scale = (double)ModulusBitLength / 1024;
+            CheckCost = (int)System.Math.Ceiling(BigIntegerMath.BitLength(exponent) * scale * scale / 200);
         }
 
         public BigInteger Modulus { get; }
@@ -64,6 +67,9 @@ namespace Scarlet.OpenPgp.Crypto.Rsa
 
         /// <summary>RFC 9580 sets no minimum for RSA; the hash policy itself rejects MD5, RIPEMD-160 and (for documents) SHA-1.</summary>
         public override int MinimumHashBits => 0;
+
+        /// <summary>One modular squaring per exponent bit, each quadratic in the modulus size: about 0.23 ms for RSA-3072 with e = 65537, 12 ms for RSA-16384 with a 32-bit exponent.</summary>
+        public override int CheckCost { get; }
 
         public override bool Verify(HashAlgorithmId hashAlgorithm, byte[] digest, SignatureValue signature) =>
             signature is RsaSignatureValue rsa && RsaPkcs1Verifier.Verify(this, hashAlgorithm, digest, rsa.Value);

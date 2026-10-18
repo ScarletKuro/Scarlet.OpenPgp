@@ -25,6 +25,9 @@ namespace Scarlet.OpenPgp.Crypto.Ed448
         /// <summary>RFC 9580 §5.2.3.5: Ed448 signatures need at least a 512-bit digest.</summary>
         public override int MinimumHashBits => 512;
 
+        /// <summary>About 4.6 ms.</summary>
+        public override int CheckCost => 16;
+
         public override bool Verify(HashAlgorithmId hashAlgorithm, byte[] digest, SignatureValue signature) =>
             signature is EdDsaSignatureValue eddsa && Ed448Verifier.Verify(this, digest, eddsa.Value);
 

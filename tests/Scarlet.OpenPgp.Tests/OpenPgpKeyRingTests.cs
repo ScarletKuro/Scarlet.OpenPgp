@@ -330,8 +330,9 @@ namespace Scarlet.OpenPgp.Tests
         [Fact]
         public void Parse_WithACertificateNeedingTooManySignatureChecks_ShouldBeRejected()
         {
-            // Arrange: thousands of certifications naming no signed issuer, each of which would have
-            // to be checked against the key.
+            // Arrange: thousands of distinct certifications naming no signed issuer (they differ in
+            // creation time), each of which would have to be checked against the key - each costs one
+            // unit for this RSA-3072 key, and the budget is 8,192 units.
             byte[] key = Bytes("gnupg-generated/v4-rsa3072/public-key.gpg");
             byte[] userId = [0xCD, 0x01, (byte)'x'];
             byte[] certification =
@@ -339,14 +340,23 @@ namespace Scarlet.OpenPgp.Tests
                 0xC2, 0x13,
                 0x04, 0x13, 0x01, 0x08, 0x00, 0x06, 0x05, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01,
             ];
-            byte[] keys = [.. key, .. userId, .. Enumerable.Repeat(certification, 4097).SelectMany(b => b)];
+            byte[] keys = [.. key, .. userId, .. Enumerable.Range(0, 8193).SelectMany(i => Distinct(certification, i))];
 
             // Act
             bool parsed = OpenPgpKeyRing.TryParse(keys, out _, out string? error);
 
             // Assert
             Assert.False(parsed);
-            Assert.Contains("more than 4096 signature checks", error, StringComparison.Ordinal);
+            Assert.Contains("too much signature checking", error, StringComparison.Ordinal);
+
+            // The packet with the last two octets of its creation time set from i.
+            static byte[] Distinct(byte[] packet, int i)
+            {
+                byte[] copy = [.. packet];
+                copy[12] = (byte)(i >> 8);
+                copy[13] = (byte)i;
+                return copy;
+            }
         }
 
         [Fact]

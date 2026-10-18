@@ -148,5 +148,33 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Rsa
             // Act & Assert
             Assert.Throws<FailClosedException>(() => new RsaPublicKey(evenModulus, 65537));
         }
+        [Fact]
+        public void RsaPublicKey_WithAnExponentOver32Bits_ShouldBeUnsupported()
+        {
+            // Arrange: real keys use 65537, 17 or 3; a large exponent only makes every check slower.
+            BigInteger modulus = (BigInteger.One << 2047) + 1;
+            BigInteger exponent = (BigInteger.One << 32) + 1;
+
+            // Act
+            FailClosedException ex = Assert.Throws<FailClosedException>(() => new RsaPublicKey(modulus, exponent));
+
+            // Assert
+            Assert.True(ex.IsUnsupported);
+        }
+
+        [Fact]
+        public void Verify_WithASignatureFarShorterThanTheModulus_ShouldReturnFalse()
+        {
+            // Arrange: a genuine signature value with its top 72 bits cleared - something a real
+            // signature is with probability 2^-72, and a cheap way to buy a full exponentiation.
+            (RsaPublicKey publicKey, byte[] digest, BigInteger signature) = SignWithReferenceRsa("Scarlet.OpenPgp RSA test message"u8.ToArray());
+            BigInteger shortened = signature & ((BigInteger.One << (publicKey.ModulusBitLength - 72)) - 1);
+
+            // Act
+            bool result = RsaPkcs1Verifier.Verify(publicKey, HashAlgorithmId.Sha256, digest, shortened);
+
+            // Assert
+            Assert.False(result);
+        }
     }
 }

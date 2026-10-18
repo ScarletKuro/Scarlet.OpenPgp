@@ -3,22 +3,36 @@ using Scarlet.OpenPgp.Internal;
 namespace Scarlet.OpenPgp.Verification
 {
     /// <summary>
-    /// The key-signature checks one certificate may still spend - shared by every copy of that
-    /// certificate in a key input, so repeating a certificate with small variations can't multiply
-    /// the work a single certificate is allowed.
+    /// The key-signature checking work one certificate may still cause - shared by every copy of
+    /// that certificate in a key input, so repeating a certificate with small variations can't
+    /// multiply the work a single certificate is allowed.
     /// </summary>
+    /// <remarks>
+    /// Work is counted in units of about one Ed25519 check (0.3 ms): each check costs its key's
+    /// <see cref="Crypto.VerificationKey.CheckCost"/> plus the hashing of what it covers. Counting
+    /// checks alone let a key that makes each one expensive (a 16384-bit RSA key with a large
+    /// exponent: 75 ms a check) turn a 114 KiB key file into five minutes of work.
+    /// </remarks>
     internal sealed class CheckBudget
     {
-        /// <summary>The most key-signature checks one certificate may need, across all its copies. Real certificates need one per self-signature, plus one per third-party certification that names no signed issuer.</summary>
-        public const int MaxSignatureChecks = 4096;
+        /// <summary>
+        /// The most work one certificate may need, across all its copies: about 2.5 s at worst.
+        /// Real certificates need one check per self-signature, plus one per third-party
+        /// certification that names no signed issuer - a few thousand Ed25519 or RSA-4096 checks fit.
+        /// </summary>
+        public const int MaxCost = 8192;
 
-        private int _spent;
+        /// <summary>How many hashed octets cost one unit (hashing runs at a few hundred MB/s or more).</summary>
+        public const int HashedBytesPerUnit = 64 * 1024;
 
-        public void Spend()
+        private long _spent;
+
+        public void Spend(int cost)
         {
-            if (++_spent > MaxSignatureChecks)
+            _spent += cost;
+            if (_spent > MaxCost)
             {
-                throw new FailClosedException("The certificate needs more than " + MaxSignatureChecks + " signature checks; it is too large, repeated too often, or flooded with signatures.");
+                throw new FailClosedException("The certificate needs too much signature checking; it is too large, repeated too often, flooded with signatures, or its key makes every check too expensive.");
             }
         }
     }
