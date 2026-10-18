@@ -78,7 +78,12 @@ namespace Scarlet.OpenPgp.Crypto.Ecdsa
             BigInteger yy = (Y * Y) % p;
             BigInteger s = (4 * X * yy) % p;
             BigInteger zz = (Z * Z) % p;
-            BigInteger m = ((3 * X * X) + (curve.A * ((zz * zz) % p))) % p;
+
+            // With a = -3 (the NIST curves), 3·X² + a·Z⁴ = 3·(X - Z²)·(X + Z²): one product
+            // instead of two squarings and a multiplication by a ("dbl-2001-b").
+            BigInteger m = curve.IsAMinus3
+                ? BigIntegerMath.Mod(3 * (X - zz) * (X + zz), p)
+                : ((3 * X * X) + (curve.A * ((zz * zz) % p))) % p;
             BigInteger x3 = BigIntegerMath.Mod((m * m) - (2 * s), p);
             BigInteger y3 = BigIntegerMath.Mod((m * (s - x3)) - (8 * ((yy * yy) % p)), p);
             BigInteger z3 = (2 * Y * Z) % p;
@@ -107,11 +112,25 @@ namespace Scarlet.OpenPgp.Crypto.Ecdsa
 
             BigInteger p = curve.P;
             BigInteger z1z1 = (Z * Z) % p;
-            BigInteger z2z2 = (other.Z * other.Z) % p;
-            BigInteger u1 = (X * z2z2) % p;
             BigInteger u2 = (other.X * z1z1) % p;
-            BigInteger s1 = (((Y * other.Z) % p) * z2z2) % p;
             BigInteger s2 = (((other.Y * Z) % p) * z1z1) % p;
+
+            // Mixed addition: when the other point is affine (Z2 = 1, as G and Q are), U1 = X1 and
+            // S1 = Y1, saving four products ("madd").
+            bool otherIsAffine = other.Z.IsOne;
+            BigInteger u1;
+            BigInteger s1;
+            if (otherIsAffine)
+            {
+                u1 = X;
+                s1 = Y;
+            }
+            else
+            {
+                BigInteger z2z2 = (other.Z * other.Z) % p;
+                u1 = (X * z2z2) % p;
+                s1 = (((Y * other.Z) % p) * z2z2) % p;
+            }
             BigInteger h = BigIntegerMath.Mod(u2 - u1, p);
             BigInteger r = BigIntegerMath.Mod(s2 - s1, p);
 
@@ -125,7 +144,7 @@ namespace Scarlet.OpenPgp.Crypto.Ecdsa
             BigInteger u1hh = (u1 * hh) % p;
             BigInteger x3 = BigIntegerMath.Mod((r * r) - hhh - (2 * u1hh), p);
             BigInteger y3 = BigIntegerMath.Mod((r * (u1hh - x3)) - (s1 * hhh), p);
-            BigInteger z3 = (((Z * other.Z) % p) * h) % p;
+            BigInteger z3 = otherIsAffine ? (Z * h) % p : (((Z * other.Z) % p) * h) % p;
             return new JacobianPoint(x3, y3, z3);
         }
 
@@ -144,7 +163,13 @@ namespace Scarlet.OpenPgp.Crypto.Ecdsa
         /// </summary>
         public static JacobianPoint MultiplyAdd(EcCurve curve, BigInteger u1, JacobianPoint p, BigInteger u2, JacobianPoint q)
         {
+            // Normalized to affine (one inversion), so every addition in the loop - of P, Q or P + Q -
+            // takes the cheaper mixed form. P + Q = O can't be normalized and stays as it is.
             JacobianPoint pPlusQ = p.Add(curve, q);
+            if (pPlusQ.TryToAffine(curve, out BigInteger sumX, out BigInteger sumY))
+            {
+                pPlusQ = FromAffine(sumX, sumY);
+            }
             int bits = System.Math.Max(BigIntegerMath.BitLength(u1), BigIntegerMath.BitLength(u2));
             byte[] u1Bytes = u1.ToByteArray(); // little-endian; bit i lives in byte i/8
             byte[] u2Bytes = u2.ToByteArray();

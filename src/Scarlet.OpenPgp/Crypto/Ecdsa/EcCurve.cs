@@ -109,7 +109,11 @@ namespace Scarlet.OpenPgp.Crypto.Ecdsa
             N = ParseHex(n);
             FieldByteLength = (BigIntegerMath.BitLength(P) + 7) / 8;
             OrderBitLength = BigIntegerMath.BitLength(N);
+            IsAMinus3 = A == P - 3;
         }
+
+        /// <summary>Whether a = -3 (mod p), as for the NIST curves: point doubling then has a cheaper form (see <see cref="JacobianPoint.Double"/>).</summary>
+        public bool IsAMinus3 { get; }
 
         /// <summary>Every curve this library knows, in a fixed order.</summary>
         public static IReadOnlyList<EcCurve> All => AllCurves;

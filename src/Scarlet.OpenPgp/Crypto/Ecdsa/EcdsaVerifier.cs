@@ -30,14 +30,18 @@ namespace Scarlet.OpenPgp.Crypto.Ecdsa
         /// <param name="digest">The hash of the signed data. Truncated to the leftmost bitlen(n) bits if longer.</param>
         /// <param name="r">The signature's r value.</param>
         /// <param name="s">The signature's s value.</param>
-        public static bool Verify(EcCurve curve, byte[] publicPoint, byte[] digest, BigInteger r, BigInteger s)
+        public static bool Verify(EcCurve curve, byte[] publicPoint, byte[] digest, BigInteger r, BigInteger s) =>
+            TryDecodePublicPoint(curve, publicPoint, out JacobianPoint q) && Verify(curve, q, digest, r, s);
+
+        /// <summary>Verifies against a public point already decoded and validated by <see cref="TryDecodePublicPoint"/> (cached per key by <see cref="EcdsaPublicKey"/>).</summary>
+        /// <param name="curve">The curve.</param>
+        /// <param name="q">The validated public point, in affine form (Z = 1).</param>
+        /// <param name="digest">The hash of the signed data.</param>
+        /// <param name="r">The signature's r value.</param>
+        /// <param name="s">The signature's s value.</param>
+        public static bool Verify(EcCurve curve, JacobianPoint q, byte[] digest, BigInteger r, BigInteger s)
         {
             if (digest.Length == 0)
-            {
-                return false;
-            }
-
-            if (!TryDecodePublicPoint(curve, publicPoint, out JacobianPoint q))
             {
                 return false;
             }
