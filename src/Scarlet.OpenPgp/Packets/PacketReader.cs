@@ -134,7 +134,7 @@ namespace Scarlet.OpenPgp.Packets
                     throw new FailClosedException("Unreachable old-format length type.");
             }
 
-            AppendBytes(data, ref position, length, body);
+            AppendBytes(data.Length, ref position, length, body);
         }
 
         private static void ReadNewFormatBody(byte[] data, ref int position, byte rawTag, List<Segment> body)
@@ -145,7 +145,7 @@ namespace Scarlet.OpenPgp.Packets
                 int first = ReadByte(data, ref position, "new-format length");
                 if (first < 192)
                 {
-                    AppendBytes(data, ref position, first, body);
+                    AppendBytes(data.Length, ref position, first, body);
                     return;
                 }
 
@@ -153,7 +153,7 @@ namespace Scarlet.OpenPgp.Packets
                 {
                     int second = ReadByte(data, ref position, "new-format 2-byte length");
                     int length = ((first - 192) << 8) + second + 192;
-                    AppendBytes(data, ref position, length, body);
+                    AppendBytes(data.Length, ref position, length, body);
                     return;
                 }
 
@@ -163,7 +163,7 @@ namespace Scarlet.OpenPgp.Packets
                                  | (ReadByte(data, ref position, "new-format 5-byte length") << 16)
                                  | (ReadByte(data, ref position, "new-format 5-byte length") << 8)
                                  | ReadByte(data, ref position, "new-format 5-byte length");
-                    AppendBytes(data, ref position, length, body);
+                    AppendBytes(data.Length, ref position, length, body);
                     return;
                 }
 
@@ -184,7 +184,7 @@ namespace Scarlet.OpenPgp.Packets
 
                 // Append this chunk and loop to read the next chunk's own length header, continuing
                 // until a non-partial form is hit.
-                AppendBytes(data, ref position, partialLength, body);
+                AppendBytes(data.Length, ref position, partialLength, body);
                 firstChunk = false;
             }
         }
@@ -203,12 +203,12 @@ namespace Scarlet.OpenPgp.Packets
             }
         }
 
-        private static void AppendBytes(byte[] data, ref int position, int length, List<Segment> body)
+        private static void AppendBytes(int dataLength, ref int position, int length, List<Segment> body)
         {
             // Widen to long before adding: a maliciously large 4/5-byte length (e.g. 0x7FFFFFFF)
             // plus a nonzero position can overflow int, wrapping the sum negative and slipping
             // past a plain "position + length > data.Length" check.
-            if (length < 0 || (long)position + length > data.Length)
+            if (length < 0 || (long)position + length > dataLength)
             {
                 throw new FailClosedException("Packet body length extends past the end of the input (truncated packet).");
             }

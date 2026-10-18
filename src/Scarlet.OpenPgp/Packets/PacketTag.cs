@@ -1,15 +1,11 @@
 namespace Scarlet.OpenPgp.Packets
 {
-    /// <summary>Packet tag values (RFC 4880 §4.3). Only a subset is meaningful to a verify-only library.</summary>
+    /// <summary>Packet tag values (RFC 4880 §4.3). Only the tags this verify-only library acts on; any other is handled by its raw value.</summary>
     internal enum PacketTag : byte
     {
-        PublicKeyEncryptedSessionKey = 1,
         Signature = 2,
-        SymmetricKeyEncryptedSessionKey = 3,
-        OnePassSignature = 4,
         SecretKey = 5,
         PublicKey = 6,
-        SecretSubkey = 7,
         CompressedData = 8,
         SymmetricallyEncryptedData = 9,
         Marker = 10,
@@ -19,7 +15,6 @@ namespace Scarlet.OpenPgp.Packets
         PublicSubkey = 14,
         UserAttribute = 17,
         SymmetricallyEncryptedIntegrityProtectedData = 18,
-        ModificationDetectionCode = 19,
         Padding = 21,
     }
 }
