@@ -213,10 +213,14 @@ namespace Scarlet.OpenPgp.Verification
                     return entry;
                 }
 
-                foreach (Certificate certificate in keyRing.Certificates)
+                // Every key of every certificate: indexed rather than foreach'd, since enumerating
+                // through IReadOnlyList<T> would allocate an enumerator per certificate.
+                for (int c = 0; c < keyRing.Certificates.Count; c++)
                 {
-                    foreach (PublicKeyPacket key in certificate.Keys)
+                    Certificate certificate = keyRing.Certificates[c];
+                    for (int k = 0; k < certificate.Keys.Count; k++)
                     {
+                        PublicKeyPacket key = certificate.Keys[k];
                         if (SignatureVerifier.IsIssuedBy(signature, key))
                         {
                             entry._candidates.Add((certificate, key));

@@ -53,14 +53,23 @@ namespace Scarlet.OpenPgp.Armor
         public static byte[] Decode(string armorText, string expectedLabel)
         {
             List<AsciiArmorBlock> blocks = AsciiArmorReader.ReadAll(armorText);
-            using var packets = new MemoryStream();
             foreach (AsciiArmorBlock block in blocks)
             {
                 if (!string.Equals(block.Label, expectedLabel, StringComparison.Ordinal))
                 {
                     throw new FailClosedException("Expected a \"" + expectedLabel + "\" armor block, found \"" + block.Label + "\".");
                 }
+            }
 
+            // The usual single block is returned as decoded; only several are concatenated.
+            if (blocks.Count == 1)
+            {
+                return blocks[0].Body;
+            }
+
+            using var packets = new MemoryStream();
+            foreach (AsciiArmorBlock block in blocks)
+            {
                 packets.Write(block.Body, 0, block.Body.Length);
             }
 

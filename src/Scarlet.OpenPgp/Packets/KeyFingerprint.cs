@@ -1,3 +1,4 @@
+using System;
 using System.Security.Cryptography;
 using System.Text;
 using Scarlet.OpenPgp.Internal;
@@ -11,6 +12,10 @@ namespace Scarlet.OpenPgp.Packets
     /// </summary>
     internal sealed class KeyFingerprint
     {
+        // Racing threads compute the same string; publishing a reference is atomic.
+        private string? _hex;
+        private string? _keyIdHex;
+
         private KeyFingerprint(byte version, byte[] bytes, byte[] keyId)
         {
             Version = version;
@@ -64,15 +69,20 @@ namespace Scarlet.OpenPgp.Packets
             return new KeyFingerprint(6, fingerprint, keyId);
         }
 
-        public bool Matches(byte[] other) => FixedTimeEquals(Bytes, other);
+        public bool Matches(ReadOnlySpan<byte> other) => FixedTimeEquals(Bytes, other);
 
-        public bool MatchesKeyId(byte[] keyId) => FixedTimeEquals(KeyId, keyId);
+        public bool MatchesKeyId(ReadOnlySpan<byte> keyId) => FixedTimeEquals(KeyId, keyId);
 
-        /// <summary>Uppercase hexadecimal, the form GnuPG and most tooling print.</summary>
-        public override string ToString()
+        /// <summary>The key ID in uppercase hexadecimal; computed once.</summary>
+        public string KeyIdHex => _keyIdHex ??= ToHex(KeyId);
+
+        /// <summary>Uppercase hexadecimal, the form GnuPG and most tooling print; computed once.</summary>
+        public override string ToString() => _hex ??= ToHex(Bytes);
+
+        private static string ToHex(byte[] bytes)
         {
-            var builder = new StringBuilder(Bytes.Length * 2);
-            foreach (byte b in Bytes)
+            var builder = new StringBuilder(bytes.Length * 2);
+            foreach (byte b in bytes)
             {
                 builder.Append(b.ToString("X2", System.Globalization.CultureInfo.InvariantCulture));
             }
@@ -80,7 +90,7 @@ namespace Scarlet.OpenPgp.Packets
             return builder.ToString();
         }
 
-        private static bool FixedTimeEquals(byte[] a, byte[] b)
+        private static bool FixedTimeEquals(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
         {
             if (a.Length != b.Length)
             {

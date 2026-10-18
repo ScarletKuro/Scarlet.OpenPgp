@@ -124,7 +124,7 @@ namespace Scarlet.OpenPgp
         internal OpenPgpCertificate(Certificate certificate)
         {
             PrimaryKey = new OpenPgpKey(certificate, certificate.Primary);
-            Subkeys = Array.AsReadOnly(certificate.Keys.Skip(1).Select(k => new OpenPgpKey(certificate, k)).ToArray());
+            Subkeys = Array.AsReadOnly(certificate.Subkeys.Select(s => new OpenPgpKey(certificate, s.Key)).ToArray());
             UserIds = Array.AsReadOnly(certificate.UserIds.ToArray());
         }
 
@@ -157,7 +157,7 @@ namespace Scarlet.OpenPgp
         public string Fingerprint => _key.Fingerprint.ToString();
 
         /// <summary>The 64-bit key ID, uppercase hex.</summary>
-        public string KeyId => string.Concat(_key.Fingerprint.KeyId.Select(b => b.ToString("X2", System.Globalization.CultureInfo.InvariantCulture)));
+        public string KeyId => _key.Fingerprint.KeyIdHex;
 
         /// <summary>The key version: 4 (RFC 4880) or 6 (RFC 9580).</summary>
         public int Version => _key.Version;

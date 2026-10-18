@@ -31,6 +31,19 @@ namespace Scarlet.OpenPgp.Verification
             UserIdEntries = userIds;
             Subkeys = subkeys;
             UnverifiableSignatures = unverifiableSignatures;
+
+            // Derived once: the certificate never changes, and these are read on every verification.
+            var keys = new PublicKeyPacket[1 + subkeys.Count];
+            keys[0] = primary;
+            for (int i = 0; i < subkeys.Count; i++)
+            {
+                keys[i + 1] = subkeys[i].Key;
+            }
+
+            Keys = keys;
+            SelfSignatures = [.. directSignatures.Effective, .. userIds.SelectMany(u => u.Signatures.Effective)];
+            UserIds = userIds.Where(u => u.Text is not null && u.Signatures.Effective.Count > 0).Select(u => u.Text!).ToArray();
+            HasSelfSignatures = directSignatures.HasAny || userIds.Any(u => u.Signatures.HasAny);
         }
 
         public PublicKeyPacket Primary { get; }
@@ -50,27 +63,36 @@ namespace Scarlet.OpenPgp.Verification
         public int UnverifiableSignatures { get; }
 
         /// <summary>The primary key followed by every subkey, in order.</summary>
-        public IEnumerable<PublicKeyPacket> Keys => new[] { Primary }.Concat(Subkeys.Select(s => s.Key));
+        public IReadOnlyList<PublicKeyPacket> Keys { get; }
 
         /// <summary>The User IDs carrying an unrevoked self-certification, in certificate order.</summary>
-        public IReadOnlyList<string> UserIds =>
-            UserIdEntries.Where(u => u.Text is not null && u.Signatures.Effective.Any()).Select(u => u.Text!).ToList();
+        public IReadOnlyList<string> UserIds { get; }
 
         /// <summary>
         /// The self-signatures that describe the primary key: Direct Key signatures and User ID
         /// self-certifications, minus those a later certification revocation (0x30) took back.
         /// </summary>
-        public IEnumerable<SignaturePacket> SelfSignatures =>
-            DirectSignatures.Effective.Concat(UserIdEntries.SelectMany(u => u.Signatures.Effective));
+        public IReadOnlyList<SignaturePacket> SelfSignatures { get; }
 
         /// <summary>Whether the primary key has ever had a valid self-signature, revoked or not.</summary>
-        public bool HasSelfSignatures => DirectSignatures.HasAny || UserIdEntries.Any(u => u.Signatures.HasAny);
+        public bool HasSelfSignatures { get; }
 
         /// <summary>Whether <paramref name="key"/> (the primary or a subkey) has a valid revocation, hard or soft.</summary>
         public bool IsRevoked(PublicKeyPacket key) =>
             ReferenceEquals(key, Primary) ? Revocations.Count > 0 : FindSubkey(key)?.Revocations.Count > 0;
 
-        public CertifiedSubkey? FindSubkey(PublicKeyPacket key) => Subkeys.FirstOrDefault(s => ReferenceEquals(s.Key, key));
+        public CertifiedSubkey? FindSubkey(PublicKeyPacket key)
+        {
+            foreach (CertifiedSubkey subkey in Subkeys)
+            {
+                if (ReferenceEquals(subkey.Key, key))
+                {
+                    return subkey;
+                }
+            }
+
+            return null;
+        }
 
         /// <summary>
         /// Combines two copies of the same certificate (same primary key fingerprint): e.g. an old
@@ -132,8 +154,13 @@ namespace Scarlet.OpenPgp.Verification
 
         public bool HasAny => Signatures.Count > 0;
 
-        public IEnumerable<SignaturePacket> Effective =>
-            Signatures.Where(s => !Revocations.Any(r => SignatureVerifier.GetCreationTime(r) >= SignatureVerifier.GetCreationTime(s)));
+        /// <summary>
+        /// The signatures no revocation took back. Computed once; every signature here passed
+        /// <see cref="SignatureVerifier.CheckKeySignature"/>, which requires a readable creation
+        /// time, so this can't throw.
+        /// </summary>
+        public IReadOnlyList<SignaturePacket> Effective { get; } =
+            signatures.Where(s => !revocations.Any(r => SignatureVerifier.GetCreationTime(r) >= SignatureVerifier.GetCreationTime(s))).ToArray();
 
         public static SignatureSet Merge(SignatureSet first, SignatureSet second) =>
             new([.. first.Signatures, .. second.Signatures], [.. first.Revocations, .. second.Revocations]);

@@ -37,19 +37,76 @@ namespace Scarlet.OpenPgp.Verification
         /// </param>
         public static bool IsIssuedBy(SignaturePacket signature, PublicKeyPacket key, bool hashedOnly = false)
         {
-            List<byte[]> fingerprints = signature.GetIssuerFingerprints(hashedOnly).ToList();
-            if (fingerprints.Count > 0)
+            // Runs for every key against every signature, so the hints are compared in place
+            // rather than collected and copied.
+            HintMatch fingerprints = MatchHints(signature, key, SignatureSubpacketType.IssuerFingerprint, hashedOnly);
+            if (fingerprints != HintMatch.NoHints)
             {
-                return fingerprints.Any(key.Fingerprint.Matches);
+                return fingerprints == HintMatch.Matches;
             }
 
-            List<byte[]> keyIds = signature.GetIssuerKeyIds(hashedOnly).ToList();
-            if (keyIds.Count > 0)
+            return MatchHints(signature, key, SignatureSubpacketType.IssuerKeyId, hashedOnly) != HintMatch.Mismatches;
+        }
+
+        private enum HintMatch
+        {
+            NoHints,
+            Matches,
+            Mismatches,
+        }
+
+        private static HintMatch MatchHints(SignaturePacket signature, PublicKeyPacket key, SignatureSubpacketType type, bool hashedOnly)
+        {
+            HintMatch hashed = MatchHints(signature.HashedSubpackets, key, type);
+            if (hashed == HintMatch.Matches || hashedOnly)
             {
-                return keyIds.Any(key.Fingerprint.MatchesKeyId);
+                return hashed;
             }
 
-            return true;
+            HintMatch unhashed = MatchHints(signature.UnhashedSubpackets, key, type);
+            return unhashed == HintMatch.NoHints ? hashed : unhashed;
+        }
+
+        /// <summary>The same hints <see cref="SignaturePacket.GetIssuerFingerprints"/> and <see cref="SignaturePacket.GetIssuerKeyIds"/> yield, matched without copying.</summary>
+        private static HintMatch MatchHints(IReadOnlyList<SignatureSubpacket> subpackets, PublicKeyPacket key, SignatureSubpacketType type)
+        {
+            HintMatch result = HintMatch.NoHints;
+            foreach (SignatureSubpacket subpacket in subpackets)
+            {
+                if (!subpacket.Is(type))
+                {
+                    continue;
+                }
+
+                bool matches;
+                if (type == SignatureSubpacketType.IssuerFingerprint)
+                {
+                    if (subpacket.Data.Length <= 1)
+                    {
+                        continue;
+                    }
+
+                    matches = key.Fingerprint.Matches(subpacket.Data.AsSpan(1)); // after the version octet
+                }
+                else
+                {
+                    if (subpacket.Data.Length != 8)
+                    {
+                        continue;
+                    }
+
+                    matches = key.Fingerprint.MatchesKeyId(subpacket.Data);
+                }
+
+                if (matches)
+                {
+                    return HintMatch.Matches;
+                }
+
+                result = HintMatch.Mismatches;
+            }
+
+            return result;
         }
 
         /// <summary>
