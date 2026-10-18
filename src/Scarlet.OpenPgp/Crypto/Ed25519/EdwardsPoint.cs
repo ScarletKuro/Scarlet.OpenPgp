@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 
 namespace Scarlet.OpenPgp.Crypto.Ed25519
@@ -21,6 +22,9 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
 
         /// <summary>The Ed25519 base point B = (x, 4/5) with x chosen even (RFC 8032 §5.1.2), derived rather than hardcoded for the same auditability reason as <see cref="D"/>.</summary>
         public static readonly EdwardsPoint B = CreateBasePoint();
+
+        /// <summary>B, 3B, ..., 15B, computed once for <see cref="DoubleScalarMultiply"/>.</summary>
+        private static readonly EdwardsPoint[] BaseOddMultiples = CreateBaseOddMultiples();
 
         private readonly FieldElement _x;
         private readonly FieldElement _y;
@@ -114,7 +118,7 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
             EdwardsPoint pPlusQ = p.Add(q);
 
             EdwardsPoint result = Identity;
-            for (int bit = (System.Math.Max(u1Bytes.Length, u2Bytes.Length) * 8) - 1; bit >= 0; bit--)
+            for (int bit = (Math.Max(u1Bytes.Length, u2Bytes.Length) * 8) - 1; bit >= 0; bit--)
             {
                 result = result.Double();
                 bool bit1 = TestBit(u1Bytes, bit);
@@ -149,6 +153,141 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
             }
         }
 
+        /// <summary>The number of odd multiples in a window table: P, 3P, ..., 15P.</summary>
+        private const int OddMultipleCount = 8;
+
+        /// <summary>Fills <paramref name="table"/> with P, 3P, 5P, ..., 15P: the odd multiples <see cref="DoubleScalarMultiply"/> adds, indexed by digit / 2.</summary>
+        private static void OddMultiples(EdwardsPoint p, Span<EdwardsPoint> table)
+        {
+            table[0] = p;
+            EdwardsPoint twice = p.Double();
+            for (int i = 1; i < OddMultipleCount; i++)
+            {
+                table[i] = table[i - 1].Add(twice);
+            }
+        }
+
+        private static EdwardsPoint[] CreateBaseOddMultiples()
+        {
+            var table = new EdwardsPoint[OddMultipleCount];
+            OddMultiples(B, table);
+            return table;
+        }
+
+        /// <summary>
+        /// [a]A + [b]B for the base point B - ref10's ge_double_scalarmult_vartime. Both scalars are
+        /// recoded into signed digits in ±{1, 3, ..., 15} with at least four zeros between non-zero
+        /// digits (<see cref="SlidingWindow"/>), so one shared doubling chain needs an addition only
+        /// about every sixth bit per scalar instead of every other bit. Not constant-time, which is
+        /// fine here: a verifier's scalars are public. The digits and A's table of odd multiples
+        /// (about 3 KB) live on the stack, so a verification allocates nothing for them.
+        /// </summary>
+        /// <param name="a">A scalar below 2^255.</param>
+        /// <param name="pointA">The point A.</param>
+        /// <param name="b">A scalar below 2^255.</param>
+        public static EdwardsPoint DoubleScalarMultiply(BigInteger a, EdwardsPoint pointA, BigInteger b)
+        {
+            Span<EdwardsPoint> aOddMultiples = stackalloc EdwardsPoint[OddMultipleCount];
+            OddMultiples(pointA, aOddMultiples);
+            Span<sbyte> aDigits = stackalloc sbyte[256];
+            Span<sbyte> bDigits = stackalloc sbyte[256];
+            SlidingWindow(a, aDigits);
+            SlidingWindow(b, bDigits);
+
+            int i = 255;
+            while (i >= 0 && aDigits[i] == 0 && bDigits[i] == 0)
+            {
+                i--;
+            }
+
+            EdwardsPoint result = Identity;
+            for (; i >= 0; i--)
+            {
+                result = result.Double();
+                result = AddDigit(result, aDigits[i], aOddMultiples);
+                result = AddDigit(result, bDigits[i], BaseOddMultiples);
+            }
+
+            return result;
+        }
+
+        private static EdwardsPoint AddDigit(EdwardsPoint point, sbyte digit, ReadOnlySpan<EdwardsPoint> oddMultiples)
+        {
+            if (digit > 0)
+            {
+                return point.Add(oddMultiples[digit / 2]);
+            }
+
+            if (digit < 0)
+            {
+                return point.Add(oddMultiples[-digit / 2].Negate());
+            }
+
+            return point;
+        }
+
+        /// <summary>
+        /// ref10's slide(): the scalar's 256 bits as signed digits r[i] in {0, ±1, ±3, ..., ±15} with
+        /// sum r[i]·2^i equal to the scalar. Each set bit absorbs the following bits into its window
+        /// while the result stays within ±15, borrowing upward when it has to subtract.
+        /// </summary>
+        private static void SlidingWindow(BigInteger scalar, Span<sbyte> digits)
+        {
+            byte[] littleEndian = scalar.ToByteArray();
+            if (scalar.Sign < 0 || littleEndian.Length > 33 || (littleEndian.Length == 33 && littleEndian[32] != 0) || (littleEndian.Length >= 32 && littleEndian[31] >= 0x80))
+            {
+                throw new ArgumentOutOfRangeException(nameof(scalar), "The scalar must be non-negative and below 2^255.");
+            }
+
+            for (int i = 0; i < 256; i++)
+            {
+                int index = i >> 3;
+                digits[i] = (sbyte)(index < littleEndian.Length ? (littleEndian[index] >> (i & 7)) & 1 : 0);
+            }
+
+            for (int i = 0; i < 256; i++)
+            {
+                if (digits[i] == 0)
+                {
+                    continue;
+                }
+
+                for (int b = 1; b <= 6 && i + b < 256; b++)
+                {
+                    if (digits[i + b] == 0)
+                    {
+                        continue;
+                    }
+
+                    int shifted = digits[i + b] << b;
+                    if (digits[i] + shifted <= 15)
+                    {
+                        digits[i] = (sbyte)(digits[i] + shifted);
+                        digits[i + b] = 0;
+                    }
+                    else if (digits[i] - shifted >= -15)
+                    {
+                        digits[i] = (sbyte)(digits[i] - shifted);
+                        for (int k = i + b; k < 256; k++)
+                        {
+                            if (digits[k] == 0)
+                            {
+                                digits[k] = 1;
+                                break;
+                            }
+
+                            digits[k] = 0;
+                        }
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            }
+
+        }
+
         private static bool TestBit(byte[] littleEndian, int bit)
         {
             int index = bit >> 3;
@@ -160,7 +299,7 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
             FieldElement y = new FieldElement(4) * new FieldElement(5).Invert();
             if (!PointDecoder.TryRecoverX(y, xSignBit: false, out FieldElement x))
             {
-                throw new System.InvalidOperationException("Failed to derive the Ed25519 base point; this indicates a bug in the field/curve arithmetic.");
+                throw new InvalidOperationException("Failed to derive the Ed25519 base point; this indicates a bug in the field/curve arithmetic.");
             }
 
             return new EdwardsPoint(x, y);

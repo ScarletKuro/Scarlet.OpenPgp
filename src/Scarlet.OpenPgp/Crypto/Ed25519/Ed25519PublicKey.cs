@@ -36,9 +36,14 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
 
         /// <summary>
         /// The decoded point, or <see langword="false"/> if it doesn't decode or has small order.
-        /// Computed on first use and kept, so a key reused from a parsed key ring pays for the
-        /// square root and the small-order check once rather than on every signature.
+        /// Computed on first use and kept - including a failure - so a key reused from a parsed key
+        /// ring pays for the square root and the small-order check once rather than per signature.
         /// </summary>
+        /// <remarks>
+        /// Only the point is kept, not the table of its odd multiples that verification builds from
+        /// it: that table would hold about 2.5 KB per key for the key ring's lifetime, to save about
+        /// 2% of a verification. Memory a key ring holds matters more here than that time.
+        /// </remarks>
         public bool TryGetValidPoint(out EdwardsPoint point)
         {
             // Racing threads compute the same immutable result; publishing a reference is atomic.

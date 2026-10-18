@@ -56,6 +56,38 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Ed25519
         }
 
         [Fact]
+        public void DoubleScalarMultiply_ShouldMatchPlainDoubleAndAdd()
+        {
+            // Arrange: the windowed form against the plain bit-by-bit MultiplyAdd it replaced in
+            // verification. The edge scalars stress the sliding-window recoding: runs of 1 bits
+            // force borrows to propagate upward, up to the 2^255 limit.
+            BigInteger one = BigInteger.One;
+            var scalars = new List<BigInteger>
+            {
+                0, 1, 2, 15, 16, 17, 31, 32, 33, 0x1F1F, (one << 252) - 1, one << 252, (one << 254) - 1, (one << 255) - 1,
+                BigInteger.Pow(2, 252) + BigInteger.Parse("27742317777372353535851937790883648492"), // L - 1
+            };
+            var random = new Random(25519);
+            var bytes = new byte[32];
+            for (int i = 0; i < 40; i++)
+            {
+                random.NextBytes(bytes);
+                bytes[31] &= 0x7F; // below 2^255
+                scalars.Add(new BigInteger(bytes, isUnsigned: true));
+            }
+
+            EdwardsPoint a = EdwardsPoint.B.ScalarMultiply(new BigInteger(0x12345678)).Negate();
+
+            // Act & Assert
+            for (int i = 0; i < scalars.Count; i++)
+            {
+                BigInteger x = scalars[i];
+                BigInteger y = scalars[(i * 7 + 3) % scalars.Count];
+                Assert.Equal(EdwardsPoint.MultiplyAdd(x, a, y, EdwardsPoint.B), EdwardsPoint.DoubleScalarMultiply(x, a, y));
+            }
+        }
+
+        [Fact]
         public void ScalarMultiply_IsConsistentWithRepeatedAddition()
         {
             // Act
