@@ -28,6 +28,12 @@ scarlet-openpgp verify --key pubkey.asc --signature release.sig --data release.t
 - Verify-only: no signing, key generation, encryption, or trust management. The caller supplies
   exactly the public key(s) they already trust.
 
+## Security
+
+Built to verify third-party signatures against keys you pin: anything that could change a
+verdict fails closed. It hasn't had an independent security audit; see [SECURITY.md](SECURITY.md)
+for what it is tested against and how to report a vulnerability.
+
 📖 Full docs: [src/Scarlet.OpenPgp/README.md](src/Scarlet.OpenPgp/README.md) ·
 [src/Scarlet.OpenPgp.Cli/README.md](src/Scarlet.OpenPgp.Cli/README.md) ·
 [fuzz/Scarlet.OpenPgp.Fuzz/README.md](fuzz/Scarlet.OpenPgp.Fuzz/README.md)
