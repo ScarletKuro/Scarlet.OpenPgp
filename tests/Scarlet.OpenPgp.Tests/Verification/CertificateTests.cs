@@ -754,5 +754,73 @@ namespace Scarlet.OpenPgp.Tests.Verification
             Assert.Equal([UserId], ring.Certificates[0].UserIds);
             Assert.True(Verify(SignData(primary, CreatedAt.AddDays(10)), certificate).IsValid);
         }
+
+        /// <summary>The signature packet with the last octet of its body cut off - its signature value then no longer parses, and no private key is needed for that.</summary>
+        private static byte[] Unparseable(byte[] signaturePacket)
+        {
+            byte[] body = PacketReader.ReadAll(signaturePacket)[0].Body;
+            return Packet(PacketTag.Signature, body[..^1]);
+        }
+
+        [Theory]
+        [InlineData(PgpSignature.PositiveCertification)]
+        [InlineData(PgpSignature.CertificationRevocation)]
+        public void SelfCertification_ThatCannotBeParsed_ShouldMakeTheKeyUnusable(int type)
+        {
+            // Arrange: a newer self-signature over the User ID - one making the key expire, or
+            // revoking the User ID - that anyone can break so it no longer parses. Skipping it, as
+            // if it were a third party's, left only the older one: the key stayed valid.
+            PgpKeyPair primary = NewKey();
+            byte[] newer = Timed(primary, type, CreatedAt.AddDays(1), g => g.GenerateCertification(UserId, primary.PublicKey), g =>
+            {
+                g.SetIssuerFingerprint(false, primary.PublicKey);
+                g.SetKeyFlags(false, PgpKeyFlags.CanSign);
+                g.SetKeyExpirationTime(false, 2 * 86400);
+            });
+            byte[] Build(byte[] last) => Concat(
+                Packet(PacketTag.PublicKey, KeyBody(primary.PublicKey)),
+                Packet(PacketTag.UserId, Encoding.UTF8.GetBytes(UserId)),
+                UserIdCertification(primary, primary, PgpSignature.PositiveCertification, CreatedAt),
+                last);
+            byte[] signature = SignData(primary, CreatedAt.AddHours(1));
+
+            // Act
+            VerificationResult intact = Verify(signature, Build(newer));
+            VerificationResult broken = Verify(signature, Build(Unparseable(newer)));
+
+            // Assert
+            Assert.False(intact.IsValid, intact.ToString());
+            Assert.Equal(VerificationStatus.KeyNotValidForSigning, broken.Status);
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void ThirdPartyCertification_ThatCannotBeParsed_ShouldBeIgnored(bool signedIssuerHint)
+        {
+            // Arrange: someone else's certification of the User ID, broken. Named as the other key's
+            // by a signed hint, or with only an unsigned one (which BouncyCastle adds) - either way it
+            // can't be the owner's, so it changes nothing.
+            PgpKeyPair primary = NewKey();
+            PgpKeyPair other = NewKey();
+            byte[] thirdParty = Timed(other, PgpSignature.CasualCertification, CreatedAt.AddDays(1), g => g.GenerateCertification(UserId, primary.PublicKey), g =>
+            {
+                if (signedIssuerHint)
+                {
+                    g.SetIssuerFingerprint(false, other.PublicKey);
+                }
+            });
+            byte[] certificate = Concat(
+                Packet(PacketTag.PublicKey, KeyBody(primary.PublicKey)),
+                Packet(PacketTag.UserId, Encoding.UTF8.GetBytes(UserId)),
+                UserIdCertification(primary, primary, PgpSignature.PositiveCertification, CreatedAt),
+                Unparseable(thirdParty));
+
+            // Act
+            VerificationResult result = Verify(SignData(primary, CreatedAt.AddHours(1)), certificate);
+
+            // Assert
+            Assert.True(result.IsValid, result.ToString());
+        }
     }
 }

@@ -98,7 +98,7 @@ namespace Scarlet.OpenPgp.Verification
                         SignaturePacket? signature = TryParseSignature(packet.Body);
                         if (signature is null)
                         {
-                            unparseableOutsideSubkeys |= RecordUnparseable(RawSignatureType(packet.Body), inSubkeySection, currentSubkey);
+                            unparseableOutsideSubkeys |= RecordUnparseable(packet.Body, inSubkeySection, currentSubkey);
                             break;
                         }
 
@@ -342,15 +342,33 @@ namespace Scarlet.OpenPgp.Verification
         /// <summary>
         /// A signature that can't even be parsed may still be the key's own statement - often a
         /// revocation - so it must not just vanish: it counts as uncheckable, which makes what it
-        /// could concern unusable. User ID certifications and their revocations are skipped: third
-        /// parties issue those too, and an unparseable one can't be told apart.
+        /// could concern unusable. Anyone can make a genuine signature unparseable (re-encode its
+        /// signature value, say) without a private key, so skipping it would let anyone delete it.
         /// </summary>
+        /// <remarks>
+        /// User ID certifications and their revocations are issued by third parties too, and theirs
+        /// are ignored. So one of those counts only if its signed issuer hint names the primary key:
+        /// an unsigned hint can be changed, and one without any signed hint can't be told apart from
+        /// a third party's (RFC 9580 has every v4/v6 signature carry a hashed Issuer Fingerprint).
+        /// </remarks>
         /// <returns>
         /// Whether it is a subkey binding or revocation outside any subkey's section, which could
         /// concern any subkey - including ones not read yet, so the caller marks them all at the end.
         /// </returns>
-        private bool RecordUnparseable(byte type, bool inSubkeySection, SubkeyDraft? currentSubkey)
+        private bool RecordUnparseable(byte[] body, bool inSubkeySection, SubkeyDraft? currentSubkey)
         {
+            byte type = RawSignatureType(body);
+            if ((type >= (byte)SignatureType.GenericCertification && type <= (byte)SignatureType.PositiveCertification)
+                || type == (byte)SignatureType.CertificationRevocation)
+            {
+                if (HasSignedHintFor(body, _primary))
+                {
+                    _unverifiableSignatures++;
+                }
+
+                return false;
+            }
+
             switch ((SignatureType)type)
             {
                 case SignatureType.DirectKey:
@@ -370,6 +388,56 @@ namespace Scarlet.OpenPgp.Verification
                 default:
                     return false;
             }
+        }
+
+        /// <summary>
+        /// Whether the hashed subpacket area of a v4/v6 signature body that doesn't parse as a whole
+        /// names <paramref name="key"/> by Issuer Fingerprint or Issuer Key ID. The area is read on
+        /// its own, so a broken signature value or unhashed area doesn't hide it; <c>false</c> if the
+        /// area itself can't be read.
+        /// </summary>
+        private static bool HasSignedHintFor(byte[] body, PublicKeyPacket key)
+        {
+            // Version, type, public-key and hash algorithm octets, then the hashed area's length:
+            // two octets in v4, four in v6 (RFC 9580 §5.2.3).
+            int lengthSize = body.Length == 0 ? 0 : body[0] == 4 ? 2 : body[0] == 6 ? 4 : 0;
+            int start = 4 + lengthSize;
+            if (lengthSize == 0 || body.Length < start)
+            {
+                return false;
+            }
+
+            long length = 0;
+            for (int i = 4; i < start; i++)
+            {
+                length = (length << 8) | body[i];
+            }
+
+            if (length > body.Length - start)
+            {
+                return false;
+            }
+
+            List<SignatureSubpacket> hashed;
+            try
+            {
+                hashed = SubpacketReader.ReadAll(body.AsSpan(start, (int)length).ToArray());
+            }
+            catch (FailClosedException)
+            {
+                return false;
+            }
+
+            foreach (SignatureSubpacket subpacket in hashed)
+            {
+                if ((subpacket.Is(SignatureSubpacketType.IssuerFingerprint) && subpacket.Data.Length > 1 && key.Fingerprint.Matches(subpacket.Data.AsSpan(1)))
+                    || (subpacket.Is(SignatureSubpacketType.IssuerKeyId) && subpacket.Data.Length == 8 && key.Fingerprint.MatchesKeyId(subpacket.Data)))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void MarkAllSubkeysUnverifiable()
