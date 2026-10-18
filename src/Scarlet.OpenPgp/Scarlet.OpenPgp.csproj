@@ -62,6 +62,21 @@
     <PackageReference Include="PolySharp" Version="1.16.0" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
   </ItemGroup>
 
+  <!-- Build-time analyzer, not shipped: every public API change must be recorded in
+       PublicAPI.Unshipped.txt, so it shows up in review. On a release, move its lines to
+       PublicAPI.Shipped.txt.
+       RS0026 (one optional parameter per overload set) is off: the Verify* overloads differ by
+       required parameter types (string, bytes, key ring, stream) and each ends in the same
+       optional verificationTime/cancellationToken, so calls are never ambiguous. A parameter
+       added later goes into a new overload, not an extra optional one. -->
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);RS0026</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="5.6.0" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+
   <PropertyGroup>
     <PolySharpIncludeGeneratedTypes>System.Diagnostics.CodeAnalysis.AllowNullAttribute;System.Diagnostics.CodeAnalysis.DisallowNullAttribute;System.Diagnostics.CodeAnalysis.DoesNotReturnAttribute;System.Diagnostics.CodeAnalysis.DoesNotReturnIfAttribute;System.Diagnostics.CodeAnalysis.MaybeNullAttribute;System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute;System.Diagnostics.CodeAnalysis.MemberNotNullAttribute;System.Diagnostics.CodeAnalysis.MemberNotNullWhenAttribute;System.Diagnostics.CodeAnalysis.NotNullAttribute;System.Diagnostics.CodeAnalysis.NotNullIfNotNullAttribute;System.Diagnostics.CodeAnalysis.NotNullWhenAttribute</PolySharpIncludeGeneratedTypes>
   </PropertyGroup>

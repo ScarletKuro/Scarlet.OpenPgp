@@ -1,0 +1,71 @@
+#nullable enable
+override Scarlet.OpenPgp.OpenPgpCertificate.ToString() -> string!
+override Scarlet.OpenPgp.OpenPgpKey.ToString() -> string!
+override Scarlet.OpenPgp.OpenPgpKeyStatus.ToString() -> string!
+override Scarlet.OpenPgp.VerificationResult.ToString() -> string!
+Scarlet.OpenPgp.OpenPgpCertificate
+Scarlet.OpenPgp.OpenPgpCertificate.PrimaryKey.get -> Scarlet.OpenPgp.OpenPgpKey!
+Scarlet.OpenPgp.OpenPgpCertificate.Subkeys.get -> System.Collections.Generic.IReadOnlyList<Scarlet.OpenPgp.OpenPgpKey!>!
+Scarlet.OpenPgp.OpenPgpCertificate.UserIds.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Scarlet.OpenPgp.OpenPgpFormatException
+Scarlet.OpenPgp.OpenPgpFormatException.OpenPgpFormatException() -> void
+Scarlet.OpenPgp.OpenPgpFormatException.OpenPgpFormatException(string! message) -> void
+Scarlet.OpenPgp.OpenPgpFormatException.OpenPgpFormatException(string! message, System.Exception! innerException) -> void
+Scarlet.OpenPgp.OpenPgpKey
+Scarlet.OpenPgp.OpenPgpKey.Algorithm.get -> string!
+Scarlet.OpenPgp.OpenPgpKey.CreatedAt.get -> System.DateTimeOffset
+Scarlet.OpenPgp.OpenPgpKey.Fingerprint.get -> string!
+Scarlet.OpenPgp.OpenPgpKey.GetStatus(System.DateTimeOffset? at = null) -> Scarlet.OpenPgp.OpenPgpKeyStatus!
+Scarlet.OpenPgp.OpenPgpKey.IsRevoked.get -> bool
+Scarlet.OpenPgp.OpenPgpKey.KeyId.get -> string!
+Scarlet.OpenPgp.OpenPgpKey.SupportsVerification.get -> bool
+Scarlet.OpenPgp.OpenPgpKey.Version.get -> int
+Scarlet.OpenPgp.OpenPgpKeyRing
+Scarlet.OpenPgp.OpenPgpKeyRing.Certificates.get -> System.Collections.Generic.IReadOnlyList<Scarlet.OpenPgp.OpenPgpCertificate!>!
+Scarlet.OpenPgp.OpenPgpKeyStatus
+Scarlet.OpenPgp.OpenPgpKeyStatus.CanSign.get -> bool
+Scarlet.OpenPgp.OpenPgpKeyStatus.EvaluatedAt.get -> System.DateTimeOffset
+Scarlet.OpenPgp.OpenPgpKeyStatus.ExpiresAt.get -> System.DateTimeOffset?
+Scarlet.OpenPgp.OpenPgpKeyStatus.Message.get -> string!
+Scarlet.OpenPgp.OpenPgpKeyStatus.Status.get -> Scarlet.OpenPgp.VerificationStatus
+Scarlet.OpenPgp.OpenPgpVerifier
+Scarlet.OpenPgp.VerificationResult
+Scarlet.OpenPgp.VerificationResult.IsValid.get -> bool
+Scarlet.OpenPgp.VerificationResult.Message.get -> string!
+Scarlet.OpenPgp.VerificationResult.PrimaryKeyFingerprint.get -> string?
+Scarlet.OpenPgp.VerificationResult.SignatureCreationTime.get -> System.DateTimeOffset?
+Scarlet.OpenPgp.VerificationResult.SignedText.get -> string?
+Scarlet.OpenPgp.VerificationResult.SignerFingerprint.get -> string?
+Scarlet.OpenPgp.VerificationResult.Status.get -> Scarlet.OpenPgp.VerificationStatus
+Scarlet.OpenPgp.VerificationStatus
+Scarlet.OpenPgp.VerificationStatus.BadSignature = 5 -> Scarlet.OpenPgp.VerificationStatus
+Scarlet.OpenPgp.VerificationStatus.InvalidPublicKey = 2 -> Scarlet.OpenPgp.VerificationStatus
+Scarlet.OpenPgp.VerificationStatus.InvalidSignatureTime = 8 -> Scarlet.OpenPgp.VerificationStatus
+Scarlet.OpenPgp.VerificationStatus.KeyExpired = 9 -> Scarlet.OpenPgp.VerificationStatus
+Scarlet.OpenPgp.VerificationStatus.KeyNotValidForSigning = 11 -> Scarlet.OpenPgp.VerificationStatus
+Scarlet.OpenPgp.VerificationStatus.KeyRevoked = 10 -> Scarlet.OpenPgp.VerificationStatus
+Scarlet.OpenPgp.VerificationStatus.MalformedInput = 1 -> Scarlet.OpenPgp.VerificationStatus
+Scarlet.OpenPgp.VerificationStatus.NoMatchingKey = 3 -> Scarlet.OpenPgp.VerificationStatus
+Scarlet.OpenPgp.VerificationStatus.SignatureExpired = 7 -> Scarlet.OpenPgp.VerificationStatus
+Scarlet.OpenPgp.VerificationStatus.UnsupportedAlgorithm = 4 -> Scarlet.OpenPgp.VerificationStatus
+Scarlet.OpenPgp.VerificationStatus.Valid = 0 -> Scarlet.OpenPgp.VerificationStatus
+Scarlet.OpenPgp.VerificationStatus.WrongSignatureType = 6 -> Scarlet.OpenPgp.VerificationStatus
+static Scarlet.OpenPgp.OpenPgpKeyRing.Parse(string! armoredKeys) -> Scarlet.OpenPgp.OpenPgpKeyRing!
+static Scarlet.OpenPgp.OpenPgpKeyRing.Parse(System.ReadOnlySpan<byte> keys) -> Scarlet.OpenPgp.OpenPgpKeyRing!
+static Scarlet.OpenPgp.OpenPgpKeyRing.TryParse(string? armoredKeys, out Scarlet.OpenPgp.OpenPgpKeyRing? keyRing, out string? error) -> bool
+static Scarlet.OpenPgp.OpenPgpKeyRing.TryParse(System.ReadOnlySpan<byte> keys, out Scarlet.OpenPgp.OpenPgpKeyRing? keyRing, out string? error) -> bool
+static Scarlet.OpenPgp.OpenPgpVerifier.VerifyClearsign(string! clearsignedMessage, Scarlet.OpenPgp.OpenPgpKeyRing! keyRing, System.DateTimeOffset? verificationTime = null) -> Scarlet.OpenPgp.VerificationResult!
+static Scarlet.OpenPgp.OpenPgpVerifier.VerifyClearsign(string! clearsignedMessage, string! publicKeys, System.DateTimeOffset? verificationTime = null) -> Scarlet.OpenPgp.VerificationResult!
+static Scarlet.OpenPgp.OpenPgpVerifier.VerifyClearsign(string! clearsignedMessage, System.ReadOnlySpan<byte> publicKeys, System.DateTimeOffset? verificationTime = null) -> Scarlet.OpenPgp.VerificationResult!
+static Scarlet.OpenPgp.OpenPgpVerifier.VerifyDetached(System.IO.Stream! data, string! signature, Scarlet.OpenPgp.OpenPgpKeyRing! keyRing, System.DateTimeOffset? verificationTime = null) -> Scarlet.OpenPgp.VerificationResult!
+static Scarlet.OpenPgp.OpenPgpVerifier.VerifyDetached(System.IO.Stream! data, string! signature, string! publicKeys, System.DateTimeOffset? verificationTime = null) -> Scarlet.OpenPgp.VerificationResult!
+static Scarlet.OpenPgp.OpenPgpVerifier.VerifyDetached(System.IO.Stream! data, System.ReadOnlySpan<byte> signature, Scarlet.OpenPgp.OpenPgpKeyRing! keyRing, System.DateTimeOffset? verificationTime = null) -> Scarlet.OpenPgp.VerificationResult!
+static Scarlet.OpenPgp.OpenPgpVerifier.VerifyDetached(System.IO.Stream! data, System.ReadOnlySpan<byte> signature, System.ReadOnlySpan<byte> publicKeys, System.DateTimeOffset? verificationTime = null) -> Scarlet.OpenPgp.VerificationResult!
+static Scarlet.OpenPgp.OpenPgpVerifier.VerifyDetached(System.ReadOnlySpan<byte> data, string! signature, Scarlet.OpenPgp.OpenPgpKeyRing! keyRing, System.DateTimeOffset? verificationTime = null) -> Scarlet.OpenPgp.VerificationResult!
+static Scarlet.OpenPgp.OpenPgpVerifier.VerifyDetached(System.ReadOnlySpan<byte> data, string! signature, string! publicKeys, System.DateTimeOffset? verificationTime = null) -> Scarlet.OpenPgp.VerificationResult!
+static Scarlet.OpenPgp.OpenPgpVerifier.VerifyDetached(System.ReadOnlySpan<byte> data, System.ReadOnlySpan<byte> signature, Scarlet.OpenPgp.OpenPgpKeyRing! keyRing, System.DateTimeOffset? verificationTime = null) -> Scarlet.OpenPgp.VerificationResult!
+static Scarlet.OpenPgp.OpenPgpVerifier.VerifyDetached(System.ReadOnlySpan<byte> data, System.ReadOnlySpan<byte> signature, System.ReadOnlySpan<byte> publicKeys, System.DateTimeOffset? verificationTime = null) -> Scarlet.OpenPgp.VerificationResult!
+static Scarlet.OpenPgp.OpenPgpVerifier.VerifyDetachedAsync(System.IO.Stream! data, string! signature, Scarlet.OpenPgp.OpenPgpKeyRing! keyRing, System.DateTimeOffset? verificationTime = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Scarlet.OpenPgp.VerificationResult!>!
+static Scarlet.OpenPgp.OpenPgpVerifier.VerifyDetachedAsync(System.IO.Stream! data, string! signature, string! publicKeys, System.DateTimeOffset? verificationTime = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Scarlet.OpenPgp.VerificationResult!>!
+static Scarlet.OpenPgp.OpenPgpVerifier.VerifyDetachedAsync(System.IO.Stream! data, System.ReadOnlyMemory<byte> signature, Scarlet.OpenPgp.OpenPgpKeyRing! keyRing, System.DateTimeOffset? verificationTime = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Scarlet.OpenPgp.VerificationResult!>!
+static Scarlet.OpenPgp.OpenPgpVerifier.VerifyDetachedAsync(System.IO.Stream! data, System.ReadOnlyMemory<byte> signature, System.ReadOnlyMemory<byte> publicKeys, System.DateTimeOffset? verificationTime = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Scarlet.OpenPgp.VerificationResult!>!
