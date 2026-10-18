@@ -278,6 +278,15 @@ may end up depending on:
 - Whether to expose per-signature results when an input holds several signatures (today the result
   reports the first valid one, or the most informative failure).
 - Whether to honor third-party revocations by designated revokers whose certificates are also supplied.
+- Post-quantum signatures (draft-ietf-openpgp-pqc: composite ML-DSA-65+Ed25519 and ML-DSA-87+Ed448,
+  plus SLH-DSA). The Ed25519/Ed448 halves already exist here. The ML-DSA and SLH-DSA halves need not be
+  implemented in-library: Microsoft's **`Microsoft.Bcl.Cryptography`** package brings `MLDsa`,
+  `CompositeMLDsa` and `SlhDsa` to `netstandard2.0` (checked in its 10.0 release; .NET 10 has them
+  in-box). It is a first-party Microsoft package, so it fits the dependency rule below the same way
+  `System.Memory` does. Caveats: these types delegate to the OS crypto provider, so each needs an
+  `IsSupported` check, and a signature the platform can't verify must fail as unsupported, never pass;
+  and the composite encoding OpenPGP uses must be checked against what `CompositeMLDsa` implements
+  before relying on it.
 
 ## Non-negotiables (carry these forward regardless of who implements this)
 
@@ -287,8 +296,11 @@ may end up depending on:
   reference) — it's a Microsoft-shipped BCL compatibility shim, not a third-party dependency in the sense
   this rule is guarding against, and it's what makes `OpenPgpVerifier.VerifyDetached` take
   `ReadOnlySpan<byte>` (matching this doc's own original API sketch) instead of a plain `byte[]` on every
-  target. Test project dependencies (test framework, and optionally BouncyCastle *only* for generating
-  cross-validation fixtures in tests) are fine too.
+  target. Other Microsoft-shipped BCL packages (`Microsoft.Bcl.*`, out-of-band `System.*`) are acceptable
+  on the same grounds when they bring something real - e.g. `Microsoft.Bcl.Cryptography` for post-quantum
+  signatures (see "Open questions") - but none is referenced today: the rest were reviewed and offer
+  nothing this library needs. Test project dependencies (test framework, and optionally BouncyCastle
+  *only* for generating cross-validation fixtures in tests) are fine too.
 - **Verify-only.** Do not scope-creep into signing or key management.
 - **Fail closed.** Any parsing ambiguity, unknown-but-critical data, or malformed input must result in a
   verification failure, never a silent pass.
