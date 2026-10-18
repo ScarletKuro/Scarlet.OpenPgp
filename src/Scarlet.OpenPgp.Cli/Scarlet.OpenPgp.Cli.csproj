@@ -55,7 +55,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Scarlet.OpenPgp.Tests" />
+    <InternalsVisibleTo Include="Scarlet.OpenPgp.Tests" Key="$(ScarletOpenPgpPublicKey)" />
   </ItemGroup>
 
   <ItemGroup>

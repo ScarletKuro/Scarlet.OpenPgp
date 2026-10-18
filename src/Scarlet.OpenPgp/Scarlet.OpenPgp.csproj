@@ -86,9 +86,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Scarlet.OpenPgp.Tests" />
-    <InternalsVisibleTo Include="Scarlet.OpenPgp.Benchmarks" />
-    <InternalsVisibleTo Include="Scarlet.OpenPgp.Fuzz" />
+    <InternalsVisibleTo Include="Scarlet.OpenPgp.Tests" Key="$(ScarletOpenPgpPublicKey)" />
+    <InternalsVisibleTo Include="Scarlet.OpenPgp.Benchmarks" Key="$(ScarletOpenPgpPublicKey)" />
+    <InternalsVisibleTo Include="Scarlet.OpenPgp.Fuzz" Key="$(ScarletOpenPgpPublicKey)" />
   </ItemGroup>
 
   <ItemGroup>

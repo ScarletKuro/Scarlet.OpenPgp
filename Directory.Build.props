@@ -3,5 +3,15 @@
     <!-- Shared across the library and the CLI tool, and all of the tool's packages: the pointer
          package resolves its RID-specific packages at exactly its own version. -->
     <ScarletOpenPgpVersion>0.1.0</ScarletOpenPgpVersion>
+
+    <!-- Strong naming: an assembly identity, not a security feature. A strong-named .NET Framework
+         app can only reference strong-named assemblies, and the library targets netstandard2.0, so
+         it is signed. The key is public on purpose (Microsoft's guidance for open-source
+         libraries); changing it changes the assembly identity, which breaks consumers. Every
+         project uses it, so the library can name its friend assemblies by their public key. -->
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>$(MSBuildThisFileDirectory)Scarlet.OpenPgp.snk</AssemblyOriginatorKeyFile>
+    <!-- The key's public half, for InternalsVisibleTo (friend assemblies of a signed one are named by it). -->
+    <ScarletOpenPgpPublicKey>002400000480000094000000060200000024000052534131000400000100010041b38cb4fe1fff9b14b41a4dac3af5bac06869f46316076f26a742d4e70aa7a0bfef16d62aa4189733babdfa53370b469026fab78d6b39ebfd7e9400fbaec925f3ef5810329a12be49bbfaa7488f271dfd5e5d4aadac58ada58ce6838cf8f70e538f0669db6091d286bd87ae21d62c035a0f0e8351fc3eff89b6cb7bc23fdebd</ScarletOpenPgpPublicKey>
   </PropertyGroup>
 </Project>
