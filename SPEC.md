@@ -331,7 +331,8 @@ may end up depending on:
 - **Bounded work on hostile input.** RSA moduli are capped at 16384 bits (and exponents at 256 bits),
   DSA primes at 16384 bits, so no input can make a single verification take minutes. Signature input
   holds at most 32 distinct signatures (256 packets with copies); key input at most 16,384
-  certificates, each with at most 16,384 packets and 4,096 signature checks. Packets are read
+  certificates, each with at most 16,384 packets per copy and 4,096 signature checks across all its
+  copies (exact repeats are skipped, the rest merged once). Packets are read
   lazily and ignorable ones (Marker, Padding, Trust) cost nothing, so a flood of tiny packets
   can't be amplified into memory or work.
 - **Unsigned data never decides anything.** A signature's unhashed subpacket area is editable by anyone

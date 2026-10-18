@@ -45,9 +45,47 @@ namespace Scarlet.OpenPgp.Tests
             long allocated = AllocatedBy(() => result = OpenPgpVerifier.VerifyDetached(data, input, keyRing, Now));
 
             // Assert
-            Assert.False(result!.IsValid);
+            Assert.NotNull(result);
+            Assert.False(result.IsValid);
             // The input is copied once (the span overload owns its own copy); nothing else may scale with it.
             Assert.True(allocated < input.Length + (256 * 1024), "Allocated " + allocated + " bytes for a " + input.Length + "-byte input.");
+        }
+
+        [Fact]
+        public void KeyInput_WithThousandsOfIdenticalCertificateCopies_ShouldMergeInLinearMemory()
+        {
+            // Arrange: the same certificate 4,000 times (under 1 MB). Folding each copy into the
+            // growing merged certificate allocated about 1 GB.
+            byte[] certificate = File.ReadAllBytes(Folder + "public-key.gpg");
+            byte[] keys = [.. Enumerable.Repeat(certificate, 4000).SelectMany(b => b)];
+            OpenPgpKeyRing? keyRing = null;
+
+            // Act
+            long allocated = AllocatedBy(() => keyRing = OpenPgpKeyRing.Parse(keys));
+
+            // Assert
+            Assert.NotNull(keyRing);
+            Assert.Single(keyRing.Certificates);
+            Assert.True(allocated < 32L * keys.Length, "Allocated " + allocated + " bytes for a " + keys.Length + "-byte input.");
+        }
+
+        [Fact]
+        public void KeyInput_WithThousandsOfSlightlyDifferentCopies_ShouldExhaustOneSharedCheckBudget()
+        {
+            // Arrange: each copy gets its own extra User ID, so none is an exact repeat; every copy's
+            // self-signatures would be checked again. The copies share one budget, so they can't
+            // multiply what one certificate is allowed.
+            byte[] certificate = File.ReadAllBytes(Folder + "public-key.gpg");
+            // This certificate has one self-signature, so 5,000 copies need 5,000 checks - over the 4,096 budget.
+            byte[] keys = [.. Enumerable.Range(0, 5000).SelectMany(i => (byte[])[.. certificate, 0xCD, 0x04, .. BitConverter.GetBytes(i)])];
+            string? error = null;
+
+            // Act
+            long allocated = AllocatedBy(() => OpenPgpKeyRing.TryParse(keys, out _, out error));
+
+            // Assert
+            Assert.Contains("signature checks", error, StringComparison.Ordinal);
+            Assert.True(allocated < 32L * keys.Length, "Allocated " + allocated + " bytes for a " + keys.Length + "-byte input.");
         }
 
         [Fact]

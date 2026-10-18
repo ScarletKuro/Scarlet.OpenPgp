@@ -36,8 +36,9 @@ VerificationResult result = OpenPgpVerifier.VerifyDetached(data, signature, keyR
 A successful parse means the key data is well-formed, not that every key may sign: a key can be
 revoked, expired, unbound or carry self-signatures that can't be checked. `GetStatus` reports that
 for a given moment, with the same rules verification applies. Certificate input is bounded (16,384
-packets and 4,096 signature checks per certificate, 16,384 certificates), so a certificate flooded
-with signatures is rejected rather than processed.
+packets per copy and 4,096 signature checks per certificate across all its copies, 16,384
+certificates), so a certificate flooded with signatures or repeated thousands of times is rejected
+rather than processed.
 
 The key ring is immutable and thread-safe. Expiration, revocation timing and key flags are still
 judged at each verification, so a key that expires while your application runs stops verifying.

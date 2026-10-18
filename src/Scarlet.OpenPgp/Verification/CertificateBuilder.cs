@@ -18,34 +18,35 @@ namespace Scarlet.OpenPgp.Verification
     /// way to make a revocation disappear.
     /// </para>
     /// <para>
-    /// Each certificate gets a budget of <see cref="MaxSignatureChecks"/> signature checks, so key
-    /// data downloaded from somewhere can't force unbounded work - a "flooded" certificate carrying
-    /// tens of thousands of third-party signatures (CVE-2019-13050) is rejected instead.
+    /// Every signature check is paid for from a <see cref="CheckBudget"/> shared by all copies of the
+    /// certificate, so key data downloaded from somewhere can't force unbounded work - a "flooded"
+    /// certificate carrying tens of thousands of third-party signatures (CVE-2019-13050), or one
+    /// repeated thousands of times, is rejected instead.
     /// </para>
     /// </remarks>
     internal sealed class CertificateBuilder
     {
-        /// <summary>The most key-signature checks one certificate may need. Real certificates need one per self-signature, plus one per third-party certification that names no signed issuer.</summary>
-        public const int MaxSignatureChecks = 4096;
-
         private readonly PublicKeyPacket _primary;
         private readonly byte[] _primaryHashPrefix;
+        private readonly CheckBudget _budget;
         private readonly List<SignaturePacket> _directSignatures = [];
         private readonly List<SignaturePacket> _directRevocations = [];
         private readonly List<SignaturePacket> _revocations = [];
         private readonly List<UserIdDraft> _userIds = [];
         private readonly List<SubkeyDraft> _subkeys = [];
         private int _unverifiableSignatures;
-        private int _checks;
 
-        private CertificateBuilder(PublicKeyPacket primary)
+        private CertificateBuilder(PublicKeyPacket primary, CheckBudget budget)
         {
             _primary = primary;
             _primaryHashPrefix = KeyHashPrefix.Build(primary.Version, primary.Body);
+            _budget = budget;
         }
 
         /// <summary>Builds a certificate from <paramref name="packets"/>, whose first packet is its Public-Key packet.</summary>
-        public static Certificate Build(IReadOnlyList<Packet> packets)
+        /// <param name="packets">The certificate's packets.</param>
+        /// <param name="budgetFor">The check budget for a primary key - the same one for every copy of a certificate.</param>
+        public static Certificate Build(IReadOnlyList<Packet> packets, Func<PublicKeyPacket, CheckBudget> budgetFor)
         {
             var primary = PublicKeyPacket.Parse(packets[0].Body);
             if (!primary.CanVerify)
@@ -54,7 +55,7 @@ namespace Scarlet.OpenPgp.Verification
                 throw FailClosedException.Unsupported("The primary key's algorithm (" + primary.AlgorithmDescription + ") can't make signatures this library verifies.");
             }
 
-            var builder = new CertificateBuilder(primary);
+            var builder = new CertificateBuilder(primary, budgetFor(primary));
             builder.ReadPackets(packets);
             return builder.ToCertificate();
         }
@@ -165,11 +166,7 @@ namespace Scarlet.OpenPgp.Verification
         /// <summary>Every key-signature check goes through here, so the budget can't be bypassed.</summary>
         private KeySignatureCheck Check(PublicKeyPacket issuer, SignaturePacket signature, byte[] signedContent)
         {
-            if (++_checks > MaxSignatureChecks)
-            {
-                throw new FailClosedException("The certificate needs more than " + MaxSignatureChecks + " signature checks; it is too large or flooded with signatures.");
-            }
-
+            _budget.Spend();
             return SignatureVerifier.CheckKeySignature(issuer, signature, signedContent);
         }
 

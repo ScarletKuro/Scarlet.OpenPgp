@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Security.Cryptography;
 using Scarlet.OpenPgp.Internal;
 using Scarlet.OpenPgp.Packets;
 
@@ -35,7 +36,13 @@ namespace Scarlet.OpenPgp.Verification
         /// <remarks>Packets are read and certificates built one at a time, so only one certificate's packets are ever held at once.</remarks>
         public static KeyRing Parse(byte[] packetBytes)
         {
-            var certificates = new List<Certificate>();
+            // Copies of each certificate, by primary fingerprint in first-seen order, merged once at
+            // the end; one check budget per certificate for all its copies; and the digests of copies
+            // already read, so an exact repeat costs a hash rather than a rebuild.
+            var copies = new Dictionary<byte[], List<Certificate>>(ByteArrayComparer.Instance);
+            var order = new List<byte[]>();
+            var budgets = new Dictionary<byte[], CheckBudget>(ByteArrayComparer.Instance);
+            var seenCopies = new HashSet<byte[]>(ByteArrayComparer.Instance);
             string? lastError = null;
             int certificateCount = 0;
             List<Packet>? current = null;
@@ -76,19 +83,32 @@ namespace Scarlet.OpenPgp.Verification
                 Add(current);
             }
 
-            if (certificates.Count == 0)
+            if (order.Count == 0)
             {
                 throw new FailClosedException(lastError ?? "No Public-Key packet found in the public key input.");
+            }
+
+            // Several copies of one certificate (an old and a new export, say) become one, so a stale
+            // copy without a revocation can't be picked instead of the revoked one.
+            var certificates = new List<Certificate>(order.Count);
+            foreach (byte[] fingerprint in order)
+            {
+                certificates.Add(Certificate.MergeAll(copies[fingerprint]));
             }
 
             return new KeyRing(certificates);
 
             void Add(List<Packet> packets)
             {
+                if (!seenCopies.Add(Digest(packets)))
+                {
+                    return; // an exact repeat of a copy already read says nothing new
+                }
+
                 Certificate certificate;
                 try
                 {
-                    certificate = CertificateBuilder.Build(packets);
+                    certificate = CertificateBuilder.Build(packets, BudgetFor);
                 }
                 catch (FailClosedException ex) when (ex.IsUnsupported)
                 {
@@ -96,18 +116,46 @@ namespace Scarlet.OpenPgp.Verification
                     return;
                 }
 
-                // Several copies of one certificate (an old and a new export, say) become one, so a
-                // stale copy without a revocation can't be picked instead of the revoked one.
-                int existing = certificates.FindIndex(c => c.Primary.Fingerprint.Matches(certificate.Primary.Fingerprint.Bytes));
-                if (existing < 0)
+                byte[] fingerprint = certificate.Primary.Fingerprint.Bytes;
+                if (!copies.TryGetValue(fingerprint, out List<Certificate>? list))
                 {
-                    certificates.Add(certificate);
+                    list = [];
+                    copies.Add(fingerprint, list);
+                    order.Add(fingerprint);
                 }
-                else
-                {
-                    certificates[existing] = Certificate.Merge(certificates[existing], certificate);
-                }
+
+                list.Add(certificate);
             }
+
+            CheckBudget BudgetFor(PublicKeyPacket primary)
+            {
+                if (!budgets.TryGetValue(primary.Fingerprint.Bytes, out CheckBudget? budget))
+                {
+                    budget = new CheckBudget();
+                    budgets.Add(primary.Fingerprint.Bytes, budget);
+                }
+
+                return budget;
+            }
+        }
+
+        /// <summary>A digest identifying a certificate copy by its exact packets (tag, length and body of each).</summary>
+        private static byte[] Digest(List<Packet> packets)
+        {
+            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            var header = new byte[5];
+            foreach (Packet packet in packets)
+            {
+                header[0] = packet.Header.RawTag;
+                header[1] = (byte)(packet.Body.Length >> 24);
+                header[2] = (byte)(packet.Body.Length >> 16);
+                header[3] = (byte)(packet.Body.Length >> 8);
+                header[4] = (byte)packet.Body.Length;
+                hash.AppendData(header);
+                hash.AppendData(packet.Body);
+            }
+
+            return hash.GetHashAndReset();
         }
     }
 }

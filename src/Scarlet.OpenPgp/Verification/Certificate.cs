@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Scarlet.OpenPgp.Internal;
 using Scarlet.OpenPgp.Packets;
 
 namespace Scarlet.OpenPgp.Verification
@@ -42,7 +43,16 @@ namespace Scarlet.OpenPgp.Verification
 
             Keys = keys;
             SelfSignatures = [.. directSignatures.Effective, .. userIds.SelectMany(u => u.Signatures.Effective)];
-            UserIds = userIds.Where(u => u.Text is not null && u.Signatures.Effective.Count > 0).Select(u => u.Text!).ToArray();
+            var userIdTexts = new List<string>();
+            foreach (CertifiedUserId userId in userIds)
+            {
+                if (userId.Text is { } text && userId.Signatures.Effective.Count > 0)
+                {
+                    userIdTexts.Add(text);
+                }
+            }
+
+            UserIds = userIdTexts;
             HasSelfSignatures = directSignatures.HasAny || userIds.Any(u => u.Signatures.HasAny);
         }
 
@@ -95,48 +105,113 @@ namespace Scarlet.OpenPgp.Verification
         }
 
         /// <summary>
-        /// Combines two copies of the same certificate (same primary key fingerprint): e.g. an old
-        /// export and a newer one concatenated into one key file. Everything either copy verifiably
-        /// says is kept - in particular every revocation - so a stale copy can't mask a newer
-        /// revocation by being a separate candidate. Which copy comes first makes no difference.
+        /// Combines every copy of the same certificate (same primary key fingerprint) - e.g. an old
+        /// export and a newer one concatenated into one key file - in one pass. Everything any copy
+        /// verifiably says is kept - in particular every revocation - so a stale copy can't mask a
+        /// newer revocation by being a separate candidate. A signature present in several copies is
+        /// kept once (identical bytes), and the order of the copies makes no difference.
         /// </summary>
-        public static Certificate Merge(Certificate first, Certificate second)
+        /// <remarks>
+        /// Merging all copies at once keeps this linear: folding them in one at a time rebuilt the
+        /// growing lists on every step, which made 4,000 copies of one certificate (under 1 MB)
+        /// allocate about 1 GB.
+        /// </remarks>
+        public static Certificate MergeAll(IReadOnlyList<Certificate> copies)
         {
-            var userIds = first.UserIdEntries.ToList();
-            foreach (CertifiedUserId userId in second.UserIdEntries)
+            if (copies.Count == 1)
             {
-                int index = userIds.FindIndex(u => u.HashPrefix.AsSpan().SequenceEqual(userId.HashPrefix));
-                if (index < 0)
-                {
-                    userIds.Add(userId);
-                }
-                else
-                {
-                    userIds[index] = new CertifiedUserId(userId.HashPrefix, userId.Text, SignatureSet.Merge(userIds[index].Signatures, userId.Signatures));
-                }
+                return copies[0];
             }
 
-            var subkeys = first.Subkeys.ToList();
-            foreach (CertifiedSubkey subkey in second.Subkeys)
+            var direct = new UniqueSignatures();
+            var directRevocations = new UniqueSignatures();
+            var revocations = new UniqueSignatures();
+            var userIds = new Dictionary<byte[], (CertifiedUserId First, UniqueSignatures Signatures, UniqueSignatures Revocations)>(ByteArrayComparer.Instance);
+            var userIdOrder = new List<byte[]>();
+            var subkeys = new Dictionary<byte[], (PublicKeyPacket Key, UniqueBindings Bindings, UniqueSignatures Revocations, int Unverifiable)>(ByteArrayComparer.Instance);
+            var subkeyOrder = new List<byte[]>();
+            int unverifiable = 0;
+
+            foreach (Certificate copy in copies)
             {
-                int index = subkeys.FindIndex(s => s.Key.Fingerprint.Matches(subkey.Key.Fingerprint.Bytes));
-                if (index < 0)
+                direct.AddRange(copy.DirectSignatures.Signatures);
+                directRevocations.AddRange(copy.DirectSignatures.Revocations);
+                revocations.AddRange(copy.Revocations);
+                unverifiable += copy.UnverifiableSignatures;
+
+                foreach (CertifiedUserId userId in copy.UserIdEntries)
                 {
-                    subkeys.Add(subkey);
+                    if (!userIds.TryGetValue(userId.HashPrefix, out var entry))
+                    {
+                        entry = (userId, new UniqueSignatures(), new UniqueSignatures());
+                        userIds.Add(userId.HashPrefix, entry);
+                        userIdOrder.Add(userId.HashPrefix);
+                    }
+
+                    entry.Signatures.AddRange(userId.Signatures.Signatures);
+                    entry.Revocations.AddRange(userId.Signatures.Revocations);
                 }
-                else
+
+                foreach (CertifiedSubkey subkey in copy.Subkeys)
                 {
-                    subkeys[index] = CertifiedSubkey.Merge(subkeys[index], subkey);
+                    byte[] fingerprint = subkey.Key.Fingerprint.Bytes;
+                    if (!subkeys.TryGetValue(fingerprint, out var entry))
+                    {
+                        entry = (subkey.Key, new UniqueBindings(), new UniqueSignatures(), 0);
+                        subkeyOrder.Add(fingerprint);
+                    }
+
+                    entry.Bindings.AddRange(subkey.Bindings);
+                    entry.Revocations.AddRange(subkey.Revocations);
+                    subkeys[fingerprint] = (entry.Key, entry.Bindings, entry.Revocations, entry.Unverifiable + subkey.UnverifiableSignatures);
                 }
             }
 
             return new Certificate(
-                first.Primary,
-                SignatureSet.Merge(first.DirectSignatures, second.DirectSignatures),
-                [.. first.Revocations, .. second.Revocations],
-                userIds,
-                subkeys,
-                first.UnverifiableSignatures + second.UnverifiableSignatures);
+                copies[0].Primary,
+                new SignatureSet(direct.Items, directRevocations.Items),
+                revocations.Items,
+                userIdOrder.Select(p => userIds[p]).Select(u => new CertifiedUserId(u.First.HashPrefix, u.First.Text, new SignatureSet(u.Signatures.Items, u.Revocations.Items))).ToArray(),
+                subkeyOrder.Select(f => subkeys[f]).Select(s => new CertifiedSubkey(s.Key, s.Bindings.Items, s.Revocations.Items, s.Unverifiable)).ToArray(),
+                unverifiable);
+        }
+
+        /// <summary>Signatures in first-seen order, each distinct packet body once.</summary>
+        private sealed class UniqueSignatures
+        {
+            private readonly HashSet<byte[]> _seen = new(ByteArrayComparer.Instance);
+
+            public List<SignaturePacket> Items { get; } = [];
+
+            public void AddRange(IEnumerable<SignaturePacket> signatures)
+            {
+                foreach (SignaturePacket signature in signatures)
+                {
+                    if (_seen.Add(signature.Body))
+                    {
+                        Items.Add(signature);
+                    }
+                }
+            }
+        }
+
+        /// <summary>Subkey bindings in first-seen order, each distinct binding signature once (its back-signatures come with it).</summary>
+        private sealed class UniqueBindings
+        {
+            private readonly HashSet<byte[]> _seen = new(ByteArrayComparer.Instance);
+
+            public List<SubkeyBinding> Items { get; } = [];
+
+            public void AddRange(IEnumerable<SubkeyBinding> bindings)
+            {
+                foreach (SubkeyBinding binding in bindings)
+                {
+                    if (_seen.Add(binding.Signature.Body))
+                    {
+                        Items.Add(binding);
+                    }
+                }
+            }
         }
     }
 
@@ -159,11 +234,37 @@ namespace Scarlet.OpenPgp.Verification
         /// <see cref="SignatureVerifier.CheckKeySignature"/>, which requires a readable creation
         /// time, so this can't throw.
         /// </summary>
-        public IReadOnlyList<SignaturePacket> Effective { get; } =
-            signatures.Where(s => !revocations.Any(r => SignatureVerifier.GetCreationTime(r) >= SignatureVerifier.GetCreationTime(s))).ToArray();
+        public IReadOnlyList<SignaturePacket> Effective { get; } = Unrevoked(signatures, revocations);
 
-        public static SignatureSet Merge(SignatureSet first, SignatureSet second) =>
-            new([.. first.Signatures, .. second.Signatures], [.. first.Revocations, .. second.Revocations]);
+        /// <summary>A revocation takes back every signature made no later than itself, so only the newest revocation matters - linear rather than comparing every pair.</summary>
+        private static SignaturePacket[] Unrevoked(IReadOnlyList<SignaturePacket> signatures, IReadOnlyList<SignaturePacket> revocations)
+        {
+            if (revocations.Count == 0)
+            {
+                return [.. signatures];
+            }
+
+            DateTimeOffset newestRevocation = DateTimeOffset.MinValue;
+            foreach (SignaturePacket revocation in revocations)
+            {
+                DateTimeOffset createdAt = SignatureVerifier.GetCreationTime(revocation);
+                if (createdAt > newestRevocation)
+                {
+                    newestRevocation = createdAt;
+                }
+            }
+
+            var unrevoked = new List<SignaturePacket>();
+            foreach (SignaturePacket signature in signatures)
+            {
+                if (SignatureVerifier.GetCreationTime(signature) > newestRevocation)
+                {
+                    unrevoked.Add(signature);
+                }
+            }
+
+            return [.. unrevoked];
+        }
     }
 
     /// <summary>A User ID or User Attribute packet, identified by its hash prefix, with its verified self-certifications.</summary>
@@ -197,8 +298,5 @@ namespace Scarlet.OpenPgp.Verification
 
         /// <summary>Bindings or revocations that may concern this subkey but can't be checked or parsed.</summary>
         public int UnverifiableSignatures { get; } = unverifiableSignatures;
-
-        public static CertifiedSubkey Merge(CertifiedSubkey first, CertifiedSubkey second) =>
-            new(first.Key, [.. first.Bindings, .. second.Bindings], [.. first.Revocations, .. second.Revocations], first.UnverifiableSignatures + second.UnverifiableSignatures);
     }
 }
