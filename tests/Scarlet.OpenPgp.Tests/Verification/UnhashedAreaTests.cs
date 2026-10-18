@@ -174,5 +174,66 @@ namespace Scarlet.OpenPgp.Tests.Verification
             // Assert
             Assert.True(result.IsValid, result.ToString());
         }
+
+        public static TheoryData<string, string, VerificationStatus> CertificatesWithRestrictions => new()
+        {
+            // folder, document signature, verdict with the certificate intact
+            { "v4-revoked-key-hard", "data.txt.after-revocation.sig", VerificationStatus.KeyRevoked },
+            { "v4-revoked-subkey-hard", "data.txt.after-revocation.sig", VerificationStatus.KeyRevoked },
+            { "v4-expired-key", "data.txt.while-valid.sig", VerificationStatus.KeyExpired },
+            { "v4-expired-subkey", "data.txt.while-valid.sig", VerificationStatus.KeyExpired },
+            { "v4-signing-subkey", "data.txt.sig", VerificationStatus.Valid },
+        };
+
+        /// <summary>Flips a bit in a v4 signature body's 2-byte quick-check, which follows the unhashed area and isn't signed.</summary>
+        private static byte[] CorruptQuickCheck(byte[] body)
+        {
+            byte[] result = [.. body];
+            int unhashedLengthOffset = 6 + ((body[4] << 8) | body[5]);
+            int quickCheckOffset = unhashedLengthOffset + 2 + ((body[unhashedLengthOffset] << 8) | body[unhashedLengthOffset + 1]);
+            result[quickCheckOffset] ^= 0x01;
+            return result;
+        }
+
+        [Theory]
+        [MemberData(nameof(CertificatesWithRestrictions))]
+        public void KeySignatures_WithACorruptedQuickCheck_ShouldStillApply(string folder, string signatureFile, VerificationStatus expected)
+        {
+            // Arrange: the quick-check isn't covered by the signature, so anyone can change it. A key
+            // signature rejected over it was discarded - turning KeyRevoked or KeyExpired into Valid.
+            // Every key signature in the certificate gets its quick-check corrupted here.
+            string path = Assets + folder + "/";
+            byte[] certificate = File.ReadAllBytes(path + "public-key.gpg");
+            foreach (byte type in new byte[] { 0x10, 0x11, 0x12, 0x13, 0x18, 0x1F, 0x20, 0x28 })
+            {
+                certificate = AlterSignatures(certificate, type, CorruptQuickCheck);
+            }
+
+            byte[] data = File.ReadAllBytes(path + "data.txt");
+            byte[] signature = File.ReadAllBytes(path + signatureFile);
+
+            // Act
+            VerificationResult intact = OpenPgpVerifier.VerifyDetached(data, signature, File.ReadAllBytes(path + "public-key.gpg"), Now);
+            VerificationResult corrupted = OpenPgpVerifier.VerifyDetached(data, signature, certificate, Now);
+
+            // Assert
+            Assert.Equal(expected, intact.Status);
+            Assert.Equal(expected, corrupted.Status);
+        }
+
+        [Fact]
+        public void DocumentSignature_WithACorruptedQuickCheck_ShouldBeRejected()
+        {
+            // Arrange: for a document signature, honoring the quick-check can only make it fail -
+            // and RFC 9580 requires rejecting a mismatch - so that one stays.
+            const string path = Assets + "v4-signing-subkey/";
+            byte[] signature = [.. PacketReader.ReadAll(File.ReadAllBytes(path + "data.txt.sig")).SelectMany(p => Frame(new Packet(p.Header, CorruptQuickCheck(p.Body))))];
+
+            // Act
+            VerificationResult result = OpenPgpVerifier.VerifyDetached(File.ReadAllBytes(path + "data.txt"), signature, File.ReadAllBytes(path + "public-key.gpg"), Now);
+
+            // Assert
+            Assert.Equal(VerificationStatus.BadSignature, result.Status);
+        }
     }
 }

@@ -152,29 +152,39 @@ namespace Scarlet.OpenPgp.Verification
         }
 
         /// <summary>
-        /// Verifies <paramref name="signature"/> given <paramref name="digest"/>, the finished hash
-        /// of the signed content (see <see cref="SignatureDigest"/>). Call
-        /// <see cref="GetIncompatibility"/> first; incompatible combinations simply return
-        /// <c>false</c> here.
+        /// Verifies a document signature given <paramref name="digest"/>, the finished hash of the
+        /// signed content (see <see cref="SignatureDigest"/>). Call <see cref="GetIncompatibility"/>
+        /// first; incompatible combinations simply return <c>false</c> here.
         /// </summary>
-        public static bool VerifyDigest(PublicKeyPacket key, SignaturePacket signature, byte[] digest)
+        /// <remarks>
+        /// The packet's 2-byte quick-check (RFC 9580 §5.2.3) isn't signed material, so it never
+        /// stands in for the asymmetric check - but a mismatch means the packet is inconsistent with
+        /// the content it claims to cover, and RFC 9580 §5.2.3.6 requires rejecting a v6 signature
+        /// for it (treated the same for v4). For a document signature, rejecting can only make a
+        /// signature fail, never pass, so honoring the field is safe. Key signatures must not do
+        /// this: see <see cref="VerifyKeySignatureDigest"/>.
+        /// </remarks>
+        public static bool VerifyDocumentDigest(PublicKeyPacket key, SignaturePacket signature, byte[] digest)
         {
-            if (GetIncompatibility(key, signature) is not null)
-            {
-                return false;
-            }
-
-            // The packet's own 2-byte quick-check (RFC 9580 §5.2.3) isn't itself signed material,
-            // so it can't substitute for the real asymmetric check below - but a mismatch means the
-            // packet is inconsistent with the content it claims to cover, and RFC 9580 §5.2.3.6
-            // requires rejecting a v6 signature for it. Treated the same for v4.
             if (signature.LeftHashBytes16[0] != digest[0] || signature.LeftHashBytes16[1] != digest[1])
             {
                 return false;
             }
 
-            return key.CanVerify && key.VerificationKey.Verify(signature.HashAlgorithm, digest, signature.Value);
+            return VerifyKeySignatureDigest(key, signature, digest);
         }
+
+        /// <summary>
+        /// Verifies a key signature (self-signature, binding, revocation) given its digest, by the
+        /// asymmetric check alone. The unsigned quick-check is deliberately not consulted: a key
+        /// signature that fails here is discarded, so if anyone could flip those two unsigned bytes
+        /// to make an authentic revocation or expiring self-signature fail, they could make it
+        /// disappear. A signature that verifies is authentic whatever that field says.
+        /// </summary>
+        public static bool VerifyKeySignatureDigest(PublicKeyPacket key, SignaturePacket signature, byte[] digest) =>
+            GetIncompatibility(key, signature) is null
+            && key.CanVerify
+            && key.VerificationKey.Verify(signature.HashAlgorithm, digest, signature.Value);
 
         /// <summary>
         /// Classifies <paramref name="signature"/> as a signature by <paramref name="issuer"/> over
@@ -199,7 +209,7 @@ namespace Scarlet.OpenPgp.Verification
 
                 GetCreationTime(signature); // throws if missing or malformed
                 byte[] digest = SignatureHashBuilder.ComputeDigest(signedContent, signature, isKeySignature: true);
-                return VerifyDigest(issuer, signature, digest) ? KeySignatureCheck.Valid : KeySignatureCheck.NotFromKey;
+                return VerifyKeySignatureDigest(issuer, signature, digest) ? KeySignatureCheck.Valid : KeySignatureCheck.NotFromKey;
             }
             catch (FailClosedException ex)
             {

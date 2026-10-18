@@ -174,15 +174,13 @@ namespace Scarlet.OpenPgp.Tests
         public async Task KeyRing_WithTheStreamingAndAsyncOverloads_ShouldVerify()
         {
             // Arrange: the public overloads use the real clock; this certificate has no expiry.
-            OpenPgpKeyRing keyRing = OpenPgpKeyRing.Parse(File.ReadAllText("TestAssets/gnupg-generated/v4-ecdsa-nistp384/public-key.asc"));
+            OpenPgpKeyRing keyRing = OpenPgpKeyRing.Parse(await File.ReadAllTextAsync("TestAssets/gnupg-generated/v4-ecdsa-nistp384/public-key.asc", TestContext.Current.CancellationToken));
             byte[] signature = Bytes("gnupg-generated/v4-ecdsa-nistp384/data.txt.sig");
 
             // Act
             VerificationResult streamed;
             using (var data = new MemoryStream(Bytes("gnupg-generated/v4-ecdsa-nistp384/data.txt")))
             {
-                // The synchronous stream overload is under test here, next to the async one below.
-                // ReSharper disable once MethodHasAsyncOverload
                 streamed = OpenPgpVerifier.VerifyDetached(data, signature, keyRing);
             }
 

@@ -309,7 +309,7 @@ namespace Scarlet.OpenPgp.Verification
                 }
 
                 // Cryptography first: a forged signature must read as "bad", never as e.g. "expired".
-                if (!SignatureVerifier.VerifyDigest(key, signature, digest))
+                if (!SignatureVerifier.VerifyDocumentDigest(key, signature, digest))
                 {
                     return Failure(VerificationStatus.BadSignature, "The signature does not match the data and key.", certificate, key, createdAt);
                 }
