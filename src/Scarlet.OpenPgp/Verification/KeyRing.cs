@@ -42,9 +42,12 @@ namespace Scarlet.OpenPgp.Verification
         /// </remarks>
         public static KeyRing Parse(byte[] packetBytes)
         {
-            // One builder per certificate, by primary fingerprint in first-seen order, and the
-            // digests of copies already read, so an exact repeat costs a hash rather than a pass.
+            // One builder per certificate, found by its Public-Key packet's body (the fingerprint is a
+            // hash of it), so a repeated copy doesn't parse and check the key again - for DSA, two
+            // exponentiations and a primality test. Bodies of unsupported keys are remembered too.
+            // And the digests of copies already read, so an exact repeat costs a hash rather than a pass.
             var builders = new Dictionary<byte[], CertificateBuilder>(ByteArrayComparer.Instance);
+            var unsupported = new HashSet<byte[]>(ByteArrayComparer.Instance);
             var order = new List<CertificateBuilder>();
             var seenCopies = new HashSet<byte[]>(ByteArrayComparer.Instance);
             string? lastError = null;
@@ -109,22 +112,30 @@ namespace Scarlet.OpenPgp.Verification
                     return; // an exact repeat of a copy already read says nothing new
                 }
 
-                try
+                byte[] primaryBody = packets[0].Body;
+                if (unsupported.Contains(primaryBody))
                 {
-                    var primary = PublicKeyPacket.Parse(packets[0].Body);
-                    if (!builders.TryGetValue(primary.Fingerprint.Bytes, out CertificateBuilder? builder))
+                    return;
+                }
+
+                if (!builders.TryGetValue(primaryBody, out CertificateBuilder? builder))
+                {
+                    try
                     {
-                        builder = CertificateBuilder.Create(primary);
-                        builders.Add(primary.Fingerprint.Bytes, builder);
-                        order.Add(builder);
+                        builder = CertificateBuilder.Create(PublicKeyPacket.Parse(primaryBody));
+                    }
+                    catch (FailClosedException ex) when (ex.IsUnsupported)
+                    {
+                        lastError = ex.Message;
+                        unsupported.Add(primaryBody);
+                        return;
                     }
 
-                    builder.AddCopy(packets);
+                    builders.Add(primaryBody, builder);
+                    order.Add(builder);
                 }
-                catch (FailClosedException ex) when (ex.IsUnsupported)
-                {
-                    lastError = ex.Message;
-                }
+
+                builder.AddCopy(packets);
             }
         }
 

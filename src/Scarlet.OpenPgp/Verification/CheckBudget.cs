@@ -22,8 +22,8 @@ namespace Scarlet.OpenPgp.Verification
         /// </summary>
         public const int MaxCost = 8192;
 
-        /// <summary>How many hashed octets cost one unit (hashing runs at a few hundred MB/s or more).</summary>
-        public const int HashedBytesPerUnit = 64 * 1024;
+        /// <summary>How many hashed octets cost one unit: hashing measured about 160 MB/s, so 0.3 ms hashes 48 KiB; 32 KiB leaves a margin.</summary>
+        public const int HashedBytesPerUnit = 32 * 1024;
 
         private long _spent;
 

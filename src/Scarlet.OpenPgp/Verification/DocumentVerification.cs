@@ -30,9 +30,10 @@ namespace Scarlet.OpenPgp.Verification
         /// each) the signatures of one input may call for, summed over every key each could be from.
         /// A signature that names its issuer has one or two candidate keys; one that names none could
         /// be from any key in the ring, and 32 of them against a large keyring meant tens of thousands
-        /// of checks.
+        /// of checks. Room for <see cref="MaxSignatures"/> signatures by one key of the costliest kind
+        /// (brainpoolP512r1, 48 units), so only signatures naming no issuer can reach it.
         /// </summary>
-        public const int MaxCheckCost = 1024;
+        public const int MaxCheckCost = 2048;
 
         private readonly List<Entry> _entries;
         private readonly VerificationResult? _earlyResult;

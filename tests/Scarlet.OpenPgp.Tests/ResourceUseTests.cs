@@ -215,6 +215,36 @@ namespace Scarlet.OpenPgp.Tests
         }
 
         [Fact]
+        public void KeyInput_WithASignatureWithAHugeHashedAreaAndManyUserIds_ShouldRunOutOfBudget()
+        {
+            // Arrange: a v6 key, 2,000 tiny User IDs and one certification naming no issuer whose
+            // hashed area is 1 MiB. It is tried against every User ID, and each try hashes that area
+            // again; only the User ID's size was charged, so 8,000 User IDs and an 8 MB area cost 32 s.
+            var generator = new Org.BouncyCastle.Crypto.Generators.Ed25519KeyPairGenerator();
+            generator.Init(new Org.BouncyCastle.Crypto.Parameters.Ed25519KeyGenerationParameters(new Org.BouncyCastle.Security.SecureRandom()));
+            var publicKey = (Org.BouncyCastle.Crypto.Parameters.Ed25519PublicKeyParameters)generator.GenerateKeyPair().Public;
+            byte[] key = Framed(PacketTag.PublicKey, [0x06, 0x60, 0x00, 0x00, 0x00, 0x1B, 0x00, 0x00, 0x00, 0x20, .. publicKey.GetEncoded()]);
+            byte[] hashed = [0x05, 0x02, 0x60, 0x00, 0x00, 0x01, .. Enumerable.Repeat<byte[]>([0x01, 0x65], MiB / 2).SelectMany(b => b)];
+            byte[] certification = Framed(PacketTag.Signature,
+            [
+                0x06, 0x13, 0x1B, 0x08,
+                (byte)(hashed.Length >> 24), (byte)(hashed.Length >> 16), (byte)(hashed.Length >> 8), (byte)hashed.Length, .. hashed,
+                0x00, 0x00, 0x00, 0x00, // no unhashed subpackets
+                0x00, 0x00, // quick check
+                0x10, .. new byte[16], // salt
+                .. new byte[64], // Ed25519 signature
+            ]);
+            byte[] keys = [.. key, .. Enumerable.Range(0, 2000).SelectMany(i => Framed(PacketTag.UserId, BitConverter.GetBytes(i))), .. certification];
+
+            // Act
+            bool parsed = OpenPgpKeyRing.TryParse(keys, out _, out string? error);
+
+            // Assert
+            Assert.False(parsed);
+            Assert.Contains("too much signature checking", error, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void SignaturePacket_WithMillionsOfTinySubpackets_ShouldNotAmplifyMemory()
         {
             // Arrange: a v6 signature whose hashed area is 4 MiB of two-octet subpackets. Each one
@@ -241,12 +271,12 @@ namespace Scarlet.OpenPgp.Tests
         [Fact]
         public void DocumentSignature_NamingNoIssuer_AgainstAHugeKeyRing_ShouldNotCheckEveryKey()
         {
-            // Arrange: 1,100 Ed25519 keys and a signature that names no issuer, so any of them could
+            // Arrange: 2,100 Ed25519 keys and a signature that names no issuer, so any of them could
             // have made it. 32 such signatures against a large keyring meant tens of thousands of
             // checks.
             var generator = new Org.BouncyCastle.Crypto.Generators.Ed25519KeyPairGenerator();
             generator.Init(new Org.BouncyCastle.Crypto.Parameters.Ed25519KeyGenerationParameters(new Org.BouncyCastle.Security.SecureRandom()));
-            byte[] keys = [.. Enumerable.Range(0, 1100).SelectMany(_ =>
+            byte[] keys = [.. Enumerable.Range(0, 2100).SelectMany(_ =>
             {
                 var publicKey = (Org.BouncyCastle.Crypto.Parameters.Ed25519PublicKeyParameters)generator.GenerateKeyPair().Public;
                 return Framed(PacketTag.PublicKey, [0x04, 0x60, 0x00, 0x00, 0x00, 0x1B, .. publicKey.GetEncoded()]);

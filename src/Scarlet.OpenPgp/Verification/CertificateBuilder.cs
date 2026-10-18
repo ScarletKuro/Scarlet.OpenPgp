@@ -114,7 +114,10 @@ namespace Scarlet.OpenPgp.Verification
                             break;
                         }
 
-                        if (!_seenSignatures.Add(signature.Body))
+                        // Every signature this builder uses is the primary key's (back-signatures are
+                        // embedded in its bindings), so a third party's, which names its issuer, is
+                        // dropped here rather than held until every copy has been read.
+                        if (!CouldBeFromPrimary(signature) || !_seenSignatures.Add(signature.Body))
                         {
                             break;
                         }
@@ -224,9 +227,9 @@ namespace Scarlet.OpenPgp.Verification
 
         /// <summary>
         /// Whether <paramref name="signature"/> could be the primary key's at all: its signed issuer
-        /// hints, version and algorithm allow it. A free test, done once per signature before trying
-        /// it against each possible target - a third party's signature names its issuer, and so
-        /// costs nothing however many User IDs or subkeys there are.
+        /// hints, version and algorithm allow it. A free test, done as each signature is read: a third
+        /// party's signature names its issuer, so it is dropped at once - never held in memory or
+        /// tried against every User ID or subkey.
         /// </summary>
         private bool CouldBeFromPrimary(SignaturePacket signature) =>
             SignatureVerifier.IsIssuedBy(signature, _primary, hashedOnly: true) && !SignatureVerifier.IsForDifferentKey(_primary, signature);
@@ -234,7 +237,9 @@ namespace Scarlet.OpenPgp.Verification
         /// <summary>
         /// Every key-signature check goes through here, so the budget can't be bypassed. A check
         /// costs what its key's verification costs, plus the hashing of <paramref name="signedContent"/>
-        /// (a huge User ID is hashed again for every signature over it).
+        /// and of the signature's own hashed area: a huge User ID is hashed again for every signature
+        /// over it, and a signature with a huge hashed area again for every User ID or subkey it is
+        /// tried against.
         /// </summary>
         private KeySignatureCheck Check(PublicKeyPacket issuer, SignaturePacket signature, byte[] signedContent)
         {
@@ -243,7 +248,7 @@ namespace Scarlet.OpenPgp.Verification
                 return KeySignatureCheck.NotFromKey;
             }
 
-            _budget.Spend((issuer.CanVerify ? issuer.VerificationKey.CheckCost : 1) + (signedContent.Length / CheckBudget.HashedBytesPerUnit));
+            _budget.Spend((issuer.CanVerify ? issuer.VerificationKey.CheckCost : 1) + ((signedContent.Length + signature.HashedPortionLength) / CheckBudget.HashedBytesPerUnit));
             return SignatureVerifier.CheckKeySignature(issuer, signature, signedContent);
         }
 
@@ -325,11 +330,6 @@ namespace Scarlet.OpenPgp.Verification
         /// </summary>
         private void AddCertification(SignaturePacket signature, UserIdDraft? preferred)
         {
-            if (!CouldBeFromPrimary(signature))
-            {
-                return;
-            }
-
             foreach (UserIdDraft userId in UserIdCandidates(preferred))
             {
                 KeySignatureCheck check = Check(_primary, signature, userId.CertificationContent);
@@ -353,11 +353,6 @@ namespace Scarlet.OpenPgp.Verification
         /// </summary>
         private void AddCertificationRevocation(SignaturePacket signature, UserIdDraft? preferred)
         {
-            if (!CouldBeFromPrimary(signature))
-            {
-                return;
-            }
-
             // The targets in order - the preferred User ID, the primary key alone (null), the other
             // User IDs.
             var targets = new List<UserIdDraft?>(_userIds.Count + 1);
@@ -397,11 +392,6 @@ namespace Scarlet.OpenPgp.Verification
         /// </summary>
         private void AddSubkeySignature(SignaturePacket signature, SubkeyDraft? preferred)
         {
-            if (!CouldBeFromPrimary(signature))
-            {
-                return;
-            }
-
             IEnumerable<SubkeyDraft> candidates = preferred is null ? _subkeys : new[] { preferred }.Concat(_subkeys.Where(s => s != preferred));
             foreach (SubkeyDraft subkey in candidates)
             {
