@@ -191,7 +191,7 @@ namespace Scarlet.OpenPgp.Tests.Crypto
             "SHA-512" => HashAlgorithmId.Sha512,
             "SHA3-256" => HashAlgorithmId.Sha3_256,
             "SHA3-512" => HashAlgorithmId.Sha3_512,
-            string other => throw new ArgumentOutOfRangeException(nameof(group), other, null),
+            { } other => throw new ArgumentOutOfRangeException(nameof(group), other, null),
             null => throw new ArgumentNullException(nameof(group)),
         };
 

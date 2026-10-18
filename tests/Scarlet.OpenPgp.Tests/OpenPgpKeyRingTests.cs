@@ -181,6 +181,8 @@ namespace Scarlet.OpenPgp.Tests
             VerificationResult streamed;
             using (var data = new MemoryStream(Bytes("gnupg-generated/v4-ecdsa-nistp384/data.txt")))
             {
+                // The synchronous stream overload is under test here, next to the async one below.
+                // ReSharper disable once MethodHasAsyncOverload
                 streamed = OpenPgpVerifier.VerifyDetached(data, signature, keyRing);
             }
 

@@ -28,8 +28,8 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
     {
         public static readonly BigInteger P = BigInteger.Pow(2, 255) - 19;
 
-        /// <summary>Zero: all limbs zero, which is also the default value.</summary>
-        public static readonly FieldElement Zero;
+        /// <summary>Zero: all limbs zero - the default value, so nothing needs computing or storing.</summary>
+        public static FieldElement Zero => default;
         public static readonly FieldElement One = new FieldElement(BigInteger.One);
 
         private const int LimbCount = 10;
@@ -69,7 +69,7 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
         }
 
         /// <summary>The canonical value in [0, p).</summary>
-        public BigInteger Value
+        public readonly BigInteger Value
         {
             get
             {
@@ -83,7 +83,7 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
             }
         }
 
-        public bool IsZero
+        public readonly bool IsZero
         {
             get
             {
@@ -101,7 +101,7 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
             }
         }
 
-        public bool IsOdd
+        public readonly bool IsOdd
         {
             get
             {
@@ -190,7 +190,7 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
         public static bool operator !=(in FieldElement a, in FieldElement b) => !(a == b);
 
         /// <summary>this * this, using the product's symmetry: f_i f_j and f_j f_i are one term counted twice, 55 products instead of 100 (ref10's fe_sq).</summary>
-        public FieldElement Square()
+        public readonly FieldElement Square()
         {
             long f0 = _limbs[0], f1 = _limbs[1], f2 = _limbs[2], f3 = _limbs[3], f4 = _limbs[4];
             long f5 = _limbs[5], f6 = _limbs[6], f7 = _limbs[7], f8 = _limbs[8], f9 = _limbs[9];
@@ -228,7 +228,7 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
         }
 
         /// <summary>this^exponent by left-to-right square-and-multiply. The exponent must be non-negative.</summary>
-        public FieldElement Pow(BigInteger exponent)
+        public readonly FieldElement Pow(BigInteger exponent)
         {
             byte[] bits = exponent.ToByteArray(); // little-endian; bit i lives in byte i / 8
             FieldElement result = One;
@@ -245,15 +245,15 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
         }
 
         /// <summary>Multiplicative inverse mod p, via Fermat's little theorem (p is prime): a^(p-2) = a^-1 mod p.</summary>
-        public FieldElement Invert() => Pow(InversionExponent);
+        public readonly FieldElement Invert() => Pow(InversionExponent);
 
-        public bool Equals(FieldElement other) => this == other;
+        public readonly bool Equals(FieldElement other) => this == other;
 
-        public override bool Equals(object? obj) => obj is FieldElement other && Equals(other);
+        public readonly override bool Equals(object? obj) => obj is FieldElement other && Equals(other);
 
-        public override int GetHashCode() => Value.GetHashCode();
+        public readonly override int GetHashCode() => Value.GetHashCode();
 
-        public override string ToString() => Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        public readonly override string ToString() => Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         /// <summary>Limb i's width in bits: 26 for even i, 25 for odd.</summary>
         private static int Width(int limb) => (limb & 1) == 0 ? 26 : 25;
@@ -267,10 +267,9 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
         /// </summary>
         private static void Carry(ref FieldElement element)
         {
-            long carry;
             for (int i = 0; i < LimbCount - 1; i += 2)
             {
-                carry = (element._limbs[i] + (1L << 25)) >> 26;
+                var carry = (element._limbs[i] + (1L << 25)) >> 26;
                 element._limbs[i + 1] += carry;
                 element._limbs[i] -= carry << 26;
 
@@ -293,7 +292,7 @@ namespace Scarlet.OpenPgp.Crypto.Ed25519
         /// q = floor(h / p) is 0 or 1, and comes from the carries out of h + 19; then h - q p is
         /// h + 19 q with the bit above 2^255 dropped, carried exactly (no rounding) into [0, 2^width).
         /// </summary>
-        private void Pack(byte* output)
+        private readonly void Pack(byte* output)
         {
             FieldElement h = this;
             Carry(ref h);

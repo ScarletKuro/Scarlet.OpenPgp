@@ -50,7 +50,7 @@ namespace Scarlet.OpenPgp.Tests
 
             // Act
             VerificationResult result = OpenPgpVerifier.VerifyClearsign(System.IO.File.ReadAllText("TestAssets/bun-release/SHASUMS256.txt.asc"), publisher);
-            bool accepted = result is { IsValid: true, SignedText: string, SignatureCreationTime: DateTimeOffset }
+            bool accepted = result is { IsValid: true, SignedText: not null, SignatureCreationTime: not null }
                 && result.PrimaryKeyFingerprint == ExpectedFingerprint
                 && result.SignatureCreationTime >= lastInstalledReleaseSignedAt;
             string? expectedHash = result.SignedText?.Split("\r\n")

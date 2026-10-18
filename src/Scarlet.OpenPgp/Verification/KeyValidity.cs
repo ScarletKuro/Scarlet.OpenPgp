@@ -291,7 +291,7 @@ namespace Scarlet.OpenPgp.Verification
         /// <summary>The key must be unexpired both now and when it made the signature (RFC 9580 §5.2.3.13).</summary>
         private static (VerificationStatus Status, string Message) CheckExpiration(SignaturePacket? selfSignature, DateTimeOffset keyCreatedAt, DateTimeOffset signatureCreatedAt, DateTimeOffset now, string what)
         {
-            if (ExpirationOf(selfSignature, keyCreatedAt) is DateTimeOffset expiresAt)
+            if (ExpirationOf(selfSignature, keyCreatedAt) is { } expiresAt)
             {
                 if (now >= expiresAt)
                 {
