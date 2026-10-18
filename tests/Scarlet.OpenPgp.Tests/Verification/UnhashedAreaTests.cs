@@ -9,7 +9,7 @@ using PacketTag = Scarlet.OpenPgp.Packets.PacketTag;
 using SignaturePacket = Scarlet.OpenPgp.Packets.SignaturePacket;
 using PacketHeader = Scarlet.OpenPgp.Packets.PacketHeader;
 
-namespace Scarlet.OpenPgp.Tests.Signing
+namespace Scarlet.OpenPgp.Tests.Verification
 {
     /// <summary>
     /// A signature's unhashed subpacket area isn't covered by the signature, so anyone handling a

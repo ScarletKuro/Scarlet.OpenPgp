@@ -4,7 +4,7 @@ using System.Linq;
 using Scarlet.OpenPgp.Internal;
 using Scarlet.OpenPgp.Packets;
 
-namespace Scarlet.OpenPgp.Signing
+namespace Scarlet.OpenPgp.Verification
 {
     /// <summary>
     /// Turns the packets of one certificate into a verified <see cref="Certificate"/>: works out what

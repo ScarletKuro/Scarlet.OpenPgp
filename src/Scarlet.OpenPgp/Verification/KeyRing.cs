@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using Scarlet.OpenPgp.Internal;
 using Scarlet.OpenPgp.Packets;
 
-namespace Scarlet.OpenPgp.Signing
+namespace Scarlet.OpenPgp.Verification
 {
     /// <summary>
     /// The caller's trusted keys: one or more certificates, as found in a key file or keyring

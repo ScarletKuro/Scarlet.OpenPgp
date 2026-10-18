@@ -2,10 +2,10 @@ using System.Security.Cryptography;
 using System.Text;
 using Scarlet.OpenPgp.Hashing;
 using Scarlet.OpenPgp.Packets;
-using Scarlet.OpenPgp.Signing;
+using Scarlet.OpenPgp.Verification;
 using Scarlet.OpenPgp.Tests.Packets;
 
-namespace Scarlet.OpenPgp.Tests.Signing
+namespace Scarlet.OpenPgp.Tests.Verification
 {
     public class SignatureHashBuilderTests
     {
@@ -36,46 +36,37 @@ namespace Scarlet.OpenPgp.Tests.Signing
         }
 
         [Fact]
-        public void BuildDataToHash_WithRealEd25519SignatureFromEddsaDraft_ShouldProduceTheDocumentedByteSequence()
+        public void SignatureDigest_WithRealEd25519SignatureFromEddsaDraft_ShouldHashExactlyTheDocumentedByteSequence()
         {
-            // Arrange
+            // Arrange: the draft documents both the bytes hashed and their digest. The digest path
+            // verification really uses is checked against the hash of the documented bytes, so any
+            // difference in what it feeds the hash - salt, content, hashed portion, trailer - fails.
             SignaturePacket signature = ParseSignatureFixture();
             byte[] content = "OpenPGP"u8.ToArray();
 
             // Act
-            byte[] dataToHash = SignatureHashBuilder.BuildDataToHash(content, signature);
+            byte[] digest;
+            using (SignatureDigest builder = SignatureDigest.Begin(signature, canonicalizeText: false))
+            {
+                builder.Update(content, 0, content.Length);
+                digest = builder.Finish();
+            }
 
             // Assert
-            Assert.Equal(ExpectedHashInput, dataToHash);
-        }
-
-        [Fact]
-        public void BuildDataToHash_WhenHashed_ShouldProduceTheDocumentedDigest()
-        {
-            // Arrange
-            SignaturePacket signature = ParseSignatureFixture();
-            byte[] content = "OpenPGP"u8.ToArray();
-            byte[] dataToHash = SignatureHashBuilder.BuildDataToHash(content, signature);
-
-            // Act
-            byte[] digest = SHA256.HashData(dataToHash);
-
-            // Assert
+            Assert.Equal(SHA256.HashData(ExpectedHashInput), digest);
             Assert.Equal(ExpectedDigest, digest);
         }
 
         [Fact]
-        public void BuildDataToHash_DigestPrefix_ShouldMatchTheSignaturePacketsLeftHashBytes()
+        public void ComputeDigest_DigestPrefix_ShouldMatchTheSignaturePacketsLeftHashBytes()
         {
             // Arrange: the signature packet's own 2-byte quick-check field must equal the first
             // two bytes of the real digest - an internal consistency check independent of the
             // draft's own documented values.
             SignaturePacket signature = ParseSignatureFixture();
-            byte[] content = "OpenPGP"u8.ToArray();
-            byte[] dataToHash = SignatureHashBuilder.BuildDataToHash(content, signature);
 
             // Act
-            byte[] digest = SHA256.HashData(dataToHash);
+            byte[] digest = SignatureHashBuilder.ComputeDigest("OpenPGP"u8.ToArray(), signature);
 
             // Assert
             Assert.Equal(signature.LeftHashBytes16, new[] { digest[0], digest[1] });

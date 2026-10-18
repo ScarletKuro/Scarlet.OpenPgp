@@ -5,7 +5,7 @@ using Scarlet.OpenPgp.Hashing;
 using Scarlet.OpenPgp.Internal;
 using Scarlet.OpenPgp.Packets;
 
-namespace Scarlet.OpenPgp.Signing
+namespace Scarlet.OpenPgp.Verification
 {
     /// <summary>
     /// Checks one v4/v6 signature against one public key: whether the key may have made it, the

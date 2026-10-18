@@ -8,7 +8,7 @@ using Scarlet.OpenPgp.Packets;
 using PacketTag = Scarlet.OpenPgp.Packets.PacketTag;
 using Packet = Scarlet.OpenPgp.Packets.Packet;
 
-namespace Scarlet.OpenPgp.Tests.Signing
+namespace Scarlet.OpenPgp.Tests.Verification
 {
     /// <summary>
     /// Certificate rules that GnuPG refuses to produce violations of, so the fixtures can't cover

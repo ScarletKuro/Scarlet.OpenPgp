@@ -1,10 +1,9 @@
-namespace Scarlet.OpenPgp.Armor
+namespace Scarlet.OpenPgp.Tests
 {
     /// <summary>
-    /// The CRC24 checksum used by OpenPGP ASCII armor (RFC 4880 §6.1) to detect transmission
-    /// corruption in the base64-encoded body. This is not a security control - it exists to catch
-    /// accidental mangling, not tampering - but a mismatch must still fail closed like any other
-    /// malformed input.
+    /// The CRC24 checksum of OpenPGP ASCII armor (RFC 4880 §6.1), for tests that build armor the way
+    /// other implementations write it. The library itself doesn't check it: RFC 9580 §6.1 makes it
+    /// optional, and it was never a security control - the signature is.
     /// </summary>
     internal static class Crc24
     {

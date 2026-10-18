@@ -22,7 +22,7 @@ namespace Scarlet.OpenPgp.Tests.FixtureGeneration
 
         private static string Armor(string label, byte[] body)
         {
-            int crc = Scarlet.OpenPgp.Armor.Crc24.Compute(body);
+            int crc = Crc24.Compute(body);
             byte[] crcBytes = [(byte)(crc >> 16), (byte)(crc >> 8), (byte)crc];
             return "-----BEGIN PGP " + label + "-----\n\n"
                    + Convert.ToBase64String(body) + "\n"

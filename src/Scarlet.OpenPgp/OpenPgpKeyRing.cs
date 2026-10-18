@@ -5,7 +5,7 @@ using System.Linq;
 using Scarlet.OpenPgp.Armor;
 using Scarlet.OpenPgp.Internal;
 using Scarlet.OpenPgp.Packets;
-using Scarlet.OpenPgp.Signing;
+using Scarlet.OpenPgp.Verification;
 
 namespace Scarlet.OpenPgp
 {

@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using Scarlet.OpenPgp.Armor;
 using Scarlet.OpenPgp.Clearsign;
 using Scarlet.OpenPgp.Internal;
-using Scarlet.OpenPgp.Signing;
+using Scarlet.OpenPgp.Verification;
 
 namespace Scarlet.OpenPgp
 {

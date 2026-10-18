@@ -3,29 +3,17 @@ using System.Buffers;
 using Scarlet.OpenPgp.Hashing;
 using Scarlet.OpenPgp.Packets;
 
-namespace Scarlet.OpenPgp.Signing
+namespace Scarlet.OpenPgp.Verification
 {
     /// <summary>
-    /// Builds the exact byte sequence a v4/v6 signature hashes (RFC 9580 §5.2.4): the v6 salt, the
-    /// signed content, the signature packet's own hashed portion, and a fixed trailer. Isolated on
-    /// purpose - a bug here produces verification failures that look exactly like a crypto bug but
-    /// aren't, so it gets its own byte-exact test independent of full verification.
+    /// What a v4/v6 signature hashes (RFC 9580 §5.2.4): the v6 salt, the signed content, the
+    /// signature packet's own hashed portion, and a fixed trailer. Isolated on purpose - a bug here
+    /// produces verification failures that look exactly like a crypto bug but aren't - and tested
+    /// byte-exactly against the draft-koch-eddsa worked example, through the same digest path that
+    /// verification uses.
     /// </summary>
     internal static class SignatureHashBuilder
     {
-        /// <summary>The whole hash input for in-memory content. Used by tests and for small key-signature inputs.</summary>
-        public static byte[] BuildDataToHash(byte[] content, SignaturePacket signature)
-        {
-            byte[] trailer = BuildTrailer(signature);
-            var result = new byte[signature.Salt.Length + content.Length + signature.HashedPortion.Length + trailer.Length];
-            int offset = 0;
-            Append(result, ref offset, signature.Salt);
-            Append(result, ref offset, content);
-            Append(result, ref offset, signature.HashedPortion);
-            Append(result, ref offset, trailer);
-            return result;
-        }
-
         /// <summary>The digest of <paramref name="content"/> (hashed as-is, no text canonicalization) under <paramref name="signature"/>.</summary>
         public static byte[] ComputeDigest(byte[] content, SignaturePacket signature, bool isKeySignature = false)
         {
@@ -47,12 +35,6 @@ namespace Scarlet.OpenPgp.Signing
                 (byte)(length >> 8),
                 (byte)length,
             ];
-        }
-
-        private static void Append(byte[] target, ref int offset, byte[] source)
-        {
-            Array.Copy(source, 0, target, offset, source.Length);
-            offset += source.Length;
         }
     }
 

@@ -40,6 +40,16 @@ jobs:
           --coverage --coverage-output-format cobertura --coverage-output coverage.cobertura.xml
           --results-directory "${{ github.workspace }}/TestResults"
 
+      - name: Test the netstandard2.0 build
+        # The same tests, run against the netstandard2.0 library instead of the net10.0 one - that is
+        # what .NET Framework and pre-net10 apps get. The AOT reference check is off because that
+        # build isn't (and can't be) marked AOT-compatible.
+        run: >
+          dotnet test -c Release
+          -p:ScarletOpenPgpLibraryTarget=netstandard2.0
+          -p:VerifyReferenceAotCompatibility=false
+          -p:VerifyReferenceTrimCompatibility=false
+
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v7

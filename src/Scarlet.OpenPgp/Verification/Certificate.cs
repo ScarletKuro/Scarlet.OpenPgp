@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Scarlet.OpenPgp.Packets;
 
-namespace Scarlet.OpenPgp.Signing
+namespace Scarlet.OpenPgp.Verification
 {
     /// <summary>
     /// One of the caller's trusted certificates (a "transferable public key", RFC 9580 §10.1), as

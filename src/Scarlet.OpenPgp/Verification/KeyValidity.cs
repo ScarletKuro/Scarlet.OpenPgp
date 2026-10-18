@@ -4,7 +4,7 @@ using System.Linq;
 using Scarlet.OpenPgp.Internal;
 using Scarlet.OpenPgp.Packets;
 
-namespace Scarlet.OpenPgp.Signing
+namespace Scarlet.OpenPgp.Verification
 {
     /// <summary>
     /// What a verified <see cref="Certificate"/> means at a given time: whether one of its keys may

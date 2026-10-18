@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using Scarlet.OpenPgp.Internal;
 using Scarlet.OpenPgp.Packets;
 
-namespace Scarlet.OpenPgp.Signing
+namespace Scarlet.OpenPgp.Verification
 {
     /// <summary>
     /// Verifies one or more document signatures over content that is streamed in once. Phases:
