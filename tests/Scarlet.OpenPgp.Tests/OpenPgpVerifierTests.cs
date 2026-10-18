@@ -190,6 +190,21 @@ namespace Scarlet.OpenPgp.Tests
             Assert.Equal(VerificationStatus.InvalidSignatureTime, then.Status);
         }
 
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void VerifyDetached_AtTheExtremesOfDateTimeOffset_ShouldReturnAResultNotThrow(bool maximum)
+        {
+            // Arrange: every DateTimeOffset is a valid verificationTime; none may escape as an exception.
+            DateTimeOffset at = maximum ? DateTimeOffset.MaxValue : DateTimeOffset.MinValue;
+
+            // Act
+            VerificationResult result = OpenPgpVerifier.VerifyDetached("OpenPGP"u8.ToArray(), SignatureArmor, PublicKeyArmor, at);
+
+            // Assert: valid forever after (the key never expires), from the future before its creation.
+            Assert.Equal(maximum ? VerificationStatus.Valid : VerificationStatus.InvalidSignatureTime, result.Status);
+        }
+
         [Fact]
         public async Task PublicApi_WithNullArguments_ShouldThrowArgumentNullException()
         {

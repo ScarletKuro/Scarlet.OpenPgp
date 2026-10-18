@@ -295,7 +295,7 @@ namespace Scarlet.OpenPgp.Signing
             }
             catch (FailClosedException ex)
             {
-                return (VerificationStatus.KeyNotValidForSigning, "The certificate's self-signatures are malformed: " + ex.Message);
+                return (VerificationStatus.KeyNotValidForSigning, "The certificate's self-signatures can't be used: " + ex.Message);
             }
         }
 
@@ -506,21 +506,50 @@ namespace Scarlet.OpenPgp.Signing
             return createdAt >= key.CreatedAt && createdAt <= now && SignatureVerifier.IsUnexpired(signature, createdAt, now);
         }
 
-        private static SignaturePacket? Latest(IEnumerable<SignaturePacket> signatures)
+        /// <summary>The newest of <paramref name="signatures"/> (see <see cref="NewestTied"/>), or <c>null</c> if there are none.</summary>
+        private static SignaturePacket? Latest(IEnumerable<SignaturePacket> signatures) => NewestTied(signatures).FirstOrDefault();
+
+        /// <summary>
+        /// Every signature sharing the newest creation time. Packet order can't pick between them -
+        /// it is unsigned - so when there are several they must agree on everything read from them
+        /// (key flags and key expiration); if they don't, which one "wins" is ambiguous and the
+        /// certificate fails closed.
+        /// </summary>
+        private static List<SignaturePacket> NewestTied(IEnumerable<SignaturePacket> signatures)
         {
-            SignaturePacket? latest = null;
-            DateTimeOffset latestCreatedAt = DateTimeOffset.MinValue;
+            var newest = new List<SignaturePacket>();
+            DateTimeOffset newestCreatedAt = DateTimeOffset.MinValue;
             foreach (SignaturePacket signature in signatures)
             {
                 DateTimeOffset createdAt = SignatureVerifier.GetCreationTime(signature);
-                if (latest is null || createdAt >= latestCreatedAt)
+                if (newest.Count == 0 || createdAt > newestCreatedAt)
                 {
-                    latest = signature;
-                    latestCreatedAt = createdAt;
+                    newest.Clear();
+                    newestCreatedAt = createdAt;
+                }
+
+                if (createdAt == newestCreatedAt)
+                {
+                    newest.Add(signature);
                 }
             }
 
-            return latest;
+            if (newest.Skip(1).Any(s => !AgreeOnKeyProperties(s, newest[0])))
+            {
+                throw new FailClosedException("Self-signatures made at the same time disagree about the key's flags or expiration.");
+            }
+
+            return newest;
+        }
+
+        private static bool AgreeOnKeyProperties(SignaturePacket a, SignaturePacket b)
+        {
+            byte[]? aFlags = a.KeyFlags;
+            byte[]? bFlags = b.KeyFlags;
+            bool sameFlags = aFlags is null ? bFlags is null : bFlags is not null && aFlags.AsSpan().SequenceEqual(bFlags);
+            bool aExpires = a.TryGetHashedTime(SignatureSubpacketType.KeyExpirationTime, out uint aLifetime);
+            bool bExpires = b.TryGetHashedTime(SignatureSubpacketType.KeyExpirationTime, out uint bLifetime);
+            return sameFlags && aExpires == bExpires && aLifetime == bLifetime;
         }
 
         /// <summary>
@@ -739,7 +768,9 @@ namespace Scarlet.OpenPgp.Signing
             }
 
             /// <summary>The newest binding signature that is valid at <paramref name="now"/> - the one that describes the subkey.</summary>
-            public SignaturePacket? LatestBinding(DateTimeOffset now) => Latest(_bindings.Select(b => b.Binding).Where(b => IsCurrent(b, Key, now)));
+            public SignaturePacket? LatestBinding(DateTimeOffset now) => Latest(CurrentBindings(now));
+
+            private IEnumerable<SignaturePacket> CurrentBindings(DateTimeOffset now) => _bindings.Select(b => b.Binding).Where(b => IsCurrent(b, Key, now));
 
             public (VerificationStatus Status, string Message) Check(DateTimeOffset signatureCreatedAt, DateTimeOffset now)
             {
@@ -754,7 +785,8 @@ namespace Scarlet.OpenPgp.Signing
                     return revocation;
                 }
 
-                SignaturePacket? latest = LatestBinding(now);
+                List<SignaturePacket> newest = NewestTied(CurrentBindings(now));
+                SignaturePacket? latest = newest.FirstOrDefault();
                 if (latest is null)
                 {
                     return (VerificationStatus.KeyNotValidForSigning, "The subkey has no valid binding signature from its primary key.");
@@ -769,8 +801,11 @@ namespace Scarlet.OpenPgp.Signing
                     return (VerificationStatus.KeyNotValidForSigning, "The subkey's binding signature does not allow it to sign data.");
                 }
 
-                List<SignaturePacket> backSignatures = _bindings.First(b => ReferenceEquals(b.Binding, latest)).BackSignatures;
-                if (!backSignatures.Any(s => IsCurrent(s, Key, now)))
+                // Every binding tied for newest needs one, so packet order can't choose the one that has it.
+                bool allBacked = newest.All(binding => _bindings
+                    .Where(b => ReferenceEquals(b.Binding, binding))
+                    .Any(b => b.BackSignatures.Any(s => IsCurrent(s, Key, now))));
+                if (!allBacked)
                 {
                     return (VerificationStatus.KeyNotValidForSigning, "The signing subkey has no valid primary-key binding (back-)signature.");
                 }

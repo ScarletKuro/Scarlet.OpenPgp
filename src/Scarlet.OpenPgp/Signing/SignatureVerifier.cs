@@ -166,7 +166,12 @@ namespace Scarlet.OpenPgp.Signing
         }
 
         /// <summary>Whether <paramref name="createdAt"/> lies further in the future than <see cref="MaxClockSkew"/> allows.</summary>
-        public static bool IsFromTheFuture(DateTimeOffset createdAt, DateTimeOffset now) => createdAt > now + MaxClockSkew;
+        /// <remarks>
+        /// The skew is subtracted from the signature's time, never added to the caller's: a creation
+        /// time is at most 2^32 - 1 seconds after 1970, so this can't overflow, while
+        /// <c>now + MaxClockSkew</c> would throw for a caller passing <see cref="DateTimeOffset.MaxValue"/>.
+        /// </remarks>
+        public static bool IsFromTheFuture(DateTimeOffset createdAt, DateTimeOffset now) => createdAt - MaxClockSkew > now;
 
         /// <summary>
         /// Whether the signature, created at <paramref name="createdAt"/>, is within its own validity

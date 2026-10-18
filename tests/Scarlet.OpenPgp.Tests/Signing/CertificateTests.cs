@@ -509,6 +509,28 @@ namespace Scarlet.OpenPgp.Tests.Signing
 
         private static byte[] Concat(params byte[][] parts) => parts.SelectMany(p => p).ToArray();
 
+        [Theory]
+        [InlineData(PgpKeyFlags.CanCertify, false)]
+        [InlineData(PgpKeyFlags.CanSign, true)]
+        public void SelfSignatures_TiedForNewest_ShouldGiveTheSameVerdictInEitherOrder(int secondFlags, bool expectValid)
+        {
+            // Arrange: two Direct Key signatures made in the same second. When they disagree (one
+            // allows signing, one doesn't) neither can be "the newest", so the key fails closed;
+            // picking by position let reordering the packets turn KeyNotValidForSigning into Valid.
+            PgpKeyPair primary = NewKey();
+            byte[] first = Timed(primary, PgpSignature.DirectKey, CreatedAt, g => g.GenerateCertification(primary.PublicKey), g => g.SetKeyFlags(false, PgpKeyFlags.CanSign));
+            byte[] second = Timed(primary, PgpSignature.DirectKey, CreatedAt, g => g.GenerateCertification(primary.PublicKey), g => g.SetKeyFlags(false, secondFlags));
+            byte[] signature = SignData(primary, CreatedAt.AddDays(10));
+
+            // Act
+            VerificationResult forward = Verify(signature, Certificate(primary, [first, second]));
+            VerificationResult backward = Verify(signature, Certificate(primary, [second, first]));
+
+            // Assert
+            Assert.Equal(forward.Status, backward.Status);
+            Assert.Equal(expectValid, forward.IsValid);
+        }
+
         [Fact]
         public void KeyRevocation_MovedAfterAUserId_ShouldStillRevokeThePrimaryKey()
         {
