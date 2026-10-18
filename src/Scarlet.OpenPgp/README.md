@@ -132,5 +132,5 @@ if (expectedHash != actualHash)
 - Zero external NuGet dependencies. Targets `netstandard2.0` for broad compatibility, plus
   `net10.0` so it can be properly AOT/trim-analyzed when consumed by an AOT-published app.
 
-See the repository root [SPEC.md](../../SPEC.md) for the full design rationale, non-goals, and
+See [SPEC.md](https://github.com/ScarletKuro/Scarlet.OpenPgp/blob/master/SPEC.md) in the repository for the full design rationale, non-goals, and
 testing requirements.

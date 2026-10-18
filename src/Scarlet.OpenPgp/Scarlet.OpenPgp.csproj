@@ -34,6 +34,10 @@
     <Description>Pure C#, zero-dependency, verify-only OpenPGP (RFC 9580 / RFC 4880) implementation.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>openpgp;pgp;gpg;signature;verify;rfc9580;rfc4880</PackageTags>
+    <!-- A .snupkg next to the package, so debuggers can step into the library (Source Link is on by default in the .NET 10 SDK). -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <RepositoryUrl>https://github.com/ScarletKuro/Scarlet.OpenPgp</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
 
