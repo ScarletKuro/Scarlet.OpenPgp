@@ -45,10 +45,46 @@ internal static class Program
                 throw new InvalidOperationException("Data that differs from the signed data verified.");
             }
         },
+
+        // Differential: this library's verifier against BouncyCastle's on the same input.
+        ["ed25519"] = Differential.Ed25519,
+        ["ed448"] = Differential.Ed448,
+        ["ecdsa-p256"] = Differential.EcdsaP256,
+        ["rsa2048"] = Differential.Rsa2048,
     };
 
     private static int Main(string[] args)
     {
+        // "seeds <target> <directory>": write a differential target's seed corpus (Wycheproof's valid vectors).
+        if (args is ["seeds", var seedTarget, var seedDirectory])
+        {
+            Console.WriteLine("Wrote " + Differential.WriteSeeds(seedTarget, seedDirectory) + " seed(s) for '" + seedTarget + "'.");
+            return 0;
+        }
+
+        // "selftest <target> <directory> <iterations>": random byte-level mutations of the inputs in
+        // a directory, without libFuzzer - a quick local check that also runs on Windows.
+        if (args is ["selftest", var testTarget, var testDirectory, var iterationText]
+            && TryResolveTarget(testTarget, out Action<ReadOnlySpan<byte>>? selftest)
+            && int.TryParse(iterationText, out int iterations))
+        {
+            byte[][] corpus = Directory.EnumerateFiles(testDirectory).OrderBy(p => p, StringComparer.Ordinal).Select(File.ReadAllBytes).ToArray();
+            var random = new Random(9580);
+            for (int i = 0; i < iterations; i++)
+            {
+                byte[] input = (byte[])corpus[random.Next(corpus.Length)].Clone();
+                for (int flips = random.Next(1, 4); flips > 0 && input.Length > 0; flips--)
+                {
+                    input[random.Next(input.Length)] ^= (byte)(1 << random.Next(8));
+                }
+
+                selftest(input);
+            }
+
+            Console.WriteLine("Ran " + iterations + " mutated input(s) against '" + testTarget + "' without a failure.");
+            return 0;
+        }
+
         // "replay <target> <file-or-directory>...": run inputs directly, without libFuzzer - to
         // reproduce a crash, or to smoke-test the harness against a corpus.
         if (args is ["replay", _, ..])

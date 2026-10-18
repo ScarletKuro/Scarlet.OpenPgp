@@ -35,7 +35,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [signature, keys, clearsign, data]
+        # The first four feed the public API hostile input; the rest are differential (this
+        # library against BouncyCastle on the same key, signature and message).
+        target: [signature, keys, clearsign, data, ed25519, ed448, ecdsa-p256, rsa2048]
     steps:
       - uses: actions/checkout@v7
 
@@ -50,12 +52,10 @@ jobs:
           echo "$LIBFUZZER_DOTNET_SHA256  libfuzzer-dotnet" | sha256sum --check
           chmod +x libfuzzer-dotnet
 
-      - name: Build and instrument
-        run: |
-          dotnet publish fuzz/Scarlet.OpenPgp.Fuzz -c Release -o out/fuzz
-          sharpfuzz out/fuzz/Scarlet.OpenPgp.dll
+      - name: Build
+        run: dotnet publish fuzz/Scarlet.OpenPgp.Fuzz -c Release -o out/fuzz
 
-      - name: Seed corpus from the test fixtures
+      - name: Seed corpus
         run: |
           mkdir -p corpus artifacts
           assets=tests/Scarlet.OpenPgp.Tests/TestAssets
@@ -64,13 +64,22 @@ jobs:
             keys)      pattern=( \( -name '*.gpg' -o -name 'public-key*.asc' -o -name 'keyring*.asc' \) ) ;;
             clearsign) pattern=( \( -name '*clearsign*.asc' -o -name 'InRelease' -o -name 'SHASUMS256.txt.asc' -o -name 'a6-*' \) ) ;;
             data)      pattern=( -path '*/v4-multi-signer/data.txt' ) ;;
+            *)         pattern=() ;;
           esac
-          # Name each seed after its path: many fixtures share a basename (public-key.gpg,
-          # data.txt.sig), and copying by basename would keep only one of each.
-          find "$assets" -type f "${pattern[@]}" -print0 | while IFS= read -r -d '' file; do
-            cp "$file" "corpus/$(echo "${file#"$assets"/}" | tr '/' '_')"
-          done
+          if [ ${#pattern[@]} -eq 0 ]; then
+            # Differential targets: Wycheproof's valid vectors, written by the (not yet instrumented) harness.
+            dotnet out/fuzz/Scarlet.OpenPgp.Fuzz.dll seeds "${{ matrix.target }}" corpus
+          else
+            # Name each seed after its path: many fixtures share a basename (public-key.gpg,
+            # data.txt.sig), and copying by basename would keep only one of each.
+            find "$assets" -type f "${pattern[@]}" -print0 | while IFS= read -r -d '' file; do
+              cp "$file" "corpus/$(echo "${file#"$assets"/}" | tr '/' '_')"
+            done
+          fi
           ls corpus | wc -l
+
+      - name: Instrument
+        run: sharpfuzz out/fuzz/Scarlet.OpenPgp.dll
 
       - name: Fuzz
         env:

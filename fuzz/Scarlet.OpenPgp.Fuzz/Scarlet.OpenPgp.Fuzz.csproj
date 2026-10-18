@@ -14,6 +14,14 @@
 
   <ItemGroup>
     <PackageReference Include="SharpFuzz" Version="2.3.0" />
+    <!-- The independent reference for the differential targets (Differential.cs); fuzz-only, like
+         its use in the test project. -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.5.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Wycheproof's vectors: the differential targets' seeds and the fixed RSA key. -->
+    <None Include="..\..\tests\Scarlet.OpenPgp.Tests\TestAssets\wycheproof\*.json" Link="Seeds\wycheproof\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
