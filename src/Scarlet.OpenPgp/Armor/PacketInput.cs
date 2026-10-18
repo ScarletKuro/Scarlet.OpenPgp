@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Text;
 using Scarlet.OpenPgp.Internal;
 
@@ -67,13 +66,27 @@ namespace Scarlet.OpenPgp.Armor
                 return blocks[0].Body;
             }
 
-            using var packets = new MemoryStream();
+            // Several blocks (concatenated key files): one array of the exact final size.
+            long total = 0;
             foreach (AsciiArmorBlock block in blocks)
             {
-                packets.Write(block.Body, 0, block.Body.Length);
+                total += block.Body.Length;
             }
 
-            return packets.ToArray();
+            if (total > int.MaxValue)
+            {
+                throw new FailClosedException("Armored input decodes to more data than one array can hold.");
+            }
+
+            var packets = new byte[total];
+            int offset = 0;
+            foreach (AsciiArmorBlock block in blocks)
+            {
+                Array.Copy(block.Body, 0, packets, offset, block.Body.Length);
+                offset += block.Body.Length;
+            }
+
+            return packets;
         }
 
         private static bool LooksArmored(ReadOnlySpan<byte> input)

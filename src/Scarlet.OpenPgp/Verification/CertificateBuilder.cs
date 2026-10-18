@@ -255,17 +255,26 @@ namespace Scarlet.OpenPgp.Verification
         /// </summary>
         private void AddCertificationRevocation(SignaturePacket signature, UserIdDraft? preferred)
         {
-            var candidates = new List<(byte[] Content, List<SignaturePacket> Revocations)>();
+            // The targets in order - the preferred User ID, the primary key alone (null), the other
+            // User IDs - with each one's signed content built only when it is reached.
+            var targets = new List<UserIdDraft?>(_userIds.Count + 1);
             if (preferred is not null)
             {
-                candidates.Add((Concat(_primaryHashPrefix, preferred.HashPrefix), preferred.Revocations));
+                targets.Add(preferred);
             }
 
-            candidates.Add((_primaryHashPrefix, _directRevocations));
-            candidates.AddRange(_userIds.Where(u => u != preferred).Select(u => (Concat(_primaryHashPrefix, u.HashPrefix), u.Revocations)));
-
-            foreach ((byte[] content, List<SignaturePacket> revocations) in candidates)
+            targets.Add(null);
+            foreach (UserIdDraft userId in _userIds)
             {
+                if (userId != preferred)
+                {
+                    targets.Add(userId);
+                }
+            }
+
+            foreach (UserIdDraft? target in targets)
+            {
+                byte[] content = target is null ? _primaryHashPrefix : Concat(_primaryHashPrefix, target.HashPrefix);
                 KeySignatureCheck check = Check(_primary, signature, content);
                 if (check == KeySignatureCheck.NotFromKey)
                 {
@@ -274,7 +283,7 @@ namespace Scarlet.OpenPgp.Verification
 
                 // Unverifiable doesn't depend on the content (an unsupported or too-weak hash), so it
                 // is counted once: the revocation could be genuine, so the key isn't usable.
-                Record(check, signature, revocations);
+                Record(check, signature, target is null ? _directRevocations : target.Revocations);
                 return;
             }
         }

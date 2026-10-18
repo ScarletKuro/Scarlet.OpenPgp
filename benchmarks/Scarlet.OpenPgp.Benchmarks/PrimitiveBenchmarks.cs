@@ -40,8 +40,15 @@ namespace Scarlet.OpenPgp.Benchmarks
             "26b8f91727bd62897af15e41eb43c377efb9c610d48f2335cb0bd0087810f4352541b143c4b981b7e18f62de8ccdf633fc1bf037ab7cd779805e0dbcc0aae1cb" +
             "cee1afb2e027df36bc04dcecbf154336c19f0af7e0a6472905e799f1953d2a0ff3348ab21aa4adafd1d234441cf807c03a00");
 
+        private readonly Ed448PublicKey _reusedKey = new(PublicKey);
+
+        /// <summary>A fresh key every time: decodes the public point on every call.</summary>
         [Benchmark]
         public bool Verify() => Ed448Verifier.Verify(PublicKey, Message, Signature);
+
+        /// <summary>One key reused, as from a parsed key ring: the decoded point is cached.</summary>
+        [Benchmark]
+        public bool VerifyReusedKey() => Ed448Verifier.Verify(_reusedKey, Message, Signature);
     }
 
     /// <summary>Decoding input: ASCII armor (base64) and packet framing.</summary>

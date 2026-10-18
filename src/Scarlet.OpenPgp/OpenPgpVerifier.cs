@@ -264,6 +264,11 @@ namespace Scarlet.OpenPgp
             }
 
             using DocumentVerification verification = StartDetached(signatures, keys);
+            if (!verification.NeedsContent)
+            {
+                return verification.Complete(now, signedText: null); // decided already: nothing to read
+            }
+
             byte[] buffer = ArrayPool<byte>.Shared.Rent(StreamBufferSize);
             try
             {
@@ -291,6 +296,11 @@ namespace Scarlet.OpenPgp
             }
 
             using DocumentVerification verification = StartDetached(signatures, keys);
+            if (!verification.NeedsContent)
+            {
+                return verification.Complete(now, signedText: null); // decided already: nothing to read
+            }
+
             byte[] buffer = ArrayPool<byte>.Shared.Rent(StreamBufferSize);
             try
             {

@@ -24,6 +24,9 @@ namespace Scarlet.OpenPgp.Clearsign
         /// <summary>The canonical signed text as a string: exactly the text the signature covers.</summary>
         public static string CanonicalizeText(string[] dashEscapedLines)
         {
+            // Each line is appended as a range: unescaping and trimming only move its start and end.
+            // The builder is deliberately not pre-sized - for a large message that would be one
+            // large-object-heap buffer per call, which measured worse than its default small chunks.
             var builder = new StringBuilder();
             for (int i = 0; i < dashEscapedLines.Length; i++)
             {
@@ -33,9 +36,14 @@ namespace Scarlet.OpenPgp.Clearsign
                 }
 
                 string line = dashEscapedLines[i];
-                string unescaped = line.StartsWith("- ", StringComparison.Ordinal) ? line.Substring(2) : line;
-                string trimmed = unescaped.TrimEnd(' ', '\t');
-                builder.Append(trimmed);
+                int start = line.StartsWith("- ", StringComparison.Ordinal) ? 2 : 0;
+                int end = line.Length;
+                while (end > start && (line[end - 1] == ' ' || line[end - 1] == '\t'))
+                {
+                    end--;
+                }
+
+                builder.Append(line, start, end - start);
             }
 
             return builder.ToString();

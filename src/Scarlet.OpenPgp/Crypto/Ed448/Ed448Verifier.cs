@@ -32,22 +32,19 @@ namespace Scarlet.OpenPgp.Crypto.Ed448
             (byte)'S', (byte)'i', (byte)'g', (byte)'E', (byte)'d', (byte)'4', (byte)'4', (byte)'8', 0x00, 0x00,
         ];
 
-        public static bool Verify(byte[] publicKey, byte[] message, byte[] signature)
+        /// <summary>Verifies against a raw 57-octet public key; one of any other length simply doesn't verify.</summary>
+        public static bool Verify(byte[] publicKey, byte[] message, byte[] signature) =>
+            publicKey.Length == PublicKeyLength && Verify(new Ed448PublicKey(publicKey), message, signature);
+
+        public static bool Verify(Ed448PublicKey publicKey, byte[] message, byte[] signature)
         {
-            if (publicKey.Length != PublicKeyLength || signature.Length != SignatureLength)
+            if (signature.Length != SignatureLength)
             {
                 return false;
             }
 
-            if (!Ed448PointDecoder.TryDecode(publicKey, out Ed448Point a))
-            {
-                return false;
-            }
-
-            // Reject small-order public keys ([4]A = identity, which includes the identity itself).
-            // No real key is one, and with such an A the verification equation no longer depends on
-            // the message - e.g. A = R = identity, S = 0 "verifies" anything.
-            if (a.Double().Double().Equals(Ed448Point.Identity))
+            // Decoded once per key; small-order keys fail here (see Ed448PublicKey.TryGetValidPoint).
+            if (!publicKey.TryGetValidPoint(out Ed448Point a))
             {
                 return false;
             }
@@ -72,7 +69,7 @@ namespace Scarlet.OpenPgp.Crypto.Ed448
             KeccakHash shake = KeccakHash.CreateShake256(HashLength);
             shake.Update(Dom4PureEmptyContext, 0, Dom4PureEmptyContext.Length);
             shake.Update(rBytes, 0, rBytes.Length);
-            shake.Update(publicKey, 0, publicKey.Length);
+            shake.Update(publicKey.Encoded, 0, publicKey.Encoded.Length);
             shake.Update(message, 0, message.Length);
             BigInteger k = Ed448PointDecoder.LittleEndianToBigInteger(shake.Finish()) % GroupOrderL;
 
