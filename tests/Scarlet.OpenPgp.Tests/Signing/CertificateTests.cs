@@ -489,5 +489,248 @@ namespace Scarlet.OpenPgp.Tests.Signing
             Assert.Equal(VerificationStatus.MalformedInput, result.Status);
             Assert.Contains("more than 32", result.Message, StringComparison.Ordinal);
         }
+
+        private const string UserId = "Owner <owner@example.test>";
+
+        /// <summary>A key signature made at <paramref name="at"/>; <paramref name="generate"/> picks what it certifies.</summary>
+        private static byte[] Timed(PgpKeyPair signer, int type, DateTime at, Func<PgpSignatureGenerator, PgpSignature> generate, Action<PgpSignatureSubpacketGenerator>? configure = null)
+        {
+            var subpackets = new PgpSignatureSubpacketGenerator();
+            subpackets.SetSignatureCreationTime(false, at);
+            configure?.Invoke(subpackets);
+            var generator = new PgpSignatureGenerator(Algorithm, HashAlgorithmTag.Sha256);
+            generator.InitSign(type, signer.PrivateKey);
+            generator.SetHashedSubpackets(subpackets.Generate());
+            return Encoded(generate(generator));
+        }
+
+        private static byte[] UserIdCertification(PgpKeyPair signer, PgpKeyPair owner, int type, DateTime at) =>
+            Timed(signer, type, at, g => g.GenerateCertification(UserId, owner.PublicKey), g => g.SetKeyFlags(false, PgpKeyFlags.CanSign));
+
+        private static byte[] Concat(params byte[][] parts) => parts.SelectMany(p => p).ToArray();
+
+        [Fact]
+        public void KeyRevocation_MovedAfterAUserId_ShouldStillRevokeThePrimaryKey()
+        {
+            // Arrange: the same revocation, in its usual place and moved after a User ID - which
+            // used to be read as a User ID certification and ignored, turning KeyRevoked into Valid.
+            PgpKeyPair primary = NewKey();
+            byte[] revocation = Timed(primary, PgpSignature.KeyRevocation, CreatedAt.AddDays(1), g => g.GenerateCertification(primary.PublicKey));
+            byte[] key = Packet(PacketTag.PublicKey, KeyBody(primary.PublicKey));
+            byte[] userId = Packet(PacketTag.UserId, Encoding.UTF8.GetBytes(UserId));
+            byte[] signature = SignData(primary, CreatedAt.AddDays(10));
+
+            // Act
+            VerificationResult inPlace = Verify(signature, Concat(key, revocation, userId));
+            VerificationResult moved = Verify(signature, Concat(key, userId, revocation));
+
+            // Assert
+            Assert.Equal(VerificationStatus.KeyRevoked, inPlace.Status);
+            Assert.Equal(VerificationStatus.KeyRevoked, moved.Status);
+        }
+
+        [Fact]
+        public void CertificationRevocation_PlacedBeforeTheCertification_ShouldStillRevokeTheUserId()
+        {
+            // Arrange: a revocation (0x30) of the User ID's older self-certification, read first.
+            PgpKeyPair primary = NewKey();
+            byte[] certificate = Concat(
+                Packet(PacketTag.PublicKey, KeyBody(primary.PublicKey)),
+                Packet(PacketTag.UserId, Encoding.UTF8.GetBytes(UserId)),
+                UserIdCertification(primary, primary, PgpSignature.CertificationRevocation, CreatedAt.AddDays(1)),
+                UserIdCertification(primary, primary, PgpSignature.PositiveCertification, CreatedAt));
+
+            // Act
+            OpenPgpKeyRing ring = OpenPgpKeyRing.Parse(certificate);
+
+            // Assert
+            Assert.DoesNotContain(UserId, ring.Certificates[0].UserIds);
+        }
+
+        [Fact]
+        public void V6Key_WhoseOnlyDirectKeySignatureIsRevoked_ShouldNotBeTrustedToSign()
+        {
+            // Arrange: a v6 key's Direct Key signature, then a certification revocation (0x30) of it
+            // over the same content (RFC 9580 §5.2.1.14). BouncyCastle can't make v6 keys, so the
+            // packets are built here and signed with raw Ed25519.
+            var v6 = new V6Ed25519Key(CreatedAt);
+            byte[] directKey = v6.Sign(0x1F, v6.KeyHashContent, CreatedAt);
+            byte[] revocation = v6.Sign(0x30, v6.KeyHashContent, CreatedAt.AddDays(1));
+            byte[] signature = v6.Sign(0x00, Data, CreatedAt.AddDays(10));
+            byte[] certificate = Concat(v6.KeyPacket, directKey);
+
+            // Act
+            VerificationResult beforeRevocation = Verify(signature, certificate);
+            VerificationResult afterRevocation = Verify(signature, Concat(certificate, revocation));
+
+            // Assert
+            Assert.True(beforeRevocation.IsValid, beforeRevocation.ToString());
+            Assert.Equal(VerificationStatus.KeyNotValidForSigning, afterRevocation.Status);
+        }
+
+        /// <summary>A v6 Ed25519 key (algorithm 27) that signs with SHA-256 and a fixed zero salt - enough to build v6 test certificates by hand.</summary>
+        private sealed class V6Ed25519Key
+        {
+            private readonly Ed25519PrivateKeyParameters _private;
+
+            public V6Ed25519Key(DateTime createdAt)
+            {
+                var generator = new Ed25519KeyPairGenerator();
+                generator.Init(new Ed25519KeyGenerationParameters(new SecureRandom()));
+                var pair = generator.GenerateKeyPair();
+                _private = (Ed25519PrivateKeyParameters)pair.Private;
+                byte[] body = [6, .. BigEndian(Seconds(createdAt)), 27, 0, 0, 0, 32, .. ((Ed25519PublicKeyParameters)pair.Public).GetEncoded()];
+                KeyPacket = Packet(PacketTag.PublicKey, body);
+                KeyHashContent = KeyHashPrefix.Build(6, body);
+            }
+
+            public byte[] KeyPacket { get; }
+
+            /// <summary>The key as Direct Key and key revocation signatures hash it.</summary>
+            public byte[] KeyHashContent { get; }
+
+            public byte[] Sign(byte type, byte[] content, DateTime at)
+            {
+                byte[] subpackets = [5, 2, .. BigEndian(Seconds(at))];
+                byte[] hashed = [6, type, 27, 8, .. BigEndian((uint)subpackets.Length), .. subpackets];
+                byte[] salt = new byte[16];
+                byte[] digest = System.Security.Cryptography.SHA256.HashData([.. salt, .. content, .. hashed, 6, 0xFF, .. BigEndian((uint)hashed.Length)]);
+                var signer = new Org.BouncyCastle.Crypto.Signers.Ed25519Signer();
+                signer.Init(true, _private);
+                signer.BlockUpdate(digest, 0, digest.Length);
+                return Packet(PacketTag.Signature, [.. hashed, 0, 0, 0, 0, digest[0], digest[1], 16, .. salt, .. signer.GenerateSignature()]);
+            }
+
+            private static uint Seconds(DateTime at) => (uint)new DateTimeOffset(at).ToUnixTimeSeconds();
+
+            private static byte[] BigEndian(uint value) => [(byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value];
+        }
+
+        [Fact]
+        public void KeyRevocation_PlacedInTheSubkeySection_ShouldStillRevokeThePrimaryKey()
+        {
+            // Arrange: where a signature sits in the block is unsigned; what it covers is signed.
+            PgpKeyPair primary = NewKey();
+            PgpKeyPair subkey = NewKey();
+            byte[] revocation = Timed(primary, PgpSignature.KeyRevocation, CreatedAt.AddDays(1), g => g.GenerateCertification(primary.PublicKey));
+            byte[] certificate = Certificate(
+                primary,
+                [Encoded(DirectKeySignature(primary, PgpKeyFlags.CanSign))],
+                subkey,
+                [Encoded(SubkeyBinding(primary, subkey, PgpKeyFlags.CanSign, withBackSignature: true)), revocation]);
+
+            // Act
+            VerificationResult result = Verify(SignData(primary, CreatedAt.AddDays(10)), certificate);
+
+            // Assert
+            Assert.Equal(VerificationStatus.KeyRevoked, result.Status);
+        }
+
+        [Fact]
+        public void SubkeyRevocation_PlacedBeforeItsSubkey_ShouldStillRevokeIt()
+        {
+            // Arrange
+            PgpKeyPair primary = NewKey();
+            PgpKeyPair subkey = NewKey();
+            byte[] revocation = Timed(primary, PgpSignature.SubkeyRevocation, CreatedAt.AddDays(1), g => g.GenerateCertification(primary.PublicKey, subkey.PublicKey));
+            byte[] certificate = Certificate(
+                primary,
+                [Encoded(DirectKeySignature(primary, PgpKeyFlags.CanCertify)), revocation],
+                subkey,
+                [Encoded(SubkeyBinding(primary, subkey, PgpKeyFlags.CanSign, withBackSignature: true))]);
+
+            // Act
+            VerificationResult result = Verify(SignData(subkey, CreatedAt.AddDays(10)), certificate);
+
+            // Assert
+            Assert.Equal(VerificationStatus.KeyRevoked, result.Status);
+        }
+
+        [Fact]
+        public void SubkeyRevocation_PlacedUnderAnotherSubkey_ShouldStillRevokeItsOwnSubkey()
+        {
+            // Arrange: subkey A's revocation moved into subkey B's section.
+            PgpKeyPair primary = NewKey();
+            PgpKeyPair a = NewKey();
+            PgpKeyPair b = NewKey();
+            byte[] revocationOfA = Timed(primary, PgpSignature.SubkeyRevocation, CreatedAt.AddDays(1), g => g.GenerateCertification(primary.PublicKey, a.PublicKey));
+            byte[] certificate = Concat(
+                Packet(PacketTag.PublicKey, KeyBody(primary.PublicKey)),
+                Encoded(DirectKeySignature(primary, PgpKeyFlags.CanCertify)),
+                Packet(PacketTag.PublicSubkey, KeyBody(a.PublicKey)),
+                Encoded(SubkeyBinding(primary, a, PgpKeyFlags.CanSign, withBackSignature: true)),
+                Packet(PacketTag.PublicSubkey, KeyBody(b.PublicKey)),
+                Encoded(SubkeyBinding(primary, b, PgpKeyFlags.CanSign, withBackSignature: true)),
+                revocationOfA);
+
+            // Act
+            VerificationResult byA = Verify(SignData(a, CreatedAt.AddDays(10)), certificate);
+            VerificationResult byB = Verify(SignData(b, CreatedAt.AddDays(10)), certificate);
+
+            // Assert
+            Assert.Equal(VerificationStatus.KeyRevoked, byA.Status);
+            Assert.True(byB.IsValid, byB.ToString());
+        }
+
+        [Fact]
+        public void UserId_RecertifiedAfterItsRevocation_ShouldBeValidAgain()
+        {
+            // Arrange: certified, revoked a day later, certified again a day after that.
+            PgpKeyPair primary = NewKey();
+            byte[] revoked = Concat(
+                Packet(PacketTag.PublicKey, KeyBody(primary.PublicKey)),
+                Packet(PacketTag.UserId, Encoding.UTF8.GetBytes(UserId)),
+                UserIdCertification(primary, primary, PgpSignature.PositiveCertification, CreatedAt),
+                UserIdCertification(primary, primary, PgpSignature.CertificationRevocation, CreatedAt.AddDays(1)));
+            byte[] recertified = Concat(revoked, UserIdCertification(primary, primary, PgpSignature.PositiveCertification, CreatedAt.AddDays(2)));
+
+            // Act
+            OpenPgpKeyRing revokedRing = OpenPgpKeyRing.Parse(revoked);
+            OpenPgpKeyRing recertifiedRing = OpenPgpKeyRing.Parse(recertified);
+
+            // Assert
+            Assert.Empty(revokedRing.Certificates[0].UserIds);
+            Assert.Equal([UserId], recertifiedRing.Certificates[0].UserIds);
+            Assert.True(Verify(SignData(primary, CreatedAt.AddDays(10)), recertified).IsValid);
+        }
+
+        [Fact]
+        public void V4Key_WhoseOnlySelfCertificationIsRevoked_ShouldNotBeTreatedAsBare()
+        {
+            // Arrange: with the revoked certification gone, the key must not fall back to "no
+            // self-signature, so no restrictions and no expiration".
+            PgpKeyPair primary = NewKey();
+            byte[] certificate = Concat(
+                Packet(PacketTag.PublicKey, KeyBody(primary.PublicKey)),
+                Packet(PacketTag.UserId, Encoding.UTF8.GetBytes(UserId)),
+                UserIdCertification(primary, primary, PgpSignature.PositiveCertification, CreatedAt),
+                UserIdCertification(primary, primary, PgpSignature.CertificationRevocation, CreatedAt.AddDays(1)));
+
+            // Act
+            VerificationResult result = Verify(SignData(primary, CreatedAt.AddDays(10)), certificate);
+
+            // Assert
+            Assert.Equal(VerificationStatus.KeyNotValidForSigning, result.Status);
+        }
+
+        [Fact]
+        public void ThirdPartyCertificationRevocation_ShouldNotRevokeTheOwnersUserId()
+        {
+            // Arrange: someone else revoking their own certification of this User ID.
+            PgpKeyPair primary = NewKey();
+            PgpKeyPair other = NewKey();
+            byte[] certificate = Concat(
+                Packet(PacketTag.PublicKey, KeyBody(primary.PublicKey)),
+                Packet(PacketTag.UserId, Encoding.UTF8.GetBytes(UserId)),
+                UserIdCertification(primary, primary, PgpSignature.PositiveCertification, CreatedAt),
+                UserIdCertification(other, primary, PgpSignature.CertificationRevocation, CreatedAt.AddDays(1)));
+
+            // Act
+            OpenPgpKeyRing ring = OpenPgpKeyRing.Parse(certificate);
+
+            // Assert
+            Assert.Equal([UserId], ring.Certificates[0].UserIds);
+            Assert.True(Verify(SignData(primary, CreatedAt.AddDays(10)), certificate).IsValid);
+        }
     }
 }

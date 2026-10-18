@@ -56,7 +56,9 @@ dash-escaping and the signature block's own armor headers, so reading data strai
   key or subkey past the expiration set by its newest valid self-signature all fail. A key that has
   expired fails *now* even for signatures it made while still valid, the same policy as apt.
 - Revocations in the supplied certificates are honored: "compromised" (or no reason) invalidates
-  every signature; "superseded" and "retired" only signatures made after the revocation.
+  every signature; "superseded" and "retired" only signatures made after the revocation. A revoked
+  self-signature (User ID or Direct Key) no longer counts, and a revocation applies wherever it
+  sits in the key data.
 - Revocations only count if they're in the key data you supply. A certificate's fingerprint
   identifies its primary key only, not its list of signatures: anyone who handles a certificate
   can *delete* a revocation or an expiring self-signature without changing the fingerprint. Adding

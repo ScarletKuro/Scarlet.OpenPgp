@@ -23,6 +23,33 @@ namespace Scarlet.OpenPgp.Tests
             return GC.GetAllocatedBytesForCurrentThread() - before;
         }
 
+        [Theory]
+        [InlineData(0xD5, 0x00)] // empty Padding packets: ignored, so they used to pile up unchecked
+        [InlineData(0xC2, 0x00)] // identical empty "signature" packets: deduplicated, but each still materialized
+        public void SignatureInput_OfAMillionTinyPackets_ShouldNotAmplifyMemory(byte tag, byte length)
+        {
+            // Arrange: 1 MiB of 2-byte packets. Reading every packet before looking at any made this
+            // allocate 69 MiB of packet objects.
+            ReadOnlySpan<byte> packet = [tag, length];
+            byte[] input = new byte[MiB];
+            for (int i = 0; i < input.Length; i += packet.Length)
+            {
+                packet.CopyTo(input.AsSpan(i));
+            }
+
+            var keyRing = OpenPgpKeyRing.Parse(File.ReadAllBytes(Folder + "public-key.gpg"));
+            byte[] data = File.ReadAllBytes(Folder + "data.txt");
+            VerificationResult? result = null;
+
+            // Act
+            long allocated = AllocatedBy(() => result = OpenPgpVerifier.VerifyDetached(data, input, keyRing, Now));
+
+            // Assert
+            Assert.False(result!.IsValid);
+            // The input is copied once (the span overload owns its own copy); nothing else may scale with it.
+            Assert.True(allocated < input.Length + (256 * 1024), "Allocated " + allocated + " bytes for a " + input.Length + "-byte input.");
+        }
+
         [Fact]
         public void SignatureInput_WithTensOfThousandsOfDistinctPackets_ShouldBeRejectedWithoutQuadraticWork()
         {
@@ -94,7 +121,7 @@ namespace Scarlet.OpenPgp.Tests
             long literalAllocated = AllocatedBy(() => PacketReader.ReadAll(literal));
 
             // Assert
-            Assert.Empty(PacketReader.ReadAll(padding)[0].Body);
+            Assert.Empty(PacketReader.ReadAll(padding)); // ignored packets are dropped entirely
             Assert.Equal(length, PacketReader.ReadAll(literal)[0].Body.Length);
             Assert.True(paddingAllocated < 64 * 1024, "Padding allocated " + paddingAllocated + " bytes.");
             Assert.True(literalAllocated < length + (1 * MiB), "Literal allocated " + literalAllocated + " bytes.");

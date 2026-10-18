@@ -18,21 +18,41 @@ namespace Scarlet.OpenPgp.Packets
     /// (§4.2.2.4), which it transparently concatenates into a single logical body per packet. Any
     /// truncation or malformed length encoding fails closed.
     /// </summary>
+    /// <remarks>
+    /// Marker, Padding and Trust packets are validated for framing and then dropped: Marker and
+    /// Padding are defined to be ignored (RFC 9580 §5.8, §5.15), and Trust packets are local keyring
+    /// data with no meaning here. Dropping them costs no allocation at all, so input made of
+    /// millions of tiny padding packets can't be blown up into millions of objects.
+    /// </remarks>
     internal static class PacketReader
     {
-        public static List<Packet> ReadAll(byte[] data)
+        public static List<Packet> ReadAll(byte[] data) => [.. Enumerate(data)];
+
+        /// <summary>
+        /// The packets of <paramref name="data"/>, read one at a time as the caller asks for them, so
+        /// a caller that has seen enough can stop without materializing the rest. Fails closed on the
+        /// first malformed packet reached.
+        /// </summary>
+        public static IEnumerable<Packet> Enumerate(byte[] data)
         {
-            var packets = new List<Packet>();
+            // Where a body lies in the input: one segment, or several for partial-length framing.
+            // Located first and copied once at its final size - no growing buffer, no second copy.
+            // Reused for every packet, so a skipped packet allocates nothing.
+            var segments = new List<Segment>(1);
             int position = 0;
             while (position < data.Length)
             {
-                packets.Add(ReadOne(data, ref position));
+                segments.Clear();
+                byte rawTag = ReadHeaderAndLocateBody(data, ref position, segments);
+                var tag = (PacketTag)rawTag;
+                if (!IsIgnored(tag))
+                {
+                    yield return new Packet(new PacketHeader(tag, rawTag), Materialize(data, segments));
+                }
             }
-
-            return packets;
         }
 
-        private static Packet ReadOne(byte[] data, ref int position)
+        private static byte ReadHeaderAndLocateBody(byte[] data, ref int position, List<Segment> segments)
         {
             byte tagByte = ReadByte(data, ref position, "packet tag");
             if ((tagByte & 0x80) == 0)
@@ -40,35 +60,18 @@ namespace Scarlet.OpenPgp.Packets
                 throw new FailClosedException("Packet tag byte does not have the mandatory high bit set.");
             }
 
-            bool newFormat = (tagByte & 0x40) != 0;
-            byte rawTag;
-
-            // Where the body lies in the input: one segment, or several for partial-length framing.
-            // Located first and copied once at its final size - no growing buffer, no second copy.
-            var body = new List<Segment>(1);
-
-            if (newFormat)
+            if ((tagByte & 0x40) != 0)
             {
-                rawTag = (byte)(tagByte & 0x3F);
-                ReadNewFormatBody(data, ref position, rawTag, body);
-            }
-            else
-            {
-                rawTag = (byte)((tagByte & 0x3C) >> 2);
-                int lengthType = tagByte & 0x03;
-                ReadOldFormatBody(data, ref position, lengthType, body);
+                byte rawTag = (byte)(tagByte & 0x3F);
+                ReadNewFormatBody(data, ref position, rawTag, segments);
+                return rawTag;
             }
 
-            var header = new PacketHeader((PacketTag)rawTag, rawTag);
-            return new Packet(header, IsBodyIgnored(header.Tag) ? [] : Materialize(data, body));
+            ReadOldFormatBody(data, ref position, tagByte & 0x03, segments);
+            return (byte)((tagByte & 0x3C) >> 2);
         }
 
-        /// <summary>
-        /// Packet types whose bodies no consumer reads: Marker and Padding are defined to be ignored
-        /// (RFC 9580 §5.8, §5.15), and Trust packets are local keyring data with no meaning here.
-        /// Their bodies are skipped without being copied - a padding packet can be arbitrarily large.
-        /// </summary>
-        private static bool IsBodyIgnored(PacketTag tag) => tag == PacketTag.Marker || tag == PacketTag.Padding || tag == PacketTag.Trust;
+        private static bool IsIgnored(PacketTag tag) => tag == PacketTag.Marker || tag == PacketTag.Padding || tag == PacketTag.Trust;
 
         private static byte[] Materialize(byte[] data, List<Segment> segments)
         {

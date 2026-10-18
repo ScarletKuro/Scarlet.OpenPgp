@@ -29,5 +29,8 @@ namespace Scarlet.OpenPgp.Packets
 
         /// <summary>Revokes a subkey.</summary>
         SubkeyRevocation = 0x28,
+
+        /// <summary>Revokes earlier certifications over the same content: a User ID's certifications, or a Direct Key signature (RFC 9580 §5.2.1.14).</summary>
+        CertificationRevocation = 0x30,
     }
 }

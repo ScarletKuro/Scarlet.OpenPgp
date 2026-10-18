@@ -14,19 +14,32 @@ namespace Scarlet.OpenPgp.Signing
     /// block can never change what the certificate says.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// A signature counts for whatever it verifiably covers, not for where it sits in the block. A
+    /// key revocation moved after a User ID, or a subkey revocation moved under another subkey,
+    /// still verifies over its own content, so it still applies - rearranging packets must not be a
+    /// way to make a revocation disappear.
+    /// </para>
+    /// <para>
     /// The cryptographic checks happen once, here; whether a key is valid *at a given time* - not
     /// expired, not revoked, still bound - depends on the clock and on the document signature's
     /// creation time, so that part is <see cref="CheckSigningKey"/>.
+    /// </para>
     /// </remarks>
     internal sealed class Certificate
     {
         private const byte SignDataFlag = 0x02;
 
         private readonly byte[] _primaryHashPrefix;
-        private readonly List<SignaturePacket> _selfSignatures = [];
+
+        /// <summary>Verified Direct Key signatures (0x1F), and the certification revocations (0x30) over the primary key alone that revoke them.</summary>
+        private readonly SignatureSet _directSignatures = new();
+
+        /// <summary>Verified key revocations (0x20).</summary>
         private readonly List<SignaturePacket> _revocations = [];
+
+        private readonly List<UserIdEntry> _userIds = [];
         private readonly List<Subkey> _subkeys = [];
-        private readonly List<string> _userIds = [];
 
         /// <summary>Self-signatures and revocations that claim to be from the primary key but can't be checked (see <see cref="SignatureVerifier.CheckKeySignature"/>).</summary>
         private int _unverifiableSignatures;
@@ -42,8 +55,19 @@ namespace Scarlet.OpenPgp.Signing
         /// <summary>The primary key followed by every subkey, in order.</summary>
         public IEnumerable<PublicKeyPacket> Keys => new[] { Primary }.Concat(_subkeys.Select(s => s.Key));
 
-        /// <summary>The User IDs carrying a valid self-certification, in certificate order.</summary>
-        public IReadOnlyList<string> UserIds => _userIds;
+        /// <summary>The User IDs carrying an unrevoked valid self-certification, in certificate order.</summary>
+        public IReadOnlyList<string> UserIds =>
+            _userIds.Where(u => u.Text is not null && u.Signatures.Effective.Any()).Select(u => u.Text!).ToList();
+
+        /// <summary>
+        /// The self-signatures that describe the primary key: Direct Key signatures and User ID
+        /// self-certifications, minus those a later certification revocation (0x30) took back.
+        /// </summary>
+        private IEnumerable<SignaturePacket> SelfSignatures =>
+            _directSignatures.Effective.Concat(_userIds.SelectMany(u => u.Signatures.Effective));
+
+        /// <summary>Whether the primary key has ever had a valid self-signature, revoked or not.</summary>
+        private bool HasSelfSignatures => _directSignatures.HasAny || _userIds.Any(u => u.Signatures.HasAny);
 
         /// <summary>
         /// Folds another copy of this same certificate (same primary key fingerprint) into this one:
@@ -54,14 +78,19 @@ namespace Scarlet.OpenPgp.Signing
         /// </summary>
         public void MergeFrom(Certificate other)
         {
-            _selfSignatures.AddRange(other._selfSignatures);
+            _directSignatures.MergeFrom(other._directSignatures);
             _revocations.AddRange(other._revocations);
             _unverifiableSignatures += other._unverifiableSignatures;
-            foreach (string userId in other._userIds)
+            foreach (UserIdEntry userId in other._userIds)
             {
-                if (!_userIds.Contains(userId))
+                UserIdEntry? existing = FindUserId(userId.HashPrefix);
+                if (existing is null)
                 {
                     _userIds.Add(userId);
+                }
+                else
+                {
+                    existing.Signatures.MergeFrom(userId.Signatures);
                 }
             }
 
@@ -78,8 +107,6 @@ namespace Scarlet.OpenPgp.Signing
                 }
             }
         }
-
-        private Subkey? FindSubkey(KeyFingerprint fingerprint) => _subkeys.FirstOrDefault(s => s.Key.Fingerprint.Matches(fingerprint.Bytes));
 
         /// <summary>Whether <paramref name="key"/> (the primary or a subkey) has a valid revocation, hard or soft.</summary>
         public bool IsRevoked(PublicKeyPacket key)
@@ -102,7 +129,7 @@ namespace Scarlet.OpenPgp.Signing
             try
             {
                 SignaturePacket? selfSignature = ReferenceEquals(key, Primary)
-                    ? LatestPrimarySelfSignature(now) ?? Latest(_selfSignatures)
+                    ? LatestPrimarySelfSignature(now) ?? Latest(SelfSignatures)
                     : _subkeys.FirstOrDefault(s => ReferenceEquals(s.Key, key))?.LatestBinding(now);
                 return ExpirationOf(selfSignature, key.CreatedAt);
             }
@@ -121,10 +148,15 @@ namespace Scarlet.OpenPgp.Signing
             var certificate = new Certificate(PublicKeyPacket.Parse(packets[start].Body));
 
             // What the signatures currently being read are attached to.
-            byte[]? userIdPrefix = null;
-            string? userId = null;
+            UserIdEntry? currentUserId = null;
             Subkey? currentSubkey = null;
             bool inSubkeySection = false;
+
+            // Signatures whose target may not have been read yet (a subkey further down), or that
+            // aren't next to it: matched against every candidate once the whole block is read.
+            var subkeySignatures = new List<(SignaturePacket Signature, Subkey? Preferred)>();
+            var certificationRevocations = new List<(SignaturePacket Signature, UserIdEntry? Preferred)>();
+            bool unparseableOutsideSubkeys = false;
 
             for (int i = start + 1; i < end; i++)
             {
@@ -138,15 +170,12 @@ namespace Scarlet.OpenPgp.Signing
                             throw new FailClosedException("User ID packet after a subkey in a public key block.");
                         }
 
-                        userIdPrefix = BuildUserIdHashPrefix(packet.Header.Tag, packet.Body);
-
-                        // User IDs are UTF-8 by convention (RFC 9580 §5.11); invalid bytes become U+FFFD,
-                        // which is fine for a display-only value. User Attributes (photos) have no text.
-                        userId = packet.Header.Tag == PacketTag.UserId ? System.Text.Encoding.UTF8.GetString(packet.Body) : null;
+                        currentUserId = certificate.AddUserId(packet.Header.Tag, packet.Body);
                         break;
 
                     case PacketTag.PublicSubkey:
                         inSubkeySection = true;
+                        currentUserId = null;
                         currentSubkey = Subkey.TryCreate(certificate.Primary, packet.Body);
                         if (currentSubkey is not null)
                         {
@@ -170,50 +199,60 @@ namespace Scarlet.OpenPgp.Signing
                         SignaturePacket? signature = TryParseSignature(packet.Body);
                         if (signature is null)
                         {
-                            // A revocation, direct-key or binding signature that can't even be parsed
-                            // may still be the key's own statement - often a revocation - so it must
-                            // not just vanish: count it as uncheckable, which makes the key unusable.
-                            // (User ID certifications can't be told apart from third parties' here,
-                            // so an unparseable one is ignored.)
-                            byte type = RawSignatureType(packet.Body);
-                            if (inSubkeySection)
-                            {
-                                if (type == (byte)SignatureType.SubkeyBinding || type == (byte)SignatureType.SubkeyRevocation)
-                                {
-                                    currentSubkey?.MarkUnverifiable();
-                                }
-                            }
-                            else if (userIdPrefix is null && (type == (byte)SignatureType.DirectKey || type == (byte)SignatureType.KeyRevocation))
-                            {
-                                certificate._unverifiableSignatures++;
-                            }
-
+                            unparseableOutsideSubkeys |= certificate.RecordUnparseable(RawSignatureType(packet.Body), inSubkeySection, currentSubkey);
                             break;
                         }
 
-                        if (inSubkeySection)
+                        switch ((SignatureType)signature.SignatureTypeRaw)
                         {
-                            currentSubkey?.AddSignature(certificate, signature);
-                        }
-                        else if (userIdPrefix is not null) // in the User ID section
-                        {
-                            certificate.AddUserIdSignature(signature, userIdPrefix, userId);
-                        }
-                        else
-                        {
-                            certificate.AddDirectSignature(signature);
+                            case SignatureType.DirectKey:
+                                Record(certificate.CheckOverPrimary(signature), signature, certificate._directSignatures.Signatures, ref certificate._unverifiableSignatures);
+                                break;
+
+                            case SignatureType.KeyRevocation:
+                                Record(certificate.CheckOverPrimary(signature), signature, certificate._revocations, ref certificate._unverifiableSignatures);
+                                break;
+
+                            case SignatureType.CertificationRevocation:
+                                certificationRevocations.Add((signature, currentUserId));
+                                break;
+
+                            case SignatureType.SubkeyBinding:
+                            case SignatureType.SubkeyRevocation:
+                                subkeySignatures.Add((signature, inSubkeySection ? currentSubkey : null));
+                                break;
+
+                            default:
+                                // Self-certifications only mean something next to their User ID;
+                                // elsewhere they are dropped, which can only take capabilities away.
+                                if (currentUserId is not null)
+                                {
+                                    certificate.AddCertification(currentUserId, signature);
+                                }
+
+                                break;
                         }
 
-                        break;
-
-                    case PacketTag.Trust:
-                    case PacketTag.Marker:
-                    case PacketTag.Padding:
                         break;
 
                     default:
                         throw new FailClosedException("Unexpected packet (tag " + packet.Header.RawTag + ") in a public key block.");
                 }
+            }
+
+            foreach ((SignaturePacket signature, UserIdEntry? preferred) in certificationRevocations)
+            {
+                certificate.AddCertificationRevocation(signature, preferred);
+            }
+
+            foreach ((SignaturePacket signature, Subkey? preferred) in subkeySignatures)
+            {
+                certificate.AddSubkeySignature(signature, preferred);
+            }
+
+            if (unparseableOutsideSubkeys)
+            {
+                certificate.MarkAllSubkeysUnverifiable();
             }
 
             return certificate;
@@ -280,15 +319,16 @@ namespace Scarlet.OpenPgp.Signing
             latestSelfSignature = LatestPrimarySelfSignature(now);
             if (Primary.Version == 6 && latestSelfSignature is null)
             {
-                return (VerificationStatus.KeyNotValidForSigning, "The v6 primary key has no valid Direct Key self-signature.");
+                return (VerificationStatus.KeyNotValidForSigning, "The v6 primary key has no valid, unrevoked Direct Key self-signature.");
             }
 
             // Only a v4 key that never had a self-signature counts as a bare, unrestricted key. If it
-            // has self-signatures but none is valid now (all expired, say), the restrictions and the
-            // expiration they carried must not silently disappear - the key is simply not usable.
-            if (latestSelfSignature is null && _selfSignatures.Count > 0)
+            // has self-signatures but none is valid now (all expired or revoked, say), the
+            // restrictions and the expiration they carried must not silently disappear - the key is
+            // simply not usable.
+            if (latestSelfSignature is null && HasSelfSignatures)
             {
-                return (VerificationStatus.KeyNotValidForSigning, "None of the primary key's self-signatures is currently valid (they have expired).");
+                return (VerificationStatus.KeyNotValidForSigning, "None of the primary key's self-signatures is currently valid (they have expired or been revoked).");
             }
 
             if (signatureCreatedAt < Primary.CreatedAt)
@@ -308,7 +348,7 @@ namespace Scarlet.OpenPgp.Signing
         /// </summary>
         private SignaturePacket? LatestPrimarySelfSignature(DateTimeOffset now)
         {
-            IEnumerable<SignaturePacket> candidates = _selfSignatures.Where(s => IsCurrent(s, Primary, now));
+            IEnumerable<SignaturePacket> candidates = SelfSignatures.Where(s => IsCurrent(s, Primary, now));
             if (Primary.Version == 6)
             {
                 candidates = candidates.Where(s => s.SignatureTypeRaw == (byte)SignatureType.DirectKey);
@@ -317,19 +357,134 @@ namespace Scarlet.OpenPgp.Signing
             return Latest(candidates);
         }
 
-        private void AddDirectSignature(SignaturePacket signature)
+        private UserIdEntry AddUserId(PacketTag tag, byte[] body)
         {
-            switch ((SignatureType)signature.SignatureTypeRaw)
+            byte[] hashPrefix = BuildUserIdHashPrefix(tag, body);
+            UserIdEntry? existing = FindUserId(hashPrefix);
+            if (existing is not null)
             {
-                case SignatureType.DirectKey:
-                    Record(SignatureVerifier.CheckKeySignature(Primary, signature, _primaryHashPrefix), signature, _selfSignatures, ref _unverifiableSignatures);
-                    break;
+                return existing;
+            }
 
-                case SignatureType.KeyRevocation:
-                    Record(SignatureVerifier.CheckKeySignature(Primary, signature, _primaryHashPrefix), signature, _revocations, ref _unverifiableSignatures);
-                    break;
+            // User IDs are UTF-8 by convention (RFC 9580 §5.11); invalid bytes become U+FFFD, which
+            // is fine for a display-only value. User Attributes (photos) have no text.
+            var entry = new UserIdEntry(hashPrefix, tag == PacketTag.UserId ? System.Text.Encoding.UTF8.GetString(body) : null);
+            _userIds.Add(entry);
+            return entry;
+        }
+
+        private void AddCertification(UserIdEntry userId, SignaturePacket signature)
+        {
+            if (signature.SignatureTypeRaw < (byte)SignatureType.GenericCertification
+                || signature.SignatureTypeRaw > (byte)SignatureType.PositiveCertification)
+            {
+                return;
+            }
+
+            KeySignatureCheck check = SignatureVerifier.CheckKeySignature(Primary, signature, Concat(_primaryHashPrefix, userId.HashPrefix));
+            Record(check, signature, userId.Signatures.Signatures, ref _unverifiableSignatures);
+        }
+
+        /// <summary>
+        /// A certification revocation (0x30, RFC 9580 §5.2.1.14) revokes earlier certifications over
+        /// the same content: a User ID's self-certifications, or - over the primary key alone - its
+        /// Direct Key signatures. Matched against the User ID it follows first, then the primary key
+        /// alone, then every other User ID. One by a third party matches nothing and is ignored.
+        /// </summary>
+        private void AddCertificationRevocation(SignaturePacket signature, UserIdEntry? preferred)
+        {
+            var candidates = new List<(byte[] Content, List<SignaturePacket> Revocations)>();
+            if (preferred is not null)
+            {
+                candidates.Add((Concat(_primaryHashPrefix, preferred.HashPrefix), preferred.Signatures.Revocations));
+            }
+
+            candidates.Add((_primaryHashPrefix, _directSignatures.Revocations));
+            candidates.AddRange(_userIds.Where(u => u != preferred).Select(u => (Concat(_primaryHashPrefix, u.HashPrefix), u.Signatures.Revocations)));
+
+            foreach ((byte[] content, List<SignaturePacket> revocations) in candidates)
+            {
+                KeySignatureCheck check = SignatureVerifier.CheckKeySignature(Primary, signature, content);
+                if (check == KeySignatureCheck.NotFromKey)
+                {
+                    continue; // over other content, or not the primary key's at all
+                }
+
+                // Unverifiable doesn't depend on the content (an unsupported or too-weak hash), so it
+                // is counted once: the revocation could be genuine, so the key isn't usable.
+                Record(check, signature, revocations, ref _unverifiableSignatures);
+                return;
             }
         }
+
+        /// <summary>
+        /// A subkey binding or revocation applies to the subkey it verifies for: the one it follows
+        /// first, then every other. One that verifies for none is ignored; one by the primary key
+        /// that can't be checked makes every subkey it could concern unusable.
+        /// </summary>
+        private void AddSubkeySignature(SignaturePacket signature, Subkey? preferred)
+        {
+            IEnumerable<Subkey> candidates = preferred is null ? _subkeys : new[] { preferred }.Concat(_subkeys.Where(s => s != preferred));
+            foreach (Subkey subkey in candidates)
+            {
+                KeySignatureCheck check = subkey.AddSignature(Primary, signature);
+                if (check == KeySignatureCheck.Valid)
+                {
+                    return;
+                }
+
+                if (check == KeySignatureCheck.Unverifiable)
+                {
+                    // Not content-dependent, so it is the same for every subkey: without knowing which
+                    // one it concerns, none can be trusted.
+                    MarkAllSubkeysUnverifiable();
+                    return;
+                }
+            }
+        }
+
+        /// <summary>
+        /// A signature that can't even be parsed may still be the key's own statement - often a
+        /// revocation - so it must not just vanish: it counts as uncheckable, which makes what it
+        /// could concern unusable. User ID certifications and their revocations are skipped: third
+        /// parties issue those too, and an unparseable one can't be told apart.
+        /// </summary>
+        /// <returns>
+        /// Whether it is a subkey binding or revocation outside any subkey's section, which could
+        /// concern any subkey - including ones not read yet, so the caller marks them all at the end.
+        /// </returns>
+        private bool RecordUnparseable(byte type, bool inSubkeySection, Subkey? currentSubkey)
+        {
+            switch ((SignatureType)type)
+            {
+                case SignatureType.DirectKey:
+                case SignatureType.KeyRevocation:
+                    _unverifiableSignatures++;
+                    return false;
+
+                case SignatureType.SubkeyBinding:
+                case SignatureType.SubkeyRevocation:
+                    currentSubkey?.MarkUnverifiable();
+                    return !inSubkeySection;
+
+                default:
+                    return false;
+            }
+        }
+
+        private void MarkAllSubkeysUnverifiable()
+        {
+            foreach (Subkey subkey in _subkeys)
+            {
+                subkey.MarkUnverifiable();
+            }
+        }
+
+        private KeySignatureCheck CheckOverPrimary(SignaturePacket signature) => SignatureVerifier.CheckKeySignature(Primary, signature, _primaryHashPrefix);
+
+        private Subkey? FindSubkey(KeyFingerprint fingerprint) => _subkeys.FirstOrDefault(s => s.Key.Fingerprint.Matches(fingerprint.Bytes));
+
+        private UserIdEntry? FindUserId(byte[] hashPrefix) => _userIds.FirstOrDefault(u => u.HashPrefix.AsSpan().SequenceEqual(hashPrefix));
 
         /// <summary>Keeps a verified signature in <paramref name="verified"/>, and counts one that claims to be the key's own but can't be checked.</summary>
         private static void Record(KeySignatureCheck check, SignaturePacket signature, List<SignaturePacket> verified, ref int unverifiable)
@@ -341,22 +496,6 @@ namespace Scarlet.OpenPgp.Signing
             else if (check == KeySignatureCheck.Unverifiable)
             {
                 unverifiable++;
-            }
-        }
-
-        private void AddUserIdSignature(SignaturePacket signature, byte[] userIdPrefix, string? userId)
-        {
-            if (signature.SignatureTypeRaw < (byte)SignatureType.GenericCertification
-                || signature.SignatureTypeRaw > (byte)SignatureType.PositiveCertification)
-            {
-                return; // certification revocations etc. don't affect whether the key can sign
-            }
-
-            KeySignatureCheck check = SignatureVerifier.CheckKeySignature(Primary, signature, Concat(_primaryHashPrefix, userIdPrefix));
-            Record(check, signature, _selfSignatures, ref _unverifiableSignatures);
-            if (check == KeySignatureCheck.Valid && userId is not null && !_userIds.Contains(userId))
-            {
-                _userIds.Add(userId);
             }
         }
 
@@ -483,6 +622,42 @@ namespace Scarlet.OpenPgp.Signing
             return result;
         }
 
+        /// <summary>
+        /// Verified self-certifications (or Direct Key signatures) and the verified certification
+        /// revocations (0x30) over the same content. A revocation takes back every certification
+        /// made no later than itself; a newer certification is valid again, as RFC 9580 §5.2.1.14
+        /// lets a key owner re-certify.
+        /// </summary>
+        private sealed class SignatureSet
+        {
+            public List<SignaturePacket> Signatures { get; } = [];
+
+            public List<SignaturePacket> Revocations { get; } = [];
+
+            public bool HasAny => Signatures.Count > 0;
+
+            public IEnumerable<SignaturePacket> Effective =>
+                Signatures.Where(s => !Revocations.Any(r => SignatureVerifier.GetCreationTime(r) >= SignatureVerifier.GetCreationTime(s)));
+
+            public void MergeFrom(SignatureSet other)
+            {
+                Signatures.AddRange(other.Signatures);
+                Revocations.AddRange(other.Revocations);
+            }
+        }
+
+        /// <summary>A User ID or User Attribute packet, identified by its hash prefix, with its self-certifications.</summary>
+        private sealed class UserIdEntry(byte[] hashPrefix, string? text)
+        {
+            /// <summary>The framed packet as certifications hash it (see <see cref="BuildUserIdHashPrefix"/>); also what identifies a repeated copy.</summary>
+            public byte[] HashPrefix { get; } = hashPrefix;
+
+            /// <summary>The User ID text; <c>null</c> for a User Attribute.</summary>
+            public string? Text { get; } = text;
+
+            public SignatureSet Signatures { get; } = new();
+        }
+
         /// <summary>A subkey with its verified binding signatures (each with its verified back-signatures) and revocations.</summary>
         private sealed class Subkey
         {
@@ -523,38 +698,36 @@ namespace Scarlet.OpenPgp.Signing
                 return new Subkey(key, content);
             }
 
-            public void AddSignature(Certificate certificate, SignaturePacket signature)
+            /// <summary>Checks a subkey binding or revocation signature against this subkey, keeping it if it verifies. The caller deals with an uncheckable one.</summary>
+            public KeySignatureCheck AddSignature(PublicKeyPacket primary, SignaturePacket signature)
             {
-                switch ((SignatureType)signature.SignatureTypeRaw)
+                KeySignatureCheck check = SignatureVerifier.CheckKeySignature(primary, signature, _bindingContent);
+                if (check != KeySignatureCheck.Valid)
                 {
-                    case SignatureType.SubkeyBinding:
-                        KeySignatureCheck bindingCheck = SignatureVerifier.CheckKeySignature(certificate.Primary, signature, _bindingContent);
-                        if (bindingCheck == KeySignatureCheck.Valid)
-                        {
-                            // The back-signature is made by the subkey over the same content, proving
-                            // the subkey's owner agreed to be bound (RFC 9580 §5.2.1.6).
-                            List<SignaturePacket> backSignatures = signature.EmbeddedSignatures
-                                .Where(s => s.SignatureTypeRaw == (byte)SignatureType.PrimaryKeyBinding)
-                                .Where(s => SignatureVerifier.CheckKeySignature(Key, s, _bindingContent) == KeySignatureCheck.Valid)
-                                .ToList();
-                            _bindings.Add((signature, backSignatures));
-                        }
-                        else if (bindingCheck == KeySignatureCheck.Unverifiable)
-                        {
-                            _unverifiableSignatures++;
-                        }
-
-                        break;
-
-                    case SignatureType.SubkeyRevocation:
-                        Record(SignatureVerifier.CheckKeySignature(certificate.Primary, signature, _bindingContent), signature, _revocations, ref _unverifiableSignatures);
-                        break;
+                    return check;
                 }
+
+                if (signature.SignatureTypeRaw == (byte)SignatureType.SubkeyRevocation)
+                {
+                    _revocations.Add(signature);
+                }
+                else
+                {
+                    // The back-signature is made by the subkey over the same content, proving the
+                    // subkey's owner agreed to be bound (RFC 9580 §5.2.1.6).
+                    List<SignaturePacket> backSignatures = signature.EmbeddedSignatures
+                        .Where(s => s.SignatureTypeRaw == (byte)SignatureType.PrimaryKeyBinding)
+                        .Where(s => SignatureVerifier.CheckKeySignature(Key, s, _bindingContent) == KeySignatureCheck.Valid)
+                        .ToList();
+                    _bindings.Add((signature, backSignatures));
+                }
+
+                return check;
             }
 
             public bool IsRevoked => _revocations.Count > 0;
 
-            /// <summary>Records a binding or revocation of this subkey that can't be parsed (see <see cref="Certificate.Build"/>).</summary>
+            /// <summary>Records a binding or revocation that may concern this subkey but can't be checked or parsed (see <see cref="Certificate.Build"/>).</summary>
             public void MarkUnverifiable() => _unverifiableSignatures++;
 
             /// <summary>Takes another copy of this subkey's verified bindings and revocations (see <see cref="Certificate.MergeFrom"/>).</summary>

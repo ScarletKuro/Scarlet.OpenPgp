@@ -22,6 +22,9 @@ namespace Scarlet.OpenPgp.Signing
         /// <summary>The most distinct signatures one input may carry. Real files have one to a handful (Debian's Release has three); the limit only exists to bound the hashing work.</summary>
         public const int MaxSignatures = 32;
 
+        /// <summary>The most signature packets one input may carry, counting identical copies of the same signature.</summary>
+        public const int MaxSignaturePackets = 8 * MaxSignatures;
+
         private readonly List<Entry> _entries;
         private readonly VerificationResult? _earlyResult;
 
@@ -41,48 +44,49 @@ namespace Scarlet.OpenPgp.Signing
         /// </param>
         public static DocumentVerification Start(byte[] signaturePackets, KeyRing keyRing, bool isClearsign)
         {
-            List<Packet> packets;
+            var bodies = new List<byte[]>();
+            int packetCount = 0;
             try
             {
-                packets = PacketReader.ReadAll(signaturePackets);
+                // Read lazily and stop at the first reason to reject: reading every packet before
+                // looking let a 1 MiB input of tiny packets allocate 69 MiB of packet objects.
+                foreach (Packet packet in PacketReader.Enumerate(signaturePackets))
+                {
+                    if (packet.Header.Tag != PacketTag.Signature)
+                    {
+                        // A detached signature or clearsign signature block holds signatures only;
+                        // anything else means this isn't what the caller thinks it is.
+                        return Failed(VerificationStatus.MalformedInput, "The signature input contains a non-signature packet (tag " + packet.Header.RawTag + ").");
+                    }
+
+                    // Each signature costs a full pass over the data, so the count bounds the work a
+                    // hostile signature file can cause (256 copies made an 8 MiB file cost 2 GiB of
+                    // hashing). Checked as each one arrives, so no packet is ever compared against more
+                    // than MaxSignatures others - checking afterwards made 64,000 distinct packets
+                    // quadratic (8 s just to reject). Identical copies count too: they cost no
+                    // hashing, but each is still a packet to read and compare.
+                    if (++packetCount > MaxSignaturePackets)
+                    {
+                        return Failed(VerificationStatus.MalformedInput, "The signature input contains more than " + MaxSignaturePackets + " signature packets.");
+                    }
+
+                    // An identical copy adds nothing but another pass over the data.
+                    if (bodies.Exists(b => b.AsSpan().SequenceEqual(packet.Body)))
+                    {
+                        continue;
+                    }
+
+                    if (bodies.Count == MaxSignatures)
+                    {
+                        return Failed(VerificationStatus.MalformedInput, "The signature input contains more than " + MaxSignatures + " signatures.");
+                    }
+
+                    bodies.Add(packet.Body);
+                }
             }
             catch (FailClosedException ex)
             {
                 return Failed(VerificationStatus.MalformedInput, "The signature is malformed: " + ex.Message);
-            }
-
-            var bodies = new List<byte[]>();
-            foreach (Packet packet in packets)
-            {
-                if (packet.Header.Tag == PacketTag.Marker || packet.Header.Tag == PacketTag.Padding)
-                {
-                    continue;
-                }
-
-                if (packet.Header.Tag != PacketTag.Signature)
-                {
-                    // A detached signature or clearsign signature block holds signatures only;
-                    // anything else means this isn't what the caller thinks it is.
-                    return Failed(VerificationStatus.MalformedInput, "The signature input contains a non-signature packet (tag " + packet.Header.RawTag + ").");
-                }
-
-                // An identical copy adds nothing but another pass over the data.
-                if (bodies.Exists(b => b.AsSpan().SequenceEqual(packet.Body)))
-                {
-                    continue;
-                }
-
-                // Each signature costs a full pass over the data, so the count bounds the work a
-                // hostile signature file can cause (256 copies made an 8 MiB file cost 2 GiB of
-                // hashing). Checked as each one arrives, so no packet is ever compared against more
-                // than MaxSignatures others - checking afterwards made 64,000 distinct packets
-                // quadratic (8 s just to reject).
-                if (bodies.Count == MaxSignatures)
-                {
-                    return Failed(VerificationStatus.MalformedInput, "The signature input contains more than " + MaxSignatures + " signatures.");
-                }
-
-                bodies.Add(packet.Body);
             }
 
             if (bodies.Count == 0)

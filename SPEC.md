@@ -55,7 +55,11 @@ The original v1 brief follows unchanged for its rationale. The implementation ha
   key/subkey expiration from the newest valid self-signature (a v6 key requires a Direct Key
   signature), signature expiration, and revocations contained in the supplied certificates. Hard
   revocations (compromised, no reason) invalidate every signature; soft ones (superseded, retired)
-  only signatures made after them. Third-party certifications and designated revokers are ignored.
+  only signatures made after them. Certification revocations (0x30) take back the key owner's earlier
+  User ID certifications or Direct Key signatures; a key whose self-signatures are all revoked is
+  unusable, not unrestricted. A signature counts for what it verifiably covers, wherever it sits in
+  the block, so moving a revocation can't hide it. Third-party certifications and designated
+  revokers are ignored.
 - **Data:** detached signatures stream the data once (`Stream` and async overloads), binary (0x00)
   and text-mode (0x01) signatures alike.
 - **Result:** a `VerificationResult` with a status, a reason, the signer and primary fingerprints,
