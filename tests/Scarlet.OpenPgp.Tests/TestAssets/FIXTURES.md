@@ -517,6 +517,20 @@ Facts and expected verdicts:
 | curl `.asc` | Skipped because curl tarballs are several MB. Armored detached RSA signatures are covered by `tor-browser-subkey` (subkey) and `debian-trixie-release/Release.gpg` (3 signatures). |
 | Debian/GnuPG/Tor/Node artifacts are snapshots | Upstream files change over time. These fixtures are frozen copies; re-downloading may produce different bytes. |
 
+## wycheproof
+
+Project Wycheproof's signature-verification vectors (https://github.com/C2SP/wycheproof,
+`testvectors_v1`, Apache License 2.0 - copied as `wycheproof/LICENSE`), run by
+`Crypto/WycheproofTests.cs` against each verifier: Ed25519 (151 vectors), Ed448 (87), ECDSA on
+NIST P-256/384/521 and brainpoolP256/384/512r1 in IEEE P1363 form (1,750), DSA 2048/3072 (524), and
+RSA PKCS#1 v1.5 2048/3072/4096 with SHA-2 and SHA-3 (3,620). An "invalid" vector must never
+verify; a "valid" one must.
+
+Vendored, not downloaded in CI, so the build is deterministic and an upstream change can't alter
+it without a reviewed commit. To refresh: download the same file names from
+`https://raw.githubusercontent.com/C2SP/wycheproof/main/testvectors_v1/` over the existing ones,
+run the tests, and investigate any disagreement before committing.
+
 ## Time-sensitivity summary (for tests that use the real clock)
 
 | Fixture | Becomes INVALID on (key/subkey expiry) |
