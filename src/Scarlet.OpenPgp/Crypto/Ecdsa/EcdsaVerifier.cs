@@ -69,12 +69,24 @@ namespace Scarlet.OpenPgp.Crypto.Ecdsa
             BigInteger u1 = (e * w) % n;
             BigInteger u2 = (r * w) % n;
 
-            // Step 5-6: R = u1·G + u2·Q; reject if R = O.
-            JacobianPoint g = JacobianPoint.FromAffine(curve.Gx, curve.Gy);
-            JacobianPoint point = JacobianPoint.MultiplyAdd(curve, u1, g, u2, q);
-            if (!point.TryToAffine(curve, out BigInteger x, out _))
+            // Step 5-6: R = u1·G + u2·Q; reject if R = O. P-256, the common curve, has its own
+            // fixed-width arithmetic; q is affine (Z = 1) as decoded.
+            BigInteger x;
+            if (ReferenceEquals(curve, EcCurve.NistP256))
             {
-                return false;
+                if (!P256.TryLinearCombinationX(u1, u2, q.X, q.Y, out x))
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                JacobianPoint g = JacobianPoint.FromAffine(curve.Gx, curve.Gy);
+                JacobianPoint point = JacobianPoint.MultiplyAdd(curve, u1, g, u2, q);
+                if (!point.TryToAffine(curve, out x, out _))
+                {
+                    return false;
+                }
             }
 
             // Steps 7-8: v = x_R mod n; valid iff v == r. x_R is in [0, p) and p can exceed n,

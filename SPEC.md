@@ -362,12 +362,19 @@ verification per algorithm, key ring parsing, hashing, and the Ed25519 field pri
 before and after any performance change. Done so far, each backed by a measurement:
 
 - Ed25519 uses fixed-width field arithmetic (ten 25.5-bit limbs, ref10's layout, in a `fixed` buffer)
-  instead of `BigInteger`, a dedicated doubling formula, and Shamir's trick for `[S]B - [k]A`. The
-  limb arithmetic is checked against `BigInteger` by a differential test.
+  instead of `BigInteger`, a dedicated doubling formula, and a sliding-window double scalar
+  multiplication (ref10's) whose tables and digits live on the stack. The limb arithmetic is checked
+  against `BigInteger` by a differential test.
+- ECDSA P-256 has its own fixed-width path (eight 32-bit words, NIST fast reduction, all on the
+  stack): ~0.6 ms and ~27 KB per verification instead of ~1.4 ms and ~0.9 MB. The other curves use
+  `BigInteger` with mixed additions and, on the NIST curves, the a = -3 doubling.
+- Decoded EdDSA and ECDSA public points are cached per key (small); larger derived tables are not, to
+  keep what a key ring holds small - lower memory beats a few percent of speed here.
 - RSA computes the modulus size once instead of shifting the modulus a bit at a time on every call.
 - Keccak's permutation is unrolled over the lanes (SHA3 and Ed448's SHAKE256).
 - Text-mode canonicalization copies whole lines found with a vectorized search.
 
-Remaining, if it ever matters: ECDSA, DSA and Ed448 still use `BigInteger` arithmetic (ECDSA P-256 is
-~1.5 ms per verification, brainpool/P-521 several times that; DSA-3072 ~10 ms). The platform's own SHA-3
-was measured and is no faster than the managed Keccak, so it isn't used.
+Remaining, if it ever matters: DSA, Ed448 and the ECDSA curves other than P-256 still use `BigInteger`
+arithmetic (P-521 ~6.6 ms and brainpoolP512r1 ~14 ms per verification; DSA-3072 ~10 ms). P-256 could
+go further with a dedicated squaring, an addition chain for its two inversions and windowing. The
+platform's own SHA-3 was measured and is no faster than the managed Keccak, so it isn't used.
