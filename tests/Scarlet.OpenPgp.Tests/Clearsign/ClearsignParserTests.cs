@@ -171,6 +171,8 @@ namespace Scarlet.OpenPgp.Tests.Clearsign
         [Theory]
         [InlineData("-not escaped\n")]
         [InlineData("-----BEGIN PGP SIGNED MESSAGE-----\n")]
+        [InlineData("-----BEGIN PGP SIGNATURE----- \n")] // a boundary padded with whitespace: neither boundary nor valid text
+        [InlineData("-----BEGIN PGP SIGNATURE-----\t\n")]
         public void Parse_WithABodyLineStartingWithAnUnescapedDash_ShouldFailClosed(string body)
         {
             // Arrange

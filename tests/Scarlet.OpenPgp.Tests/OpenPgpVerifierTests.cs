@@ -34,9 +34,34 @@ namespace Scarlet.OpenPgp.Tests
             Assert.Equal(VerificationStatus.Valid, result.Status);
             Assert.Equal("F3DCC08A8572C0749B3E18888EAB4D40A7B22B59", result.PrimaryKeyFingerprint);
             Assert.NotNull(result.SignedText);
-            Assert.NotNull(result.SignedText);
             Assert.Equal(expectedSignedText.Replace("\r\n", "\n"), result.SignedText.Replace("\r\n", "\n"));
             Assert.DoesNotContain("PGP", result.SignedText);
+        }
+
+        [Fact]
+        public void ReadmeThirdPartyReleaseSample_ShouldFindTheSignedHashOfARelease()
+        {
+            // Arrange: the library README's "Verifying someone else's releases" sample, run against
+            // Bun's real signed hash list so the documented code keeps compiling and stays correct.
+            OpenPgpKeyRing publisher = OpenPgpKeyRing.Parse(System.IO.File.ReadAllText("TestAssets/bun-release/bun-public-key.asc"));
+            const string ExpectedFingerprint = "F3DCC08A8572C0749B3E18888EAB4D40A7B22B59";
+            DateTimeOffset lastInstalledReleaseSignedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+            const string fileName = "bun-darwin-aarch64.zip";
+
+            // Act
+            VerificationResult result = OpenPgpVerifier.VerifyClearsign(System.IO.File.ReadAllText("TestAssets/bun-release/SHASUMS256.txt.asc"), publisher);
+            bool accepted = result is { IsValid: true, SignedText: string, SignatureCreationTime: DateTimeOffset }
+                && result.PrimaryKeyFingerprint == ExpectedFingerprint
+                && result.SignatureCreationTime >= lastInstalledReleaseSignedAt;
+            string? expectedHash = result.SignedText?.Split("\r\n")
+                .Select(line => line.Split("  "))
+                .Where(fields => fields.Length == 2 && fields[1] == fileName)
+                .Select(fields => fields[0])
+                .SingleOrDefault();
+
+            // Assert
+            Assert.True(accepted, result.ToString());
+            Assert.Equal("90987a3a16d7db556d886ac3d551e7b6d3edf0a1cf43acaed622e8676be1d12f", expectedHash);
         }
 
         private const string InjectedLine = "deadbeef00000000000000000000000000000000000000000000000000000000  bun-linux-x64.zip";

@@ -49,6 +49,57 @@ Only use `SignedText` from a clearsigned message. The input also contains unsign
 dash-escaping and the signature block's own armor headers, so reading data straight out of the
 `.asc` file means trusting text nobody signed.
 
+## Verifying someone else's releases
+
+The typical use: your application downloads a third party's release and must know it is the real
+one, even if the download went through an attacker (a hijacked mirror, a MITM). The signature
+proves the files came from whoever holds the key - so everything rests on the key, and on checking
+what the signature actually covers.
+
+1. **Pin the publisher's key.** Ship their public key with your application, or fetch it once over
+   a channel you trust and check its fingerprint against one the publisher announced elsewhere.
+   Never download the key from the same place as the release: whoever can swap the files can swap
+   the key. Parse it once with `OpenPgpKeyRing.Parse` at startup, so a broken key fails loudly.
+2. **Check who signed.** If your key ring holds more than one publisher, compare
+   `result.PrimaryKeyFingerprint` with the one you expect for this release.
+3. **Verify what you will use.** For a detached signature, stream the exact file you are about to
+   install into `VerifyDetached` - not a second download of it. Many publishers instead sign a list
+   of hashes (`SHASUMS256.txt.asc`): verify that, take the hash from `SignedText` only, and compare
+   it with the SHA-256 of your downloaded file.
+4. **Reject replays.** A valid signature proves the release is genuine, not that it is current. An
+   attacker can serve an older release - with its own, perfectly valid signature - to keep you on
+   a vulnerable version. Check that `SignatureCreationTime` is not older than the release you
+   already have or expect, or check the version inside the signed content.
+5. **Treat every status other than `Valid` as a rejection.** `KeyExpired` and `KeyRevoked` mean the
+   publisher's key can no longer vouch for anything; update the pinned key through your own release
+   process when the publisher rotates it.
+
+```csharp
+// Once, at startup: the publisher's key, shipped with the application.
+OpenPgpKeyRing publisher = OpenPgpKeyRing.Parse(PinnedPublisherKey);
+
+// For each download: the signed hash list, then the file it vouches for.
+VerificationResult result = OpenPgpVerifier.VerifyClearsign(File.ReadAllText("SHASUMS256.txt.asc"), publisher);
+if (result is not { IsValid: true, SignedText: string signedText, SignatureCreationTime: DateTimeOffset signedAt }
+    || result.PrimaryKeyFingerprint != ExpectedFingerprint
+    || signedAt < LastInstalledReleaseSignedAt)
+{
+    throw new InvalidOperationException("Release signature rejected: " + result);
+}
+
+string? expectedHash = signedText.Split("\r\n")
+    .Select(line => line.Split("  "))
+    .Where(fields => fields.Length == 2 && fields[1] == fileName)
+    .Select(fields => fields[0])
+    .SingleOrDefault();
+using FileStream download = File.OpenRead(downloadedPath);
+string actualHash = Convert.ToHexString(SHA256.HashData(download)).ToLowerInvariant();
+if (expectedHash != actualHash)
+{
+    throw new InvalidOperationException(fileName + " is not the file the publisher signed.");
+}
+```
+
 ## Scope
 
 - Clearsigned messages, and detached signatures over binary (0x00) or text-mode (0x01) data.

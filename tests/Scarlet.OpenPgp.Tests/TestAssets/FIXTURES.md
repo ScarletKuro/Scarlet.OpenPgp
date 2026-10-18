@@ -517,6 +517,26 @@ Facts and expected verdicts:
 | curl `.asc` | Skipped because curl tarballs are several MB. Armored detached RSA signatures are covered by `tor-browser-subkey` (subkey) and `debian-trixie-release/Release.gpg` (3 signatures). |
 | Debian/GnuPG/Tor/Node artifacts are snapshots | Upstream files change over time. These fixtures are frozen copies; re-downloading may produce different bytes. |
 
+## openpgpjs-v6
+
+v6 (RFC 9580) keys and signatures from OpenPGP.js 6.3.2 - an independent implementation, so v6
+support is checked against a real producer rather than only the RFC vectors and certificates
+assembled in tests. Run by `Fixtures/OpenPgpJsInteropTests.cs`. Each folder holds `public-key.asc`,
+`data.txt` (LF endings, a line with trailing spaces, a line starting with a dash), a binary detached
+signature `data.txt.sig`, a text-mode detached signature `data.txt.textmode.asc` and a clearsigned
+`data.txt.clearsign.asc`. Keys created 2026-01-01, signatures made 2026-01-02, nothing expires.
+
+| Folder | Key |
+|---|---|
+| v6-ed25519 | Ed25519 primary (algorithm 27) signs |
+| v6-ed448 | Ed448 primary (28) signs |
+| v6-ed25519-signing-subkey | Ed25519 signing subkey (v6 binding + back-signature) signs |
+| v6-rsa3072 | RSA 3072 primary signs |
+| v6-ecdsa-nistp256 | ECDSA P-256 primary signs |
+
+Regenerate with `npm install --save-exact openpgp@6.3.2` and `node generate.mjs <folder>`; v6
+salts and keys are random, so the fingerprints in the tests must be updated from its output.
+
 ## wycheproof
 
 Project Wycheproof's signature-verification vectors (https://github.com/C2SP/wycheproof,

@@ -1,0 +1,3 @@
+OpenPGP.js v6 interop fixture.
+Second line with trailing spaces   
+- a line starting with a dash
