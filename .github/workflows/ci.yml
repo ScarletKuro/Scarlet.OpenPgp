@@ -103,23 +103,49 @@ jobs:
         run: dotnet publish src/Scarlet.OpenPgp.Cli -c Release -r ${{ matrix.rid }} -o out/cli
 
       - name: Smoke-test CLI against the real Bun release signature
+        run: bash .github/scripts/smoke-test-cli.sh out/cli/scarlet-openpgp
+
+  aot-musl:
+    # Alpine (musl). Native AOT for musl must be built on musl, and the CLI tool ships musl
+    # packages: musl RIDs inherit from glibc ones, so without them Alpine would install the glibc
+    # binary, which can't start there.
+    name: Native AOT (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    container: mcr.microsoft.com/dotnet/sdk:10.0-alpine
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-musl-x64
+          - os: ubuntu-24.04-arm
+            rid: linux-musl-arm64
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install Native AOT prerequisites
+        shell: sh
+        run: apk add --no-cache bash clang build-base zlib-dev git
+
+      # Plain git rather than actions/checkout: JavaScript actions need the runner's Node.js,
+      # which isn't available for Alpine on arm64.
+      - name: Check out
         run: |
-          assets=tests/Scarlet.OpenPgp.Tests/TestAssets/bun-release
-          cli=out/cli/scarlet-openpgp
+          git config --global --add safe.directory "*"
+          git init -q .
+          git fetch -q --depth 1 "${{ github.server_url }}/${{ github.repository }}" "${{ github.sha }}"
+          git checkout -q FETCH_HEAD
 
-          echo "== 1. Genuine signature: must verify and output exactly the signed text"
-          "$cli" verify --key "$assets/bun-public-key.asc" --signature "$assets/SHASUMS256.txt.asc" --output out/signed.txt
-          diff <(tr -d '\r' < out/signed.txt) <(tr -d '\r' < "$assets/SHASUMS256.txt")
+      - name: Publish tests as Native AOT
+        run: dotnet publish tests/Scarlet.OpenPgp.Tests -c Release -r ${{ matrix.rid }} -o out/tests
 
-          # Unsigned text injected before the clearsigned block must be rejected as malformed (exit 65).
-          echo "== 2. Tampered copy (unsigned hash line injected above the signed block): the failure below is expected"
-          { echo "deadbeef  bun-linux-x64.zip"; cat "$assets/SHASUMS256.txt.asc"; } > out/tampered.asc
-          set +e
-          "$cli" verify --key "$assets/bun-public-key.asc" --signature out/tampered.asc
-          code=$?
-          set -e
-          if [ "$code" -ne 65 ]; then
-            echo "Expected exit code 65 for a tampered message, got $code"
-            exit 1
-          fi
-          echo "== Tampered copy rejected with exit code 65, as required"
+      - name: Run native tests
+        working-directory: out/tests
+        run: ./Scarlet.OpenPgp.Tests
+
+      - name: Publish CLI as Native AOT
+        run: dotnet publish src/Scarlet.OpenPgp.Cli -c Release -r ${{ matrix.rid }} -o out/cli
+
+      - name: Smoke-test CLI against the real Bun release signature
+        run: bash .github/scripts/smoke-test-cli.sh out/cli/scarlet-openpgp

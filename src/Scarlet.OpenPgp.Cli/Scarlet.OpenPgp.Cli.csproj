@@ -13,9 +13,38 @@
     <RootNamespace>Scarlet.OpenPgp.Cli</RootNamespace>
     <AssemblyName>scarlet-openpgp</AssemblyName>
 
+    <!-- A .NET tool with RID-specific Native AOT packages (.NET 10 SDK). Releasing takes:
+           dotnet pack                                     # pointer package, on any OS
+           dotnet pack -r <rid>                            # one per RID below, on that RID's OS
+           dotnet pack -r any -p:PublishAot=false          # framework-dependent fallback
+         Push every RID package first and the pointer package last: installs resolve the RID
+         packages through it, at the same version. The RIDs match the CI's Native AOT matrix; the
+         musl ones are built on Alpine (musl RIDs inherit from glibc ones, so without their own
+         packages Alpine would get a glibc binary that can't start). Any other platform (Intel
+         macOS, FreeBSD, 32-bit ARM) gets the "any" package, which needs the .NET 10 runtime. -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>scarlet-openpgp</ToolCommandName>
+    <ToolPackageRuntimeIdentifiers>linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;win-x64;win-arm64;osx-arm64;any</ToolPackageRuntimeIdentifiers>
+    <PackageId>Scarlet.OpenPgp.Cli</PackageId>
+    <Version>$(ScarletOpenPgpVersion)</Version>
+    <Authors>ScarletKuro</Authors>
+    <Description>Verify OpenPGP signatures (detached or clearsigned) from the command line: a verify-only, Native AOT tool built on Scarlet.OpenPgp.</Description>
+    <PackageTags>openpgp;pgp;gpg;signature;verify;cli;tool</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/ScarletKuro/Scarlet.OpenPgp</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
     <PublishAot>true</PublishAot>
     <VerifyReferenceAotCompatibility>true</VerifyReferenceAotCompatibility>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Only what runs goes into the tool packages: no debug symbols (the native .pdb alone is
+         10 MB) and no XML docs, the tool's or the library's. -->
+    <StripSymbols>true</StripSymbols>
+    <NativeDebugSymbols>false</NativeDebugSymbols>
+    <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
+    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
+    <AllowedReferenceRelatedFileExtensions>none</AllowedReferenceRelatedFileExtensions>
 
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
@@ -27,6 +56,10 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Scarlet.OpenPgp.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>
