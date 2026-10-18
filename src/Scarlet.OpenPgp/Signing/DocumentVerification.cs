@@ -323,7 +323,7 @@ namespace Scarlet.OpenPgp.Signing
                     return Failure(VerificationStatus.MalformedInput, "Signature cannot be used: " + ex.Message, certificate, key, createdAt);
                 }
 
-                (VerificationStatus keyStatus, string keyMessage) = certificate.CheckSigningKey(key, createdAt, now);
+                (VerificationStatus keyStatus, string keyMessage) = KeyValidity.CheckSigningKey(certificate, key, createdAt, now);
                 if (keyStatus != VerificationStatus.Valid)
                 {
                     return Failure(keyStatus, keyMessage, certificate, key, createdAt);

@@ -32,7 +32,6 @@ namespace Scarlet.OpenPgp
     public static class OpenPgpVerifier
     {
         private const string SignatureLabel = "SIGNATURE";
-        private const string PublicKeyLabel = "PUBLIC KEY BLOCK";
         private const int StreamBufferSize = 81920;
 
         /// <summary>
@@ -316,14 +315,17 @@ namespace Scarlet.OpenPgp
                 throw new ArgumentNullException(nameof(publicKeys));
             }
 
-            return ParseKeys(() => PacketInput.Decode(publicKeys, PublicKeyLabel));
+            return OpenPgpKeyRing.TryParse(publicKeys, out OpenPgpKeyRing? keyRing, out string? error) ? Keys(keyRing) : KeysFailure(error);
         }
 
         private static ParsedInput<KeyRing> ParseKeys(ReadOnlySpan<byte> publicKeys)
         {
-            byte[] copy = publicKeys.ToArray();
-            return ParseKeys(() => PacketInput.Decode(copy, PublicKeyLabel));
+            return OpenPgpKeyRing.TryParse(publicKeys, out OpenPgpKeyRing? keyRing, out string? error) ? Keys(keyRing) : KeysFailure(error);
         }
+
+        /// <summary>Key input that didn't parse; the message comes from <see cref="OpenPgpKeyRing.TryParse(ReadOnlySpan{byte}, out OpenPgpKeyRing?, out string?)"/>, so both entry points report it the same way.</summary>
+        private static ParsedInput<KeyRing> KeysFailure(string error) =>
+            new(new VerificationResult(VerificationStatus.InvalidPublicKey, error));
 
         private static ParsedInput<byte[]> ParseSignatures(string signature)
         {
@@ -349,18 +351,6 @@ namespace Scarlet.OpenPgp
             }
 
             return new ParsedInput<KeyRing>(keyRing.Inner);
-        }
-
-        private static ParsedInput<KeyRing> ParseKeys(Func<byte[]> decode)
-        {
-            try
-            {
-                return new ParsedInput<KeyRing>(KeyRing.Parse(decode()));
-            }
-            catch (FailClosedException ex)
-            {
-                return new ParsedInput<KeyRing>(new VerificationResult(VerificationStatus.InvalidPublicKey, "The public key input is unusable: " + ex.Message));
-            }
         }
 
         private static ParsedInput<byte[]> ParseSignatures(Func<byte[]> decode)

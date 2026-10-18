@@ -218,7 +218,7 @@ public sealed class OpenPgpKeyRing
     public static bool TryParse(string? armoredKeys, out OpenPgpKeyRing? keyRing, out string? error);
     public static bool TryParse(ReadOnlySpan<byte> keys, out OpenPgpKeyRing? keyRing, out string? error);
     public IReadOnlyList<OpenPgpCertificate> Certificates { get; }        // PrimaryKey, Subkeys, UserIds
-}                                                                          // keys: Fingerprint, KeyId, Version, Algorithm, CreatedAt, ExpiresAt, IsRevoked
+}                                                                          // keys: Fingerprint, KeyId, Version, Algorithm, CreatedAt, IsRevoked, GetStatus(at)
 
 public sealed class VerificationResult
 {
@@ -329,7 +329,11 @@ may end up depending on:
   Key expiration, flags and revocations are only read from signatures that verify against the primary
   key, never from unverified packets in the block.
 - **Bounded work on hostile input.** RSA moduli are capped at 16384 bits (and exponents at 256 bits),
-  DSA primes at 16384 bits, so no input can make a single verification take minutes.
+  DSA primes at 16384 bits, so no input can make a single verification take minutes. Signature input
+  holds at most 32 distinct signatures (256 packets with copies); key input at most 16,384
+  certificates, each with at most 16,384 packets and 4,096 signature checks. Packets are read
+  lazily and ignorable ones (Marker, Padding, Trust) cost nothing, so a flood of tiny packets
+  can't be amplified into memory or work.
 - **Unsigned data never decides anything.** A signature's unhashed subpacket area is editable by anyone
   (RFC 9580 §13.13), so it is parsed leniently and never validated, and certificate checks use only
   signed issuer hints. Otherwise adding two unsigned bytes to a revocation could make it vanish.

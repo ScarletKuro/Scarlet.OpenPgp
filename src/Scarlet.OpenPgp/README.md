@@ -20,17 +20,24 @@ Console.WriteLine(detached.SignerFingerprint);  // the (sub)key that signed
 ```
 
 To verify several signatures against the same keys, parse them once. That checks the certificates'
-self-signatures a single time, reports a broken key file up front, and lets you inspect the keys:
+self-signatures a single time, rejects malformed key data up front, and lets you inspect the keys:
 
 ```csharp
-OpenPgpKeyRing keyRing = OpenPgpKeyRing.Parse(File.ReadAllBytes("keys.gpg")); // throws OpenPgpFormatException if unusable
+OpenPgpKeyRing keyRing = OpenPgpKeyRing.Parse(File.ReadAllBytes("keys.gpg")); // throws OpenPgpFormatException if malformed
 foreach (OpenPgpCertificate certificate in keyRing.Certificates)
 {
-    Console.WriteLine($"{certificate.PrimaryKey.Fingerprint} {certificate.PrimaryKey.Algorithm} expires {certificate.PrimaryKey.ExpiresAt?.ToString() ?? "never"}");
+    OpenPgpKeyStatus status = certificate.PrimaryKey.GetStatus(); // as of now; pass a time to judge another moment
+    Console.WriteLine($"{certificate.PrimaryKey.Fingerprint} {certificate.PrimaryKey.Algorithm}: {status}");
 }
 
 VerificationResult result = OpenPgpVerifier.VerifyDetached(data, signature, keyRing);
 ```
+
+A successful parse means the key data is well-formed, not that every key may sign: a key can be
+revoked, expired, unbound or carry self-signatures that can't be checked. `GetStatus` reports that
+for a given moment, with the same rules verification applies. Certificate input is bounded (16,384
+packets and 4,096 signature checks per certificate, 16,384 certificates), so a certificate flooded
+with signatures is rejected rather than processed.
 
 The key ring is immutable and thread-safe. Expiration, revocation timing and key flags are still
 judged at each verification, so a key that expires while your application runs stops verifying.

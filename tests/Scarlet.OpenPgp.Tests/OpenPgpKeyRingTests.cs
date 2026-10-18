@@ -21,12 +21,17 @@ namespace Scarlet.OpenPgp.Tests
             Assert.Equal(4, certificate.PrimaryKey.Version);
             Assert.Equal("RSA 4096", certificate.PrimaryKey.Algorithm);
             Assert.Contains("Tor Browser Developers (signing key) <torbrowser@torproject.org>", certificate.UserIds);
-            Assert.Equal(2030, certificate.PrimaryKey.ExpiresAt?.Year);
+            OpenPgpKeyStatus primaryStatus = certificate.PrimaryKey.GetStatus(AssembledOn);
+            Assert.Equal(2030, primaryStatus.ExpiresAt?.Year);
+            Assert.Equal(VerificationStatus.KeyNotValidForSigning, primaryStatus.Status); // certify-only: the subkey signs
+            Assert.Equal(AssembledOn, primaryStatus.EvaluatedAt);
             Assert.False(certificate.PrimaryKey.IsRevoked);
 
             OpenPgpKey signingSubkey = certificate.Subkeys.Single(k => k.Fingerprint == "022DA248432D2A0E0F54E65E316C1FACD62D07D9");
             Assert.Equal(new DateTime(2026, 8, 11), signingSubkey.CreatedAt.UtcDateTime.Date);
-            Assert.Equal(2028, signingSubkey.ExpiresAt?.Year);
+            OpenPgpKeyStatus subkeyStatus = signingSubkey.GetStatus(AssembledOn);
+            Assert.True(subkeyStatus.CanSign, subkeyStatus.ToString());
+            Assert.Equal(2028, subkeyStatus.ExpiresAt?.Year);
             Assert.True(certificate.Subkeys.Single(k => k.Fingerprint == "05FA44253F6C19A8B7F518D42D000988589839A3").IsRevoked);
         }
 
@@ -71,7 +76,9 @@ namespace Scarlet.OpenPgp.Tests
             OpenPgpKeyRing keyRing = OpenPgpKeyRing.Parse(Bytes("rfc9580/a1-v4-ed25519legacy-key.gpg"));
 
             // Assert
-            Assert.Null(Assert.Single(keyRing.Certificates).PrimaryKey.ExpiresAt);
+            OpenPgpKeyStatus status = Assert.Single(keyRing.Certificates).PrimaryKey.GetStatus(AssembledOn);
+            Assert.True(status.CanSign, status.ToString());
+            Assert.Null(status.ExpiresAt);
         }
 
         [Fact]
@@ -142,7 +149,9 @@ namespace Scarlet.OpenPgp.Tests
             // Assert
             Assert.True(before.IsValid, before.ToString());
             Assert.Equal(VerificationStatus.KeyExpired, after.Status);
-            Assert.Equal(new DateTimeOffset(2020, 12, 31, 0, 0, 0, TimeSpan.Zero), Assert.Single(keyRing.Certificates).PrimaryKey.ExpiresAt);
+            OpenPgpKeyStatus status = Assert.Single(keyRing.Certificates).PrimaryKey.GetStatus(AssembledOn);
+            Assert.Equal(VerificationStatus.KeyExpired, status.Status);
+            Assert.Equal(new DateTimeOffset(2020, 12, 31, 0, 0, 0, TimeSpan.Zero), status.ExpiresAt);
         }
 
         [Fact]
@@ -270,6 +279,89 @@ namespace Scarlet.OpenPgp.Tests
             // Assert
             Assert.Single(keyRing.Certificates);
             Assert.True(result.IsValid, result.ToString());
+        }
+
+        [Fact]
+        public void Collections_ShouldNotBeModifiableThroughACast()
+        {
+            // Arrange: returning List<T> as IReadOnlyList<T> let a caller cast it back and clear
+            // it - after which inspection and verification disagreed about the keys.
+            OpenPgpKeyRing keyRing = OpenPgpKeyRing.Parse(Bytes("real-world/tor-browser-subkey/tor-browser-developers.asc"));
+            OpenPgpCertificate certificate = keyRing.Certificates[0];
+
+            // Act & Assert
+            Assert.Throws<NotSupportedException>(() => ((IList<OpenPgpCertificate>)keyRing.Certificates).Clear());
+            Assert.Throws<NotSupportedException>(() => ((IList<OpenPgpKey>)certificate.Subkeys).Clear());
+            Assert.Throws<NotSupportedException>(() => ((IList<string>)certificate.UserIds).Clear());
+        }
+
+        [Fact]
+        public void GetStatus_ForASubkeyWhoseBindingSignatureExpired_ShouldStillReportTheExpirationItSets()
+        {
+            // Arrange: Tor's signing subkey binding sets a key expiration in 2028. Judged in 2029,
+            // the key is expired - which must show as an expiration date, not as "never expires".
+            OpenPgpKeyRing keyRing = OpenPgpKeyRing.Parse(Bytes("real-world/tor-browser-subkey/tor-browser-developers.asc"));
+            OpenPgpKey signingSubkey = keyRing.Certificates[0].Subkeys.Single(k => k.Fingerprint == "022DA248432D2A0E0F54E65E316C1FACD62D07D9");
+
+            // Act
+            OpenPgpKeyStatus status = signingSubkey.GetStatus(new DateTimeOffset(2029, 1, 1, 0, 0, 0, TimeSpan.Zero));
+
+            // Assert
+            Assert.False(status.CanSign);
+            Assert.Equal(2028, status.ExpiresAt?.Year);
+        }
+
+        [Fact]
+        public void Parse_WithMoreCertificatePacketsThanTheLimit_ShouldBeRejected()
+        {
+            // Arrange: a key flooded with packets (CVE-2019-13050-style) - here tiny User IDs.
+            byte[] key = Bytes("gnupg-generated/v4-ecdsa-nistp256/public-key.gpg");
+            byte[] userId = [0xCD, 0x01, (byte)'x'];
+            byte[] keys = [.. key, .. Enumerable.Repeat(userId, 16385).SelectMany(b => b)];
+
+            // Act
+            bool parsed = OpenPgpKeyRing.TryParse(keys, out _, out string? error);
+
+            // Assert
+            Assert.False(parsed);
+            Assert.Contains("more than 16384 packets", error, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Parse_WithACertificateNeedingTooManySignatureChecks_ShouldBeRejected()
+        {
+            // Arrange: thousands of certifications naming no signed issuer, each of which would have
+            // to be checked against the key.
+            byte[] key = Bytes("gnupg-generated/v4-rsa3072/public-key.gpg");
+            byte[] userId = [0xCD, 0x01, (byte)'x'];
+            byte[] certification =
+            [
+                0xC2, 0x13,
+                0x04, 0x13, 0x01, 0x08, 0x00, 0x06, 0x05, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01,
+            ];
+            byte[] keys = [.. key, .. userId, .. Enumerable.Repeat(certification, 4097).SelectMany(b => b)];
+
+            // Act
+            bool parsed = OpenPgpKeyRing.TryParse(keys, out _, out string? error);
+
+            // Assert
+            Assert.False(parsed);
+            Assert.Contains("more than 4096 signature checks", error, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Parse_WithMoreCertificatesThanTheLimit_ShouldBeRejected()
+        {
+            // Arrange: 16,385 minimal v4 keys of an unknown algorithm.
+            byte[] tinyKey = [0xC6, 0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x63];
+            byte[] keys = [.. Enumerable.Repeat(tinyKey, 16385).SelectMany(b => b)];
+
+            // Act
+            bool parsed = OpenPgpKeyRing.TryParse(keys, out _, out string? error);
+
+            // Assert
+            Assert.False(parsed);
+            Assert.Contains("more than 16384 certificates", error, StringComparison.Ordinal);
         }
     }
 }

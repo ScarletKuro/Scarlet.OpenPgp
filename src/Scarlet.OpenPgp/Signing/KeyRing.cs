@@ -10,6 +10,12 @@ namespace Scarlet.OpenPgp.Signing
     /// </summary>
     internal sealed class KeyRing
     {
+        /// <summary>The most packets one certificate may have. Real ones have tens; a key flooded with signatures (CVE-2019-13050) has hundreds of thousands.</summary>
+        public const int MaxCertificatePackets = 16384;
+
+        /// <summary>The most certificates (Public-Key packets) one key input may hold - far more than any set of keys one trusts.</summary>
+        public const int MaxCertificates = 16384;
+
         private KeyRing(List<Certificate> certificates)
         {
             Certificates = certificates;
@@ -22,57 +28,52 @@ namespace Scarlet.OpenPgp.Signing
         /// certificate. A well-formed certificate this library doesn't support (a LibrePGP v5 key, a
         /// 1024-bit RSA key) is skipped, since it can't make a verifiable signature. Anything
         /// malformed - including packets that don't belong in a public key block, such as secret
-        /// keys or messages - fails the whole input: silently dropping one certificate could drop
-        /// the copy that carries a revocation and leave a stale copy in charge. Input with no usable
-        /// certificate fails too.
+        /// keys or messages, and a certificate over the size limits - fails the whole input: silently
+        /// dropping one certificate could drop the copy that carries a revocation and leave a stale
+        /// copy in charge. Input with no usable certificate fails too.
         /// </summary>
+        /// <remarks>Packets are read and certificates built one at a time, so only one certificate's packets are ever held at once.</remarks>
         public static KeyRing Parse(byte[] packetBytes)
         {
-            List<Packet> packets = PacketReader.ReadAll(packetBytes);
             var certificates = new List<Certificate>();
             string? lastError = null;
+            int certificateCount = 0;
+            List<Packet>? current = null;
 
-            int i = 0;
-            while (i < packets.Count && packets[i].Header.Tag != PacketTag.PublicKey)
+            foreach (Packet packet in PacketReader.Enumerate(packetBytes))
             {
-                if (!IsIgnorable(packets[i].Header.Tag))
+                if (packet.Header.Tag == PacketTag.PublicKey)
                 {
-                    throw new FailClosedException("Public key input does not start with a Public-Key packet (found tag " + packets[i].Header.RawTag + ").");
+                    if (current is not null)
+                    {
+                        Add(current);
+                    }
+
+                    if (++certificateCount > MaxCertificates)
+                    {
+                        throw new FailClosedException("The public key input holds more than " + MaxCertificates + " certificates.");
+                    }
+
+                    current = [packet];
+                    continue;
                 }
 
-                i++;
+                if (current is null)
+                {
+                    throw new FailClosedException("Public key input does not start with a Public-Key packet (found tag " + packet.Header.RawTag + ").");
+                }
+
+                if (current.Count == MaxCertificatePackets)
+                {
+                    throw new FailClosedException("A certificate has more than " + MaxCertificatePackets + " packets; it is too large or flooded with signatures.");
+                }
+
+                current.Add(packet);
             }
 
-            while (i < packets.Count)
+            if (current is not null)
             {
-                int end = i + 1;
-                while (end < packets.Count && packets[end].Header.Tag != PacketTag.PublicKey)
-                {
-                    end++;
-                }
-
-                try
-                {
-                    Certificate certificate = Certificate.Build(packets, i, end);
-
-                    // Several copies of one certificate (an old and a new export, say) become one, so
-                    // a stale copy without a revocation can't be picked instead of the revoked one.
-                    Certificate? existing = certificates.Find(c => c.Primary.Fingerprint.Matches(certificate.Primary.Fingerprint.Bytes));
-                    if (existing is null)
-                    {
-                        certificates.Add(certificate);
-                    }
-                    else
-                    {
-                        existing.MergeFrom(certificate);
-                    }
-                }
-                catch (FailClosedException ex) when (ex.IsUnsupported)
-                {
-                    lastError = ex.Message;
-                }
-
-                i = end;
+                Add(current);
             }
 
             if (certificates.Count == 0)
@@ -81,8 +82,32 @@ namespace Scarlet.OpenPgp.Signing
             }
 
             return new KeyRing(certificates);
-        }
 
-        private static bool IsIgnorable(PacketTag tag) => tag == PacketTag.Marker || tag == PacketTag.Trust || tag == PacketTag.Padding;
+            void Add(List<Packet> packets)
+            {
+                Certificate certificate;
+                try
+                {
+                    certificate = CertificateBuilder.Build(packets);
+                }
+                catch (FailClosedException ex) when (ex.IsUnsupported)
+                {
+                    lastError = ex.Message;
+                    return;
+                }
+
+                // Several copies of one certificate (an old and a new export, say) become one, so a
+                // stale copy without a revocation can't be picked instead of the revoked one.
+                int existing = certificates.FindIndex(c => c.Primary.Fingerprint.Matches(certificate.Primary.Fingerprint.Bytes));
+                if (existing < 0)
+                {
+                    certificates.Add(certificate);
+                }
+                else
+                {
+                    certificates[existing] = Certificate.Merge(certificates[existing], certificate);
+                }
+            }
+        }
     }
 }
