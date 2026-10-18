@@ -136,10 +136,14 @@ namespace Scarlet.OpenPgp.Verification
         /// </summary>
         private static SignaturePacket? LatestPrimarySelfSignature(Certificate certificate, DateTimeOffset now)
         {
-            IEnumerable<SignaturePacket> candidates = certificate.SelfSignatures.Where(s => IsCurrent(s, certificate.Primary, now));
-            if (certificate.Primary.Version == 6)
+            var candidates = new List<SignaturePacket>();
+            foreach (SignaturePacket selfSignature in certificate.SelfSignatures)
             {
-                candidates = candidates.Where(s => s.SignatureTypeRaw == (byte)SignatureType.DirectKey);
+                bool rightType = certificate.Primary.Version != 6 || selfSignature.SignatureTypeRaw == (byte)SignatureType.DirectKey;
+                if (rightType && IsCurrent(selfSignature, certificate.Primary, now))
+                {
+                    candidates.Add(selfSignature);
+                }
             }
 
             return Latest(candidates);
@@ -191,8 +195,20 @@ namespace Scarlet.OpenPgp.Verification
             return CheckExpiration(latest, subkey.Key.CreatedAt, signatureCreatedAt, now, "signing subkey");
         }
 
-        private static IEnumerable<SignaturePacket> CurrentBindings(CertifiedSubkey subkey, DateTimeOffset now) =>
-            subkey.Bindings.Select(b => b.Signature).Where(b => IsCurrent(b, subkey.Key, now));
+        /// <summary>The bindings in effect at <paramref name="now"/>. Materialized here, so the parsing <see cref="IsCurrent"/> does (and may fail closed on) happens in this call, not wherever the result is first enumerated.</summary>
+        private static List<SignaturePacket> CurrentBindings(CertifiedSubkey subkey, DateTimeOffset now)
+        {
+            var current = new List<SignaturePacket>();
+            foreach (SubkeyBinding binding in subkey.Bindings)
+            {
+                if (IsCurrent(binding.Signature, subkey.Key, now))
+                {
+                    current.Add(binding.Signature);
+                }
+            }
+
+            return current;
+        }
 
         /// <summary>A self-signature counts at <paramref name="now"/> if it was made no earlier than its key and no later than now, and hasn't expired.</summary>
         private static bool IsCurrent(SignaturePacket signature, PublicKeyPacket key, DateTimeOffset now)

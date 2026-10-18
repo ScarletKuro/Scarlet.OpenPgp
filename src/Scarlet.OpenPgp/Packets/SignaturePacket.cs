@@ -137,39 +137,6 @@ namespace Scarlet.OpenPgp.Packets
         }
 
         /// <summary>
-        /// The issuer fingerprints the signature names (Issuer Fingerprint subpackets, without their
-        /// version octet). They are only hints for finding the right key - the unhashed area is
-        /// unauthenticated - so a wrong hint can make verification fail, never succeed.
-        /// </summary>
-        /// <param name="hashedOnly">
-        /// Only the signed hints. Use this wherever skipping a signature on the strength of its
-        /// hints must not be steerable by whoever handled it - e.g. a key's own revocations.
-        /// </param>
-        public IEnumerable<byte[]> GetIssuerFingerprints(bool hashedOnly)
-        {
-            foreach (SignatureSubpacket subpacket in hashedOnly ? HashedSubpackets : AllSubpackets())
-            {
-                if (subpacket.Is(SignatureSubpacketType.IssuerFingerprint) && subpacket.Data.Length > 1)
-                {
-                    yield return subpacket.Data.AsSpan(1).ToArray();
-                }
-            }
-        }
-
-        /// <summary>The issuer key IDs the signature names (Issuer Key ID subpackets); hints like <see cref="GetIssuerFingerprints"/>.</summary>
-        /// <param name="hashedOnly">Only the signed hints (see <see cref="GetIssuerFingerprints"/>).</param>
-        public IEnumerable<byte[]> GetIssuerKeyIds(bool hashedOnly)
-        {
-            foreach (SignatureSubpacket subpacket in hashedOnly ? HashedSubpackets : AllSubpackets())
-            {
-                if (subpacket.Is(SignatureSubpacketType.IssuerKeyId) && subpacket.Data.Length == 8)
-                {
-                    yield return subpacket.Data;
-                }
-            }
-        }
-
-        /// <summary>
         /// Reads a 4-byte big-endian time value (a timestamp or a duration in seconds) from the
         /// *hashed* subpacket area only - the unhashed area isn't covered by the signature, so
         /// anyone could add or change a value there. Returns <c>false</c> when absent. Fails closed

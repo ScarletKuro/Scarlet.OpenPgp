@@ -58,7 +58,7 @@ namespace Scarlet.OpenPgp.Tests.Packets
             SignaturePacket signature = ParseFixture();
 
             // Assert
-            Assert.Equal(ExpectedIssuerKeyId, Assert.Single(signature.GetIssuerKeyIds(hashedOnly: false)));
+            Assert.Equal(ExpectedIssuerKeyId, Assert.Single(signature.UnhashedSubpackets, s => s.Is(SignatureSubpacketType.IssuerKeyId)).Data);
         }
 
         [Fact]

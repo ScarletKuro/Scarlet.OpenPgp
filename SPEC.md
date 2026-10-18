@@ -342,6 +342,13 @@ may end up depending on:
   treated as if it weren't there. The one thing no OpenPGP implementation can detect is a signature
   *deleted* from a certificate - the fingerprint covers the key, not its signatures - so revocations
   only count if the caller's key data contains them.
+- **No hidden evaluation in security paths.** LINQ is fine where it reads better, with three rules:
+  no side effects or throwing calls inside a LINQ lambda (a predicate that runs a signature check,
+  spends a budget or parses must be a loop); members return materialized `IReadOnlyList<T>`, not a
+  lazy `IEnumerable<T>`, unless deferring is the point (`PacketReader.Enumerate` stops early) - a
+  lazy sequence fails closed wherever it is first enumerated, possibly outside the `try` meant to
+  catch it; and nothing on the per-verification path allocates for convenience without a benchmark
+  saying it doesn't matter.
 - **Correctness over performance**, but still write clean, readable code — this will be read and audited by
   people deciding whether to trust it. `Span<T>`/`ReadOnlySpan<T>` are fair game where they reduce
   allocations without hurting readability (see "Performance follow-up" below), but don't chase performance

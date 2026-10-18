@@ -206,8 +206,6 @@ namespace Scarlet.OpenPgp.Tests.Fuzzing
         private static void ConsumeSignature(SignaturePacket signature)
         {
             // Touch every lazily-evaluated accessor - each may parse further.
-            _ = signature.GetIssuerFingerprints(hashedOnly: false).ToList();
-            _ = signature.GetIssuerKeyIds(hashedOnly: false).ToList();
             _ = signature.EmbeddedSignatures.ToList();
             ExpectOnlyFailClosed(signature.Body, () => _ = signature.KeyFlags);
             ExpectOnlyFailClosed(signature.Body, () => _ = signature.RevocationReason);

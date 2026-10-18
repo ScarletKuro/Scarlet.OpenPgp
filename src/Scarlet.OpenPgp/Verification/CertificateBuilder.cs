@@ -318,11 +318,18 @@ namespace Scarlet.OpenPgp.Verification
             }
 
             // The back-signature is made by the subkey over the same content, proving the subkey's
-            // owner agreed to be bound (RFC 9580 §5.2.1.6).
-            List<SignaturePacket> backSignatures = signature.EmbeddedSignatures
-                .Where(s => s.SignatureTypeRaw == (byte)SignatureType.PrimaryKeyBinding)
-                .Where(s => Check(subkey.Key, s, subkey.BindingContent) == KeySignatureCheck.Valid)
-                .ToList();
+            // owner agreed to be bound (RFC 9580 §5.2.1.6). A loop, not a LINQ filter: Check spends
+            // the budget and can throw, which must not hide inside a lazily evaluated predicate.
+            var backSignatures = new List<SignaturePacket>();
+            foreach (SignaturePacket embedded in signature.EmbeddedSignatures)
+            {
+                if (embedded.SignatureTypeRaw == (byte)SignatureType.PrimaryKeyBinding
+                    && Check(subkey.Key, embedded, subkey.BindingContent) == KeySignatureCheck.Valid)
+                {
+                    backSignatures.Add(embedded);
+                }
+            }
+
             subkey.Bindings.Add(new SubkeyBinding(signature, backSignatures));
         }
 

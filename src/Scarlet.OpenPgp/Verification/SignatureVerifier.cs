@@ -67,7 +67,7 @@ namespace Scarlet.OpenPgp.Verification
             return unhashed == HintMatch.NoHints ? hashed : unhashed;
         }
 
-        /// <summary>The same hints <see cref="SignaturePacket.GetIssuerFingerprints"/> and <see cref="SignaturePacket.GetIssuerKeyIds"/> yield, matched without copying.</summary>
+        /// <summary>Matches the Issuer Fingerprint (without its version octet) or Issuer Key ID subpackets of one area against <paramref name="key"/>, without copying them.</summary>
         private static HintMatch MatchHints(IReadOnlyList<SignatureSubpacket> subpackets, PublicKeyPacket key, SignatureSubpacketType type)
         {
             HintMatch result = HintMatch.NoHints;
