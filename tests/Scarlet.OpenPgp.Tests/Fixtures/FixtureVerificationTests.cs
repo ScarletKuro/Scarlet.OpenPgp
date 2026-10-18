@@ -151,7 +151,8 @@ namespace Scarlet.OpenPgp.Tests.Fixtures
 
             // Assert
             AssertValid(result, signer: "C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C", primary: "C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C");
-            Assert.Equal(Text("real-world/nodejs-clearsign-rsa/SHASUMS256.txt").TrimEnd('\n'), result.SignedText!.Replace("\r\n", "\n"));
+            Assert.NotNull(result.SignedText);
+            Assert.Equal(Text("real-world/nodejs-clearsign-rsa/SHASUMS256.txt").TrimEnd('\n'), result.SignedText.Replace("\r\n", "\n"));
         }
 
         [Fact]
@@ -194,7 +195,8 @@ namespace Scarlet.OpenPgp.Tests.Fixtures
 
             // Assert
             AssertValid(result);
-            Assert.Equal(Text("real-world/debian-trixie-release/Release").TrimEnd('\n'), result.SignedText!.Replace("\r\n", "\n"));
+            Assert.NotNull(result.SignedText);
+            Assert.Equal(Text("real-world/debian-trixie-release/Release").TrimEnd('\n'), result.SignedText.Replace("\r\n", "\n"));
         }
 
         [Fact]

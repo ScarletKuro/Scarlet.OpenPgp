@@ -21,7 +21,9 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Rsa
             byte[] signatureBytes = rsa.SignHash(digest, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
 
             RSAParameters parameters = rsa.ExportParameters(false);
-            var publicKey = new RsaPublicKey(Mpi.ToUnsignedBigInteger(parameters.Modulus!), Mpi.ToUnsignedBigInteger(parameters.Exponent!));
+            Assert.NotNull(parameters.Modulus);
+            Assert.NotNull(parameters.Exponent);
+            var publicKey = new RsaPublicKey(Mpi.ToUnsignedBigInteger(parameters.Modulus), Mpi.ToUnsignedBigInteger(parameters.Exponent));
             BigInteger signature = Mpi.ToUnsignedBigInteger(signatureBytes);
 
             return (publicKey, digest, signature);
@@ -113,8 +115,10 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Rsa
             // Arrange
             using RSA rsa = RSA.Create(1024);
             RSAParameters parameters = rsa.ExportParameters(false);
-            BigInteger modulus = Mpi.ToUnsignedBigInteger(parameters.Modulus!);
-            BigInteger exponent = Mpi.ToUnsignedBigInteger(parameters.Exponent!);
+            Assert.NotNull(parameters.Modulus);
+            Assert.NotNull(parameters.Exponent);
+            BigInteger modulus = Mpi.ToUnsignedBigInteger(parameters.Modulus);
+            BigInteger exponent = Mpi.ToUnsignedBigInteger(parameters.Exponent);
 
             // Act & Assert
             Assert.Throws<FailClosedException>(() => new RsaPublicKey(modulus, exponent));
@@ -128,7 +132,9 @@ namespace Scarlet.OpenPgp.Tests.Crypto.Rsa
         {
             // Arrange
             using RSA rsa = RSA.Create(2048);
-            BigInteger modulus = Mpi.ToUnsignedBigInteger(rsa.ExportParameters(false).Modulus!);
+            byte[]? modulusBytes = rsa.ExportParameters(false).Modulus;
+            Assert.NotNull(modulusBytes);
+            BigInteger modulus = Mpi.ToUnsignedBigInteger(modulusBytes);
 
             // Act & Assert
             Assert.Throws<FailClosedException>(() => new RsaPublicKey(modulus, exponent));

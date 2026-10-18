@@ -129,7 +129,7 @@ namespace Scarlet.OpenPgp.Tests.Fuzzing
         {
             string message = Encoding.UTF8.GetString(Asset(messageFile));
             byte[] keys = Asset(keyFile);
-            string originalSignedText = OpenPgpVerifier.VerifyClearsign(message, keys, Now).SignedText!;
+            string? originalSignedText = OpenPgpVerifier.VerifyClearsign(message, keys, Now).SignedText;
             Assert.NotNull(originalSignedText);
             var mutator = new Mutator(StableSeed(messageFile, "clearsign"));
 

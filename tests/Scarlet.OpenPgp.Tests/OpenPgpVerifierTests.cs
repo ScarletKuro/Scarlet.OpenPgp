@@ -34,7 +34,8 @@ namespace Scarlet.OpenPgp.Tests
             Assert.Equal(VerificationStatus.Valid, result.Status);
             Assert.Equal("F3DCC08A8572C0749B3E18888EAB4D40A7B22B59", result.PrimaryKeyFingerprint);
             Assert.NotNull(result.SignedText);
-            Assert.Equal(expectedSignedText.Replace("\r\n", "\n"), result.SignedText!.Replace("\r\n", "\n"));
+            Assert.NotNull(result.SignedText);
+            Assert.Equal(expectedSignedText.Replace("\r\n", "\n"), result.SignedText.Replace("\r\n", "\n"));
             Assert.DoesNotContain("PGP", result.SignedText);
         }
 

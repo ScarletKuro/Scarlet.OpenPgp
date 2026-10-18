@@ -141,7 +141,9 @@ namespace Scarlet.OpenPgp.Verification
                 }
             }
 
-            return best!;
+            // Start rejects input without a signature, so there is always one; if that ever changed,
+            // the answer must still be a failure, never null.
+            return best ?? Failure(VerificationStatus.MalformedInput, "The signature input contains no signature.");
         }
 
         public void Dispose()
@@ -281,7 +283,9 @@ namespace Scarlet.OpenPgp.Verification
                     }
                 }
 
-                return best!;
+                // Every entry that reaches here has at least one candidate key (Create checks), so this
+                // is unreachable - but if it ever were, the answer must still be a failure, never null.
+                return best ?? Failure(VerificationStatus.NoMatchingKey, "None of the supplied keys made this signature.");
             }
 
             private static VerificationResult EvaluateCandidate(
