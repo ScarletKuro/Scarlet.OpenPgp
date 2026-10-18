@@ -24,13 +24,18 @@ internal static class Program
     // find their signer and reach the cryptographic checks (the data won't match theirs, but the
     // parsing and verification paths still run).
     // Not every *.gpg fixture is a key (Debian's Release.gpg is a signature), so keep the ones that parse.
-    private static readonly OpenPgpKeyRing AllKeys = OpenPgpKeyRing.Parse(
+    // Lazy, not a static initializer: under libFuzzer the library is instrumented, and instrumented
+    // code may only run inside Fuzzer.LibFuzzer.Run - before it, the coverage map it writes to
+    // doesn't exist yet and the process dies with an access violation.
+    private static readonly Lazy<OpenPgpKeyRing> LazyAllKeys = new(() => OpenPgpKeyRing.Parse(
         Directory.EnumerateFiles(Path.Combine(SeedDirectory, "keys"), "*.gpg", SearchOption.AllDirectories)
             .OrderBy(path => path, StringComparer.Ordinal)
             .Select(File.ReadAllBytes)
             .Where(bytes => OpenPgpKeyRing.TryParse(bytes, out _, out _))
             .SelectMany(bytes => bytes)
-            .ToArray());
+            .ToArray()));
+
+    private static OpenPgpKeyRing AllKeys => LazyAllKeys.Value;
 
     private static readonly Dictionary<string, Action<ReadOnlySpan<byte>>> Targets = new(StringComparer.Ordinal)
     {
